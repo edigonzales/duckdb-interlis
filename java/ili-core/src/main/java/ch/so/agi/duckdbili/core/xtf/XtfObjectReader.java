@@ -34,13 +34,21 @@ public class XtfObjectReader {
      * subsequent lines = data rows.
      */
     public String readClass(String xtfPath, String className, String modelDir) {
-        return readXtf(xtfPath, modelDir, extractModelName(className), className);
+        return readXtf(xtfPath, modelDir, extractModelName(className), className, "json");
+    }
+
+    public String readClass(String xtfPath, String className, String modelDir, String nested) {
+        return readXtf(xtfPath, modelDir, extractModelName(className), className, nested != null ? nested : "json");
     }
 
     /**
      * Returns just the column names (header line) for a class.
      */
     public String readClassSchema(String className, String modelDir) {
+        return readClassSchema(className, modelDir, "json");
+    }
+
+    public String readClassSchema(String className, String modelDir, String nested) {
         TransferDescription td = compileModel(modelDir, extractModelName(className));
         if (td == null) return "";
 
@@ -50,13 +58,19 @@ public class XtfObjectReader {
         AbstractClassDef cdef = findClass(td, parts[0], parts[1], parts[2]);
         if (cdef == null) return "";
 
+        String colSuffix = "duckdb".equals(nested) ? "" : "_json";
+
         StringBuilder sb = new StringBuilder();
         sb.append("xtf_bid\txtf_tid\txtf_class");
         Iterator<?> ait = cdef.getAttributesAndRoles2();
         while (ait.hasNext()) {
             ViewableTransferElement vte = (ViewableTransferElement) ait.next();
-            if (vte.obj instanceof AttributeDef ad)
-                sb.append('\t').append(e(ad.getName()));
+            if (vte.obj instanceof AttributeDef ad) {
+                if (isStructureDomain(ad) || isCompositionDomain(ad))
+                    sb.append('\t').append(e(ad.getName() + colSuffix));
+                else
+                    sb.append('\t').append(e(ad.getName()));
+            }
         }
         sb.append("\tunsupported_json");
         return sb.toString();
@@ -67,6 +81,10 @@ public class XtfObjectReader {
     // -----------------------------------------------------------------------
 
     private String readXtf(String xtfPath, String modelDir, String modelNames, String className) {
+        return readXtf(xtfPath, modelDir, modelNames, className, "json");
+    }
+
+    private String readXtf(String xtfPath, String modelDir, String modelNames, String className, String nested) {
         // Build effective modeldir: user-specified > XTF directory > default
         String xtfDir = "";
         try { xtfDir = new File(xtfPath).getAbsoluteFile().getParent(); } catch (Exception ignored) {}
@@ -85,20 +103,34 @@ public class XtfObjectReader {
         }
 
         List<String> attrNames = new ArrayList<>();
+        List<String> scalarAttrs = new ArrayList<>();
+        List<String> structureAttrs = new ArrayList<>();
+        List<String> bagAttrs = new ArrayList<>();
         if (classDef != null) {
             Iterator<?> ait = classDef.getAttributesAndRoles2();
             while (ait.hasNext()) {
                 ViewableTransferElement vte = (ViewableTransferElement) ait.next();
-                if (vte.obj instanceof AttributeDef ad) attrNames.add(ad.getName());
+                if (vte.obj instanceof AttributeDef ad) {
+                    attrNames.add(ad.getName());
+                    if (isStructureDomain(ad))
+                        structureAttrs.add(ad.getName());
+                    else if (isCompositionDomain(ad))
+                        bagAttrs.add(ad.getName());
+                    else
+                        scalarAttrs.add(ad.getName());
+                }
             }
         }
 
         StringBuilder sb = new StringBuilder();
+        String colSuffix = "duckdb".equals(nested) ? "" : "_json";
 
         // Header for class-specific mode
         if (className != null) {
             sb.append("xtf_bid\txtf_tid\txtf_class");
-            for (String an : attrNames) sb.append('\t').append(e(an));
+            for (String an : scalarAttrs) sb.append('\t').append(e(an));
+            for (String an : structureAttrs) sb.append('\t').append(e(an + colSuffix));
+            for (String an : bagAttrs) sb.append('\t').append(e(an + colSuffix));
             sb.append("\tunsupported_json\n");
         }
 
@@ -133,8 +165,12 @@ public class XtfObjectReader {
                     if (className != null) {
                         // Class-specific output
                         sb.append(e(currentBid)).append('\t').append(e(tid)).append('\t').append(e(cn));
-                        for (String an : attrNames)
+                        for (String an : scalarAttrs)
                             sb.append('\t').append(e(obj.getattrvalue(an)));
+                        for (String an : structureAttrs)
+                            sb.append('\t').append(e(buildSingleStructureJson(obj, an)));
+                        for (String an : bagAttrs)
+                            sb.append('\t').append(e(buildBagStructureJson(obj, an)));
                         sb.append('\t').append(e(buildUnsupported(obj, attrNames))).append('\n');
                     } else {
                         // Generic object stream output
@@ -310,6 +346,146 @@ public class XtfObjectReader {
                 case '\r': sb.append("\\r"); break;
                 case '\t': sb.append("\\t"); break;
                 default: sb.append(c);
+            }
+        }
+        return sb.toString();
+    }
+
+    // -----------------------------------------------------------------------
+    // Structure / BAG OF detection
+    // -----------------------------------------------------------------------
+
+    private static boolean isStructureDomain(AttributeDef ad) {
+        Type domain = ad.getDomain();
+        if (domain instanceof ObjectType ot) {
+            // ObjectType wraps a Viewable reference (used for single STRUCTURE attributes)
+            // If isObjects() is true, it's a REFERENCE TO class, not an embedded structure
+            return !ot.isObjects();
+        }
+        if (domain instanceof CompositionType) {
+            // CompositionType is used for both single and bag structures
+            // Single structure has cardinality max == 1
+            Cardinality card = ad.getCardinality();
+            return card != null && card.getMaximum() <= 1;
+        }
+        return false;
+    }
+
+    private static boolean isCompositionDomain(AttributeDef ad) {
+        Type domain = ad.getDomain();
+        if (domain instanceof CompositionType) {
+            // Bag of structure has cardinality max > 1 or UNBOUND
+            Cardinality card = ad.getCardinality();
+            return card == null || card.getMaximum() > 1;
+        }
+        return false;
+    }
+
+    // -----------------------------------------------------------------------
+    // Structure value extraction
+    // -----------------------------------------------------------------------
+
+    private String buildSingleStructureJson(IomObject obj, String attrName) {
+        int count = obj.getattrvaluecount(attrName);
+        if (count == 0) return "";
+        IomObject child = obj.getattrobj(attrName, 0);
+        if (child == null) return "";
+        return buildStructObjJson(child);
+    }
+
+    private String buildBagStructureJson(IomObject obj, String attrName) {
+        int count = obj.getattrvaluecount(attrName);
+        if (count == 0) return "[]";
+        StringBuilder sb = new StringBuilder("[");
+        for (int i = 0; i < count; i++) {
+            if (i > 0) sb.append(",");
+            IomObject child = obj.getattrobj(attrName, i);
+            if (child != null)
+                sb.append(buildStructObjJson(child));
+            else
+                sb.append("null");
+        }
+        sb.append("]");
+        return sb.toString();
+    }
+
+    private static String buildStructObjJson(IomObject structObj) {
+        StringBuilder sb = new StringBuilder("{");
+        boolean first = true;
+        int n = structObj.getattrcount();
+        for (int i = 0; i < n; i++) {
+            String name = structObj.getattrname(i);
+            String value = structObj.getattrvalue(name);
+            if (!first) sb.append(",");
+            first = false;
+            sb.append("\"").append(escJson(name)).append("\":");
+            if (value != null && !value.isEmpty())
+                sb.append("\"").append(escJson(value)).append("\"");
+            else
+                sb.append("null");
+        }
+        sb.append("}");
+        return sb.toString();
+    }
+
+    /**
+     * Returns TSV with all STRUCTURE definitions used by a class.
+     * Columns: structure_name, attr_name, attr_type, card_min, card_max
+     */
+    public String readStructures(String className, String modelDir) {
+        TransferDescription td = compileModel(modelDir, extractModelName(className));
+        if (td == null) return "";
+
+        String[] parts = className.split("\\.");
+        if (parts.length < 3) return "";
+
+        AbstractClassDef cdef = findClass(td, parts[0], parts[1], parts[2]);
+        if (cdef == null) return "";
+
+        Set<String> seen = new HashSet<>();
+        StringBuilder sb = new StringBuilder();
+        sb.append("structure_name\tattr_name\tattr_type\tcard_min\tcard_max\n");
+
+        Iterator<?> ait = cdef.getAttributesAndRoles2();
+        while (ait.hasNext()) {
+            ViewableTransferElement vte = (ViewableTransferElement) ait.next();
+            if (!(vte.obj instanceof AttributeDef ad)) continue;
+            Type domain = ad.getDomain();
+            if (!(domain instanceof CompositionType ct) && !(domain instanceof ObjectType)) continue;
+
+            Table structTable = null;
+            if (domain instanceof CompositionType ct2) structTable = ct2.getComponentType();
+            else if (domain instanceof ObjectType ot) {
+                Viewable<?> ref = ot.getRef();
+                if (ref instanceof Table t) structTable = t;
+            }
+            if (structTable == null || seen.contains(structTable.getName())) continue;
+            seen.add(structTable.getName());
+
+            Iterator<?> sait = structTable.getAttributesAndRoles2();
+            while (sait.hasNext()) {
+                ViewableTransferElement svte = (ViewableTransferElement) sait.next();
+                if (!(svte.obj instanceof AttributeDef sad)) continue;
+                Type sat = sad.getDomain();
+                Cardinality card = sad.getCardinality();
+                String typeName = "";
+                if (sat instanceof EnumerationType et) {
+                    StringBuilder etb = new StringBuilder("(");
+                    boolean first = true;
+                    ch.interlis.ili2c.metamodel.Enumeration consolidated = et.getConsolidatedEnumeration();
+                    for (Iterator<?> eit = consolidated.getElements(); eit.hasNext(); ) {
+                        if (!first) etb.append(", ");
+                        first = false;
+                        etb.append(e(((ch.interlis.ili2c.metamodel.Enumeration.Element) eit.next()).getName()));
+                    }
+                    etb.append(")");
+                    typeName = etb.toString();
+                }
+                sb.append(e(structTable.getName())).append('\t');
+                sb.append(e(sad.getName())).append('\t');
+                sb.append(e(typeName)).append('\t');
+                sb.append(card != null ? String.valueOf(card.getMinimum()) : "0").append('\t');
+                sb.append(card != null ? String.valueOf(card.getMaximum()) : "1").append('\n');
             }
         }
         return sb.toString();

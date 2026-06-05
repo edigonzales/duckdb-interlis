@@ -326,13 +326,14 @@ public class NativeEntryPoints {
         String input = extractJsonField(request, "input");
         String className = extractJsonField(request, "class");
         String modelDir = extractJsonField(request, "modeldir");
+        String nested = extractJsonField(request, "nested");
 
         if (input == null || className == null) {
             outPayload.write(allocCString("ERROR: Missing input/class fields"));
             return 1;
         }
         try {
-            String tsv = XTF_READER.readClass(input, className, modelDir);
+            String tsv = XTF_READER.readClass(input, className, modelDir, nested);
             outPayload.write(allocCString(tsv));
             return 0;
         } catch (Exception e) {
@@ -350,15 +351,38 @@ public class NativeEntryPoints {
         String request = CTypeConversion.toJavaString(requestJson);
         String className = extractJsonField(request, "class");
         String modelDir = extractJsonField(request, "modeldir");
+        String nested = extractJsonField(request, "nested");
 
         if (className == null) {
             outPayload.write(allocCString(""));
             return 1;
         }
-        // Returns just the column names as tab-separated line
-        // Same logic as readClass but returns only header
-        String tsv = XTF_READER.readClassSchema(className, modelDir);
+        String tsv = XTF_READER.readClassSchema(className, modelDir, nested);
         outPayload.write(allocCString(tsv));
         return 0;
+    }
+
+    @CEntryPoint(name = "ili_native_read_xtf_structures")
+    public static int nativeReadXtfStructures(
+            IsolateThread thread,
+            CCharPointer requestJson,
+            CCharPointerPointer outPayload) {
+
+        String request = CTypeConversion.toJavaString(requestJson);
+        String className = extractJsonField(request, "class");
+        String modelDir = extractJsonField(request, "modeldir");
+
+        if (className == null) {
+            outPayload.write(allocCString("ERROR: Missing class field"));
+            return 1;
+        }
+        try {
+            String tsv = XTF_READER.readStructures(className, modelDir);
+            outPayload.write(allocCString(tsv));
+            return 0;
+        } catch (Exception e) {
+            outPayload.write(allocCString("ERROR: " + e.getMessage()));
+            return 1;
+        }
     }
 }

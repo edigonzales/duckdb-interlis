@@ -1,0 +1,33 @@
+INTERLIS 2.3;
+
+!!@ technicalContact=mailto:test@example.com
+
+MODEL SO_AGI_Structures_20260605 (de)
+AT "https://models.interlis.ch"
+VERSION "2026-06-05" =
+  TOPIC Topic =
+
+    STRUCTURE Adresse =
+      Strasse : TEXT*80;
+      Hausnummer : TEXT*10;
+      PLZ : 1000 .. 9999;
+      Ort : TEXT*60;
+    END Adresse;
+
+    STRUCTURE Kontakt =
+      Typ : (
+        privat,
+        geschaeftlich
+      );
+      Telefon : TEXT*20;
+      Email : TEXT*80;
+    END Kontakt;
+
+    CLASS Betrieb =
+      Name : MANDATORY TEXT*80;
+      Adresse : Adresse;
+      Kontakte : BAG OF Kontakt;
+    END Betrieb;
+
+  END Topic;
+END SO_AGI_Structures_20260605.

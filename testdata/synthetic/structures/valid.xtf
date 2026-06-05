@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TRANSFER xmlns="http://www.interlis.ch/INTERLIS2.3">
+  <HEADERSECTION VERSION="2.3" SENDER="test">
+    <MODELS>
+      <MODEL NAME="SO_AGI_Structures_20260605" VERSION="2026-06-05" URI="https://models.interlis.ch"/>
+    </MODELS>
+  </HEADERSECTION>
+  <DATASECTION>
+    <SO_AGI_Structures_20260605.Topic BID="basket1">
+      <SO_AGI_Structures_20260605.Topic.Betrieb TID="1">
+        <Name>Firma AG</Name>
+        <Adresse>
+          <SO_AGI_Structures_20260605.Topic.Adresse>
+            <Strasse>Hauptstrasse 1</Strasse>
+            <Hausnummer>1</Hausnummer>
+            <PLZ>4500</PLZ>
+            <Ort>Solothurn</Ort>
+          </SO_AGI_Structures_20260605.Topic.Adresse>
+        </Adresse>
+        <Kontakte>
+          <SO_AGI_Structures_20260605.Topic.Kontakt>
+            <Typ>geschaeftlich</Typ>
+            <Telefon>032 123 45 67</Telefon>
+            <Email>info@firma.ch</Email>
+          </SO_AGI_Structures_20260605.Topic.Kontakt>
+          <SO_AGI_Structures_20260605.Topic.Kontakt>
+            <Typ>privat</Typ>
+            <Telefon>079 123 45 67</Telefon>
+          </SO_AGI_Structures_20260605.Topic.Kontakt>
+        </Kontakte>
+      </SO_AGI_Structures_20260605.Topic.Betrieb>
+      <SO_AGI_Structures_20260605.Topic.Betrieb TID="2">
+        <Name>Leere GmbH</Name>
+      </SO_AGI_Structures_20260605.Topic.Betrieb>
+    </SO_AGI_Structures_20260605.Topic>
+  </DATASECTION>
+</TRANSFER>

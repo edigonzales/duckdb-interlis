@@ -36,6 +36,7 @@ static native_model_info_fn g_native_model_info = NULL;
 static native_read_xtf_fn g_native_read_xtf = NULL;
 static native_read_xtf_fn g_native_read_xtf_class = NULL;
 static native_read_xtf_fn g_native_read_xtf_class_schema = NULL;
+static native_read_xtf_fn g_native_read_xtf_structures = NULL;
 static native_free_fn g_native_free = NULL;
 
 static bool g_initialized = false;
@@ -103,6 +104,7 @@ static bool init_native_library(void) {
     g_native_read_xtf = (native_read_xtf_fn)dlsym(g_native_handle, "ili_native_read_xtf");
     g_native_read_xtf_class = (native_read_xtf_fn)dlsym(g_native_handle, "ili_native_read_xtf_class");
     g_native_read_xtf_class_schema = (native_read_xtf_fn)dlsym(g_native_handle, "ili_native_read_xtf_class_schema");
+    g_native_read_xtf_structures = (native_read_xtf_fn)dlsym(g_native_handle, "ili_native_read_xtf_structures");
     g_native_free = (native_free_fn)dlsym(g_native_handle, "ili_free_string");
 
     if (!g_native_version || !g_native_validate || !g_native_validate_tsv || !g_native_model_info
@@ -872,6 +874,7 @@ typedef struct {
     char *input;
     char *class_name;
     char *modeldir;
+    char *nested;
     char **col_names;
     int col_count;
 } xtf_class_bind_data;
@@ -879,7 +882,7 @@ typedef struct {
 static void xtf_class_bind_destroy(void *d) {
     xtf_class_bind_data *bd = (xtf_class_bind_data *)d;
     if (bd) {
-        free(bd->input); free(bd->class_name); free(bd->modeldir);
+        free(bd->input); free(bd->class_name); free(bd->modeldir); free(bd->nested);
         for (int i = 0; i < bd->col_count; i++) free(bd->col_names[i]);
         free(bd->col_names); free(bd);
     }
@@ -892,6 +895,8 @@ static void xtf_class_bind(duckdb_bind_info info) {
     char *cls = dv ? duckdb_get_varchar(dv) : NULL;
     dv = duckdb_bind_get_named_parameter(info, "modeldir");
     char *modeldir = dv ? duckdb_get_varchar(dv) : NULL;
+    dv = duckdb_bind_get_named_parameter(info, "nested");
+    char *nested = dv ? duckdb_get_varchar(dv) : NULL;
     if (dv) duckdb_destroy_value(&dv);
 
     xtf_class_bind_data *bd = malloc(sizeof(xtf_class_bind_data));
@@ -899,13 +904,18 @@ static void xtf_class_bind(duckdb_bind_info info) {
     bd->input = input ? strdup(input) : NULL;
     bd->class_name = cls ? strdup(cls) : NULL;
     bd->modeldir = modeldir ? strdup(modeldir) : NULL;
+    bd->nested = nested ? strdup(nested) : NULL;
 
     // Call native to get column schema
     if (!g_initialized && !init_native_library()) {
         duckdb_bind_set_error(info, g_error_buf);
     } else if (g_native_read_xtf_class_schema && bd->class_name && bd->modeldir) {
         char req[4096];
-        snprintf(req, sizeof(req), "{\"class\":\"%s\",\"modeldir\":\"%s\"}", bd->class_name, bd->modeldir);
+        int slen = snprintf(req, sizeof(req),
+            "{\"class\":\"%s\",\"modeldir\":\"%s\",\"nested\":\"%s\"}",
+            bd->class_name, bd->modeldir,
+            bd->nested ? bd->nested : "json");
+        if (slen < 0 || slen >= (int)sizeof(req)) req[sizeof(req)-1] = '\0';
         char *header = native_call_with_input_str(g_native_read_xtf_class_schema, req);
         if (header) {
             // Count columns
@@ -951,9 +961,11 @@ static void xtf_class_init(duckdb_init_info info) {
     }
 
     char req[8192];
-    snprintf(req, sizeof(req),
-        "{\"input\":\"%s\",\"class\":\"%s\",\"modeldir\":\"%s\"}",
-        bd->input, bd->class_name, bd->modeldir);
+    int slen = snprintf(req, sizeof(req),
+        "{\"input\":\"%s\",\"class\":\"%s\",\"modeldir\":\"%s\",\"nested\":\"%s\"}",
+        bd->input, bd->class_name, bd->modeldir,
+        bd->nested ? bd->nested : "json");
+    if (slen < 0 || slen >= (int)sizeof(req)) req[sizeof(req)-1] = '\0';
 
     char *result = native_call_with_input_str(g_native_read_xtf_class, req);
     if (!result) { duckdb_init_set_error(info, "XTF class read failed"); return; }
@@ -967,6 +979,92 @@ static void xtf_class_init(duckdb_init_info info) {
     if (*p == '\n') p++;
 
     // Count and parse data rows
+    const char *tmp = p;
+    while (*tmp) { id->row_count++; while (*tmp && *tmp != '\n') tmp++; if (*tmp == '\n') tmp++; }
+
+    if (id->row_count == 0) { free(id); native_free_str(result); return; }
+
+    id->rows = malloc(id->row_count * sizeof(char*));
+    for (idx_t i = 0; i < id->row_count; i++) {
+        const char *start = p; size_t len = 0;
+        while (*p && *p != '\n') { p++; len++; }
+        id->rows[i] = malloc(len + 1);
+        memcpy(id->rows[i], start, len);
+        id->rows[i][len] = '\0';
+        if (*p == '\n') p++;
+    }
+    native_free_str(result);
+    duckdb_init_set_init_data(info, id, mi_init_destroy);
+}
+
+// ---------------------------------------------------------------------------
+// read_xtf_structures
+// ---------------------------------------------------------------------------
+typedef struct {
+    char *class_name;
+    char *modeldir;
+    char **col_names;
+    int col_count;
+} xtf_structures_bind_data;
+
+static void xtf_structures_bind_destroy(void *d) {
+    xtf_structures_bind_data *bd = (xtf_structures_bind_data *)d;
+    if (bd) {
+        free(bd->class_name); free(bd->modeldir);
+        for (int i = 0; i < bd->col_count; i++) free(bd->col_names[i]);
+        free(bd->col_names); free(bd);
+    }
+}
+
+static void xtf_structures_bind(duckdb_bind_info info) {
+    duckdb_value dv = duckdb_bind_get_named_parameter(info, "class");
+    char *cls = dv ? duckdb_get_varchar(dv) : NULL;
+    dv = duckdb_bind_get_named_parameter(info, "modeldir");
+    char *modeldir = dv ? duckdb_get_varchar(dv) : NULL;
+    if (dv) duckdb_destroy_value(&dv);
+
+    static const char *fixed_cols[] = {"structure_name", "attr_name", "attr_type", "card_min", "card_max"};
+    static const int n_fixed = 5;
+
+    xtf_structures_bind_data *bd = malloc(sizeof(xtf_structures_bind_data));
+    memset(bd, 0, sizeof(*bd));
+    bd->class_name = cls ? strdup(cls) : NULL;
+    bd->modeldir = modeldir ? strdup(modeldir) : NULL;
+    bd->col_count = n_fixed;
+    bd->col_names = malloc(n_fixed * sizeof(char*));
+    for (int i = 0; i < n_fixed; i++) bd->col_names[i] = strdup(fixed_cols[i]);
+
+    duckdb_logical_type vt = duckdb_create_logical_type(DUCKDB_TYPE_VARCHAR);
+    for (int i = 0; i < bd->col_count; i++)
+        duckdb_bind_add_result_column(info, bd->col_names[i], vt);
+    duckdb_destroy_logical_type(&vt);
+    duckdb_bind_set_bind_data(info, bd, xtf_structures_bind_destroy);
+}
+
+static void xtf_structures_init(duckdb_init_info info) {
+    if (!g_initialized && !init_native_library()) {
+        duckdb_init_set_error(info, g_error_buf); return;
+    }
+    xtf_structures_bind_data *bd = (xtf_structures_bind_data *)duckdb_init_get_bind_data(info);
+    if (!bd || !bd->class_name || !bd->modeldir) {
+        duckdb_init_set_error(info, "Missing class or modeldir"); return;
+    }
+
+    char req[4096];
+    int slen = snprintf(req, sizeof(req),
+        "{\"class\":\"%s\",\"modeldir\":\"%s\"}", bd->class_name, bd->modeldir);
+    if (slen < 0 || slen >= (int)sizeof(req)) req[sizeof(req)-1] = '\0';
+
+    char *result = native_call_with_input_str(g_native_read_xtf_structures, req);
+    if (!result) { duckdb_init_set_error(info, "XTF structures read failed"); return; }
+
+    mi_init_data *id = malloc(sizeof(mi_init_data));
+    memset(id, 0, sizeof(*id));
+
+    const char *p = result;
+    while (*p && *p != '\n') p++;
+    if (*p == '\n') p++;
+
     const char *tmp = p;
     while (*tmp) { id->row_count++; while (*tmp && *tmp != '\n') tmp++; if (*tmp == '\n') tmp++; }
 
@@ -1017,8 +1115,24 @@ DUCKDB_EXTENSION_ENTRYPOINT(duckdb_connection connection, duckdb_extension_info 
         duckdb_table_function_add_parameter(fn, vt);
         duckdb_table_function_add_named_parameter(fn, "class", vt);
         duckdb_table_function_add_named_parameter(fn, "modeldir", vt);
+        duckdb_table_function_add_named_parameter(fn, "nested", vt);
         duckdb_table_function_set_bind(fn, xtf_class_bind);
         duckdb_table_function_set_init(fn, xtf_class_init);
+        duckdb_table_function_set_function(fn, mi_function);
+        duckdb_register_table_function(connection, fn);
+        duckdb_destroy_table_function(&fn);
+        duckdb_destroy_logical_type(&vt);
+    }
+
+    // read_xtf_structures
+    {
+        duckdb_table_function fn = duckdb_create_table_function();
+        duckdb_table_function_set_name(fn, "read_xtf_structures");
+        duckdb_logical_type vt = duckdb_create_logical_type(DUCKDB_TYPE_VARCHAR);
+        duckdb_table_function_add_named_parameter(fn, "class", vt);
+        duckdb_table_function_add_named_parameter(fn, "modeldir", vt);
+        duckdb_table_function_set_bind(fn, xtf_structures_bind);
+        duckdb_table_function_set_init(fn, xtf_structures_init);
         duckdb_table_function_set_function(fn, mi_function);
         duckdb_register_table_function(connection, fn);
         duckdb_destroy_table_function(&fn);
