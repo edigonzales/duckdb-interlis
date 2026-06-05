@@ -1,0 +1,41 @@
+INTERLIS 2.4;
+
+MODEL SO_AGI_Geometries_20260605 (de)
+AT "https://models.interlis.ch"
+VERSION "2026-06-05" =
+  DOMAIN
+    Koord = COORD 2460000.000 .. 2870000.000, 1045000.000 .. 1310000.000;
+  TOPIC Topic =
+
+    CLASS PunktObjekt =
+      Name : MANDATORY TEXT*60;
+      Lage : Koord;
+    END PunktObjekt;
+
+    CLASS MultiPunktObjekt =
+      Name : MANDATORY TEXT*60;
+      Lagen : MULTICOORD 2460000.000 .. 2870000.000, 1045000.000 .. 1310000.000;
+    END MultiPunktObjekt;
+
+    CLASS LinienObjekt =
+      Name : MANDATORY TEXT*60;
+      Verlauf : POLYLINE WITH (STRAIGHTS) VERTEX Koord WITHOUT OVERLAPS > 0.001;
+    END LinienObjekt;
+
+    CLASS MultiLinienObjekt =
+      Name : MANDATORY TEXT*60;
+      Verlaeufe : MULTIPOLYLINE WITH (STRAIGHTS) VERTEX Koord WITHOUT OVERLAPS > 0.001;
+    END MultiLinienObjekt;
+
+    CLASS FlaechenObjekt =
+      Name : MANDATORY TEXT*60;
+      Flaeche : SURFACE WITH (STRAIGHTS) VERTEX Koord WITHOUT OVERLAPS > 0.001;
+    END FlaechenObjekt;
+
+    CLASS MultiFlaechenObjekt =
+      Name : MANDATORY TEXT*60;
+      Flaechen : MULTISURFACE WITH (STRAIGHTS) VERTEX Koord WITHOUT OVERLAPS > 0.001;
+    END MultiFlaechenObjekt;
+
+  END Topic;
+END SO_AGI_Geometries_20260605.

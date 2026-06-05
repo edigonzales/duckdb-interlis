@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ili:transfer xmlns:ili="http://www.interlis.ch/xtf/2.4/INTERLIS"
+              xmlns:geom="http://www.interlis.ch/geometry/1.0"
+              xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+              xmlns:SO_AGI_Geometries_20260605="http://www.interlis.ch/xtf/2.4/SO_AGI_Geometries_20260605">
+  <ili:headersection>
+    <ili:models>
+      <ili:model>SO_AGI_Geometries_20260605</ili:model>
+    </ili:models>
+    <ili:sender>test</ili:sender>
+  </ili:headersection>
+  <ili:datasection>
+    <SO_AGI_Geometries_20260605:Topic ili:bid="basket1">
+
+      <!-- Single Point -->
+      <SO_AGI_Geometries_20260605:PunktObjekt ili:tid="p1">
+        <SO_AGI_Geometries_20260605:Name>Brunnen</SO_AGI_Geometries_20260605:Name>
+        <SO_AGI_Geometries_20260605:Lage>
+          <geom:coord>
+            <geom:c1>2605000.000</geom:c1>
+            <geom:c2>1203000.000</geom:c2>
+          </geom:coord>
+        </SO_AGI_Geometries_20260605:Lage>
+      </SO_AGI_Geometries_20260605:PunktObjekt>
+
+      <!-- MultiPoint: 3 points -->
+      <SO_AGI_Geometries_20260605:MultiPunktObjekt ili:tid="mp1">
+        <SO_AGI_Geometries_20260605:Name>Antennen</SO_AGI_Geometries_20260605:Name>
+        <SO_AGI_Geometries_20260605:Lagen>
+          <geom:multicoord>
+            <geom:coord><geom:c1>2605000.000</geom:c1><geom:c2>1203000.000</geom:c2></geom:coord>
+            <geom:coord><geom:c1>2605100.000</geom:c1><geom:c2>1203000.000</geom:c2></geom:coord>
+            <geom:coord><geom:c1>2605050.000</geom:c1><geom:c2>1203100.000</geom:c2></geom:coord>
+          </geom:multicoord>
+        </SO_AGI_Geometries_20260605:Lagen>
+      </SO_AGI_Geometries_20260605:MultiPunktObjekt>
+
+      <!-- Single LineString -->
+      <SO_AGI_Geometries_20260605:LinienObjekt ili:tid="l1">
+        <SO_AGI_Geometries_20260605:Name>Strasse</SO_AGI_Geometries_20260605:Name>
+        <SO_AGI_Geometries_20260605:Verlauf>
+          <geom:polyline>
+            <geom:coord><geom:c1>2605000.000</geom:c1><geom:c2>1203000.000</geom:c2></geom:coord>
+            <geom:coord><geom:c1>2605100.000</geom:c1><geom:c2>1203100.000</geom:c2></geom:coord>
+            <geom:coord><geom:c1>2605200.000</geom:c1><geom:c2>1203050.000</geom:c2></geom:coord>
+          </geom:polyline>
+        </SO_AGI_Geometries_20260605:Verlauf>
+      </SO_AGI_Geometries_20260605:LinienObjekt>
+
+      <!-- MultiLineString: 2 lines -->
+      <SO_AGI_Geometries_20260605:MultiLinienObjekt ili:tid="ml1">
+        <SO_AGI_Geometries_20260605:Name>Fahrspuren</SO_AGI_Geometries_20260605:Name>
+        <SO_AGI_Geometries_20260605:Verlaeufe>
+          <geom:multipolyline>
+            <geom:polyline>
+              <geom:coord><geom:c1>2605000.000</geom:c1><geom:c2>1203000.000</geom:c2></geom:coord>
+              <geom:coord><geom:c1>2605100.000</geom:c1><geom:c2>1203100.000</geom:c2></geom:coord>
+            </geom:polyline>
+            <geom:polyline>
+              <geom:coord><geom:c1>2605000.000</geom:c1><geom:c2>1203010.000</geom:c2></geom:coord>
+              <geom:coord><geom:c1>2605100.000</geom:c1><geom:c2>1203110.000</geom:c2></geom:coord>
+            </geom:polyline>
+          </geom:multipolyline>
+        </SO_AGI_Geometries_20260605:Verlaeufe>
+      </SO_AGI_Geometries_20260605:MultiLinienObjekt>
+
+      <!-- Single Polygon -->
+      <SO_AGI_Geometries_20260605:FlaechenObjekt ili:tid="f1">
+        <SO_AGI_Geometries_20260605:Name>Parzelle</SO_AGI_Geometries_20260605:Name>
+        <SO_AGI_Geometries_20260605:Flaeche>
+          <geom:multisurface>
+            <geom:surface>
+              <geom:exterior>
+                <geom:polyline>
+                  <geom:coord><geom:c1>2605000.000</geom:c1><geom:c2>1203000.000</geom:c2></geom:coord>
+                  <geom:coord><geom:c1>2605100.000</geom:c1><geom:c2>1203000.000</geom:c2></geom:coord>
+                  <geom:coord><geom:c1>2605100.000</geom:c1><geom:c2>1203100.000</geom:c2></geom:coord>
+                  <geom:coord><geom:c1>2605000.000</geom:c1><geom:c2>1203100.000</geom:c2></geom:coord>
+                  <geom:coord><geom:c1>2605000.000</geom:c1><geom:c2>1203000.000</geom:c2></geom:coord>
+                </geom:polyline>
+              </geom:exterior>
+            </geom:surface>
+          </geom:multisurface>
+        </SO_AGI_Geometries_20260605:Flaeche>
+      </SO_AGI_Geometries_20260605:FlaechenObjekt>
+
+      <!-- MultiPolygon: 2 disjoint polygons -->
+      <SO_AGI_Geometries_20260605:MultiFlaechenObjekt ili:tid="mf1">
+        <SO_AGI_Geometries_20260605:Name>Parzellen</SO_AGI_Geometries_20260605:Name>
+        <SO_AGI_Geometries_20260605:Flaechen>
+          <geom:multisurface>
+            <geom:surface>
+              <geom:exterior>
+                <geom:polyline>
+                  <geom:coord><geom:c1>2605000.000</geom:c1><geom:c2>1203000.000</geom:c2></geom:coord>
+                  <geom:coord><geom:c1>2605100.000</geom:c1><geom:c2>1203000.000</geom:c2></geom:coord>
+                  <geom:coord><geom:c1>2605100.000</geom:c1><geom:c2>1203100.000</geom:c2></geom:coord>
+                  <geom:coord><geom:c1>2605000.000</geom:c1><geom:c2>1203100.000</geom:c2></geom:coord>
+                  <geom:coord><geom:c1>2605000.000</geom:c1><geom:c2>1203000.000</geom:c2></geom:coord>
+                </geom:polyline>
+              </geom:exterior>
+            </geom:surface>
+            <geom:surface>
+              <geom:exterior>
+                <geom:polyline>
+                  <geom:coord><geom:c1>2605200.000</geom:c1><geom:c2>1203000.000</geom:c2></geom:coord>
+                  <geom:coord><geom:c1>2605250.000</geom:c1><geom:c2>1203000.000</geom:c2></geom:coord>
+                  <geom:coord><geom:c1>2605250.000</geom:c1><geom:c2>1203050.000</geom:c2></geom:coord>
+                  <geom:coord><geom:c1>2605200.000</geom:c1><geom:c2>1203050.000</geom:c2></geom:coord>
+                  <geom:coord><geom:c1>2605200.000</geom:c1><geom:c2>1203000.000</geom:c2></geom:coord>
+                </geom:polyline>
+              </geom:exterior>
+            </geom:surface>
+          </geom:multisurface>
+        </SO_AGI_Geometries_20260605:Flaechen>
+      </SO_AGI_Geometries_20260605:MultiFlaechenObjekt>
+
+    </SO_AGI_Geometries_20260605:Topic>
+  </ili:datasection>
+</ili:transfer>

@@ -7,6 +7,8 @@ import ch.interlis.ili2c.metamodel.*;
 import ch.interlis.ilirepository.IliManager;
 import ch.interlis.iom.IomObject;
 import ch.interlis.iox.*;
+import ch.interlis.iox_j.jts.Iox2jts;
+import ch.interlis.iox_j.jts.Iox2jtsext;
 import ch.interlis.iom_j.xtf.Xtf24Reader;
 import ch.interlis.iox_j.IoxIliReader;
 import ch.interlis.iox_j.utility.ReaderFactory;
@@ -66,7 +68,9 @@ public class XtfObjectReader {
         while (ait.hasNext()) {
             ViewableTransferElement vte = (ViewableTransferElement) ait.next();
             if (vte.obj instanceof AttributeDef ad) {
-                if (isStructureDomain(ad) || isCompositionDomain(ad))
+                if (isGeometryDomain(ad) || isMultiGeometryDomain(ad))
+                    sb.append('\t').append(e(ad.getName() + "_wkb"));
+                else if (isStructureDomain(ad) || isCompositionDomain(ad))
                     sb.append('\t').append(e(ad.getName() + colSuffix));
                 else
                     sb.append('\t').append(e(ad.getName()));
@@ -108,6 +112,7 @@ public class XtfObjectReader {
         List<String> scalarAttrs = new ArrayList<>();
         List<String> structureAttrs = new ArrayList<>();
         List<String> bagAttrs = new ArrayList<>();
+        List<String> geomAttrs = new ArrayList<>();
         List<String> roleRefs = new ArrayList<>();
         if (classDef != null) {
             Iterator<?> ait = classDef.getAttributesAndRoles2();
@@ -115,7 +120,9 @@ public class XtfObjectReader {
                 ViewableTransferElement vte = (ViewableTransferElement) ait.next();
                 if (vte.obj instanceof AttributeDef ad) {
                     attrNames.add(ad.getName());
-                    if (isStructureDomain(ad))
+                    if (isGeometryDomain(ad) || isMultiGeometryDomain(ad))
+                        geomAttrs.add(ad.getName());
+                    else if (isStructureDomain(ad))
                         structureAttrs.add(ad.getName());
                     else if (isCompositionDomain(ad))
                         bagAttrs.add(ad.getName());
@@ -136,6 +143,7 @@ public class XtfObjectReader {
         if (className != null) {
             sb.append("xtf_bid\txtf_tid\txtf_class");
             for (String an : scalarAttrs) sb.append('\t').append(e(an));
+            for (String an : geomAttrs) sb.append('\t').append(e(an + "_wkb"));
             for (String an : structureAttrs) sb.append('\t').append(e(an + colSuffix));
             for (String an : bagAttrs) sb.append('\t').append(e(an + colSuffix));
             for (String rn : roleRefs) sb.append('\t').append(e(rn + "_ref"));
@@ -175,6 +183,8 @@ public class XtfObjectReader {
                         sb.append(e(currentBid)).append('\t').append(e(tid)).append('\t').append(e(cn));
                         for (String an : scalarAttrs)
                             sb.append('\t').append(e(obj.getattrvalue(an)));
+                        for (String an : geomAttrs)
+                            sb.append('\t').append(e(buildGeometryWkb(obj, an)));
                         for (String an : structureAttrs)
                             sb.append('\t').append(e(buildSingleStructureJson(obj, an)));
                         for (String an : bagAttrs)
@@ -499,6 +509,72 @@ public class XtfObjectReader {
             }
         }
         return sb.toString();
+    }
+
+    // -----------------------------------------------------------------------
+    // Geometry detection
+    // -----------------------------------------------------------------------
+
+    private static boolean isGeometryDomain(AttributeDef ad) {
+        Type domain = resolveToBaseType(ad);
+        return domain instanceof AbstractCoordType
+            || domain instanceof LineType
+            || domain instanceof AbstractSurfaceOrAreaType;
+    }
+
+    private static boolean isMultiGeometryDomain(AttributeDef ad) {
+        Type domain = resolveToBaseType(ad);
+        return domain instanceof MultiCoordType
+            || domain instanceof MultiSurfaceType
+            || domain instanceof MultiPolylineType
+            || domain instanceof MultiAreaType;
+    }
+
+    private static Type resolveToBaseType(AttributeDef ad) {
+        Type domain = ad.getDomainResolvingAll();
+        if (domain == null) domain = ad.getDomain();
+        // Unwrap TypeAlias -> Domain -> Type
+        for (int i = 0; i < 5 && domain != null; i++) {
+            if (domain instanceof TypeAlias ta) {
+                Domain aliasing = ta.getAliasing();
+                if (aliasing != null) domain = aliasing.getType();
+            }
+        }
+        return domain;
+    }
+
+    // -----------------------------------------------------------------------
+    // WKB extraction via Iox2jtsext hexwkb methods
+    // -----------------------------------------------------------------------
+
+    private String buildGeometryWkb(IomObject obj, String attrName) {
+        int cnt = obj.getattrvaluecount(attrName);
+        if (cnt == 0) return "";
+        IomObject geom = obj.getattrobj(attrName, 0);
+        if (geom == null) return "";
+        return geomToHexWkb(geom);
+    }
+
+    private String geomToHexWkb(IomObject geom) {
+        if (geom == null) return "";
+        String tag = geom.getobjecttag();
+        String shortType = tag;
+        int dot = tag.lastIndexOf('.');
+        if (dot >= 0) shortType = tag.substring(dot + 1);
+
+        try {
+            switch (shortType) {
+                case "COORD":       return Iox2jtsext.coord2hexwkb(geom);
+                case "POLYLINE":    return Iox2jtsext.polyline2hexwkb(geom, 0);
+                case "SURFACE":     return Iox2jtsext.surface2hexwkb(geom, 0);
+                case "MULTICOORD":   return Iox2jts.multicoord2hexwkb(geom);
+                case "MULTIPOLYLINE": return Iox2jts.multipolyline2hexwkb(geom, 0);
+                case "MULTISURFACE":  return Iox2jts.multisurface2hexwkb(geom, 0);
+                default:            return "";
+            }
+        } catch (Exception e) {
+            return "";
+        }
     }
 
     // -----------------------------------------------------------------------
