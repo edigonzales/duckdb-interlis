@@ -9,6 +9,6 @@ if [[ -f "$SCRIPT_DIR/env.sh" ]]; then
 fi
 
 DUCKDB="${DUCKDB_CLI:-~/bin/duckdb}"
-EXTENSION="${DUCKDB_ILI_EXTENSION:-$REPO_ROOT/duckdb-extension/build/ili.duckdb_extension}"
+EXTENSION="${DUCKDB_ILI_EXTENSION:-$REPO_ROOT/duckdb-extension/build/interlis.duckdb_extension}"
 
 exec "$DUCKDB" -unsigned -cmd "LOAD '$EXTENSION';" "$@"

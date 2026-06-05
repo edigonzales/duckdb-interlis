@@ -1,5 +1,5 @@
 # Extension configuration
-set(EXTENSION_NAME "ili")
+set(EXTENSION_NAME "interlis")
 set(EXTENSION_VERSION "0.1.0-dev")
 set(EXTENSION_DESCRIPTION "INTERLIS support for DuckDB")
 set(TARGET_DUCKDB_VERSION_MAJOR 1)

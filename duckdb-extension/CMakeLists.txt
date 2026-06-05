@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.15)
-project(ili_extension LANGUAGES C)
+project(interlis_extension LANGUAGES C)
 
-set(EXTENSION_NAME "ili")
+set(EXTENSION_NAME "interlis")
 
 # Required for DUCKDB_EXTENSION_ENTRYPOINT macro
 add_definitions(-DDUCKDB_EXTENSION_NAME=${EXTENSION_NAME})
@@ -11,7 +11,7 @@ set(DUCKDB_CAPI_DIR "${CMAKE_SOURCE_DIR}/src/include")
 
 # Extension source files
 set(EXTENSION_SOURCES
-    src/ili_extension.c
+    src/interlis_extension.c
 )
 
 # Build shared library
@@ -20,7 +20,7 @@ add_library(${EXTENSION_NAME} SHARED ${EXTENSION_SOURCES})
 target_include_directories(${EXTENSION_NAME} PRIVATE ${DUCKDB_CAPI_DIR})
 
 set_target_properties(${EXTENSION_NAME} PROPERTIES
-    OUTPUT_NAME "ili"
+    OUTPUT_NAME "interlis"
     PREFIX ""
     SUFFIX ".duckdb_extension"
 )

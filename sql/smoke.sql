@@ -2,6 +2,6 @@
 -- Run with: duckdb -unsigned < sql/smoke.sql
 -- Or: scripts/smoke-test.sh
 
-LOAD '/Users/stefan/sources/duckdb-interlis/duckdb-extension/build/ili.duckdb_extension';
+LOAD '/Users/stefan/sources/duckdb-interlis/duckdb-extension/build/interlis.duckdb_extension';
 
 SELECT ili_extension_version();

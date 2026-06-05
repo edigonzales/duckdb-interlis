@@ -21,11 +21,11 @@ echo "Building DuckDB extension..."
 
 echo "Appending extension metadata..."
 python3 "$REPO_ROOT/scripts/append_extension_metadata.py" \
-    -l "$BUILD_DIR/ili.duckdb_extension" \
-    -n ili \
+    -l "$BUILD_DIR/interlis.duckdb_extension" \
+    -n interlis \
     -p osx_arm64 \
     -dv v1.2.0 \
     -ev 0.1.0-dev \
-    -o "$BUILD_DIR/ili.duckdb_extension"
+    -o "$BUILD_DIR/interlis.duckdb_extension"
 
-echo "Extension built: $BUILD_DIR/ili.duckdb_extension"
+echo "Extension built: $BUILD_DIR/interlis.duckdb_extension"

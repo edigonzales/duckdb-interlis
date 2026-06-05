@@ -30,5 +30,5 @@ echo "=== Stage 4: Build DuckDB Extension ==="
 
 echo ""
 echo "=== Build complete ==="
-echo "Extension: $REPO_ROOT/duckdb-extension/build/ili.duckdb_extension"
+echo "Extension: $REPO_ROOT/duckdb-extension/build/interlis.duckdb_extension"
 echo "Native lib (may not exist yet): $REPO_ROOT/java/ili-native/build/native/libduckdb_ili_native.dylib"

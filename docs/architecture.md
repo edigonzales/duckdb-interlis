@@ -26,7 +26,7 @@ The DuckDB ILI extension consists of three layers:
 
 ## Runtime Flow
 
-1. DuckDB `LOAD 'ili.duckdb_extension'` loads the C extension
+1. DuckDB `LOAD 'interlis.duckdb_extension'` loads the C extension
 2. Extension registers SQL functions via DuckDB C API
 3. SQL function calls invoke the native library functions
 4. Native library executes Java business logic via GraalVM compiled code
