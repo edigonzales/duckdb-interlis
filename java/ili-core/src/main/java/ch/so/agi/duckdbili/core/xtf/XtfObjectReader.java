@@ -1,39 +1,112 @@
 package ch.so.agi.duckdbili.core.xtf;
 
-import ch.ehi.basics.settings.Settings;
 import ch.interlis.ili2c.Ili2cSettings;
 import ch.interlis.ili2c.Main;
 import ch.interlis.ili2c.config.Configuration;
-import ch.interlis.ili2c.config.FileEntry;
-import ch.interlis.ili2c.config.FileEntryKind;
-import ch.interlis.ili2c.metamodel.TransferDescription;
+import ch.interlis.ili2c.metamodel.*;
+import ch.interlis.ilirepository.IliManager;
 import ch.interlis.iom.IomObject;
 import ch.interlis.iox.*;
 import ch.interlis.iom_j.xtf.Xtf24Reader;
 import ch.interlis.iox_j.IoxIliReader;
 import ch.interlis.iox_j.utility.ReaderFactory;
-import ch.interlis.ilirepository.IliManager;
-import org.interlis2.validator.Validator;
 
 import java.io.File;
-import java.io.IOException;
 import java.nio.file.*;
 import java.util.*;
 
 public class XtfObjectReader {
 
-    public String readObjects(String xtfPath, String modelDir) {
+    private static final String DEFAULT_MODELDIR = System.getenv("ILI_DEFAULT_MODELDIR") != null
+            ? System.getenv("ILI_DEFAULT_MODELDIR")
+            : "https://models.interlis.ch";
+
+    /**
+     * Read all objects from an XTF file. TSV columns: xtf_bid, xtf_topic, xtf_class,
+     * xtf_tid, operation, attributes_json, refs_json, geom_json, raw_event_json
+     */
+    public String readObjects(String xtfPath, String modelDir, String modelNames) {
+        return readXtf(xtfPath, modelDir, modelNames, null);
+    }
+
+    /**
+     * Read objects of a specific class. First line = TSV header (column names),
+     * subsequent lines = data rows.
+     */
+    public String readClass(String xtfPath, String className, String modelDir) {
+        return readXtf(xtfPath, modelDir, extractModelName(className), className);
+    }
+
+    /**
+     * Returns just the column names (header line) for a class.
+     */
+    public String readClassSchema(String className, String modelDir) {
+        TransferDescription td = compileModel(modelDir, extractModelName(className));
+        if (td == null) return "";
+
+        String[] parts = className.split("\\.");
+        if (parts.length < 3) return "";
+
+        AbstractClassDef cdef = findClass(td, parts[0], parts[1], parts[2]);
+        if (cdef == null) return "";
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("xtf_bid\txtf_tid\txtf_class");
+        Iterator<?> ait = cdef.getAttributesAndRoles2();
+        while (ait.hasNext()) {
+            ViewableTransferElement vte = (ViewableTransferElement) ait.next();
+            if (vte.obj instanceof AttributeDef ad)
+                sb.append('\t').append(e(ad.getName()));
+        }
+        sb.append("\tunsupported_json");
+        return sb.toString();
+    }
+
+    // -----------------------------------------------------------------------
+    // Internal
+    // -----------------------------------------------------------------------
+
+    private String readXtf(String xtfPath, String modelDir, String modelNames, String className) {
+        // Build effective modeldir: user-specified > XTF directory > default
+        String xtfDir = "";
+        try { xtfDir = new File(xtfPath).getAbsoluteFile().getParent(); } catch (Exception ignored) {}
+        String md = (modelDir != null && !modelDir.isBlank()) ? modelDir
+                : (!xtfDir.isBlank() ? xtfDir + ";" + DEFAULT_MODELDIR : DEFAULT_MODELDIR);
+
+        TransferDescription td = compileModel(md, modelNames);
+        if (td == null) return "";
+
+        AbstractClassDef classDef = null;
+        if (className != null) {
+            String[] parts = className.split("\\.");
+            if (parts.length < 3) return "";
+            classDef = findClass(td, parts[0], parts[1], parts[2]);
+            if (classDef == null) return "";
+        }
+
+        List<String> attrNames = new ArrayList<>();
+        if (classDef != null) {
+            Iterator<?> ait = classDef.getAttributesAndRoles2();
+            while (ait.hasNext()) {
+                ViewableTransferElement vte = (ViewableTransferElement) ait.next();
+                if (vte.obj instanceof AttributeDef ad) attrNames.add(ad.getName());
+            }
+        }
+
         StringBuilder sb = new StringBuilder();
 
-        TransferDescription td = compileModelLocal(modelDir);
-        if (td == null) td = compileModelViaValidator(modelDir);
+        // Header for class-specific mode
+        if (className != null) {
+            sb.append("xtf_bid\txtf_tid\txtf_class");
+            for (String an : attrNames) sb.append('\t').append(e(an));
+            sb.append("\tunsupported_json\n");
+        }
 
         IoxReader reader = null;
         try {
-            File xtfFile = new File(xtfPath);
-            reader = new ReaderFactory().createReader(xtfFile, null);
-            if (reader == null) reader = new Xtf24Reader(xtfFile);
-            if (td != null && reader instanceof IoxIliReader iliReader) iliReader.setModel(td);
+            reader = new ReaderFactory().createReader(new File(xtfPath), null);
+            if (reader == null) reader = new Xtf24Reader(new File(xtfPath));
+            if (reader instanceof IoxIliReader iliReader) iliReader.setModel(td);
 
             String currentBid = "", currentTopic = "";
             IoxEvent event;
@@ -47,17 +120,32 @@ public class XtfObjectReader {
                     if (obj == null) continue;
                     String tag = obj.getobjecttag();
                     if (tag == null) continue;
-                    String cn = tag.contains(".") ? tag.substring(tag.lastIndexOf('.')+1) : tag;
-                    String tid = obj.getobjectoid();
-                    if (tid == null || tid.isBlank()) tid = "";
-                    int op = obj.getobjectoperation();
-                    String operation = op == 1 ? "DELETE" : op == 2 ? "UPDATE" : op == 3 ? "INSERT" : "";
 
-                    sb.append(e(currentBid)).append('\t').append(e(currentTopic)).append('\t');
-                    sb.append(e(cn)).append('\t').append(e(tid)).append('\t');
-                    sb.append(e(operation)).append('\t').append(e(buildAttrs(obj))).append('\t');
-                    sb.append(e(buildRefs(obj))).append('\t').append(e(buildGeom(obj))).append('\t');
-                    sb.append(e(buildRaw(obj))).append('\n');
+                    if (className != null) {
+                        String[] parts = className.split("\\.");
+                        if (!tag.endsWith("." + parts[2])) continue;
+                    }
+
+                    String cn = tag.contains(".") ? tag.substring(tag.lastIndexOf('.') + 1) : tag;
+                    String tid = obj.getobjectoid();
+                    if (tid == null) tid = "";
+
+                    if (className != null) {
+                        // Class-specific output
+                        sb.append(e(currentBid)).append('\t').append(e(tid)).append('\t').append(e(cn));
+                        for (String an : attrNames)
+                            sb.append('\t').append(e(obj.getattrvalue(an)));
+                        sb.append('\t').append(e(buildUnsupported(obj, attrNames))).append('\n');
+                    } else {
+                        // Generic object stream output
+                        int op = obj.getobjectoperation();
+                        String operation = op == 1 ? "DELETE" : op == 2 ? "UPDATE" : op == 3 ? "INSERT" : "";
+                        sb.append(e(currentBid)).append('\t').append(e(currentTopic)).append('\t');
+                        sb.append(e(cn)).append('\t').append(e(tid)).append('\t');
+                        sb.append(e(operation)).append('\t').append(e(buildAttrs(obj))).append('\t');
+                        sb.append(e(buildRefs(obj))).append('\t').append(e(buildGeom(obj))).append('\t');
+                        sb.append(e(buildRaw(obj))).append('\n');
+                    }
                 }
             }
         } catch (Exception ex) {
@@ -68,52 +156,123 @@ public class XtfObjectReader {
         return sb.toString();
     }
 
-    private TransferDescription compileModelLocal(String modelDir) {
+    private TransferDescription compileModel(String modelDir, String modelNames) {
         try {
-            Path dir = Path.of(modelDir.split(";")[0]);
-            if (!Files.isDirectory(dir)) return null;
-            Ili2cSettings s = new Ili2cSettings();
-            Main.setDefaultIli2cPathMap(s);
-            s.setIlidirs(modelDir);
-            Configuration c = new Configuration();
-            try (DirectoryStream<Path> ds = Files.newDirectoryStream(dir, "*.ili")) {
-                for (Path f : ds) c.addFileEntry(new FileEntry(f.toAbsolutePath().toString(), FileEntryKind.ILIMODELFILE));
+            IliManager manager = new IliManager();
+
+            // Configure repositories from modelDir
+            List<String> repoList = new ArrayList<>();
+            if (modelDir != null) {
+                for (String part : modelDir.split(";")) {
+                    String trimmed = part.trim();
+                    if (!trimmed.isBlank()) {
+                        repoList.add(trimmed);
+                    }
+                }
             }
-            c.setAutoCompleteModelList(true);
-            return Main.runCompiler(c, s, null);
-        } catch (Exception e) { return null; }
+            if (repoList.isEmpty()) {
+                repoList.add(DEFAULT_MODELDIR);
+            }
+            manager.setRepositories(repoList.toArray(new String[0]));
+
+            // Build entry list: model names, file paths, or scanned .ili files
+            ArrayList<String> entries = new ArrayList<>();
+            if (modelNames != null && !modelNames.isBlank()) {
+                for (String entry : modelNames.split(";")) {
+                    String trimmed = entry.trim();
+                    if (!trimmed.isBlank()) {
+                        entries.add(trimmed);
+                    }
+                }
+            } else {
+                for (String part : modelDir.split(";")) {
+                    Path p = null;
+                    try { p = Path.of(part.trim()); } catch (Exception ignored) {}
+                    if (p != null && Files.isDirectory(p)) {
+                        try (DirectoryStream<Path> ds = Files.newDirectoryStream(p, "*.ili")) {
+                            for (Path f : ds) {
+                                entries.add(f.toAbsolutePath().toString());
+                            }
+                        }
+                    }
+                }
+            }
+
+            Configuration cfg = manager.getConfigWithFiles(entries, null, 0.0);
+            if (cfg == null) return null;
+
+            Ili2cSettings settings = new Ili2cSettings();
+            Main.setDefaultIli2cPathMap(settings);
+            settings.setIlidirs(modelDir);
+
+            return Main.runCompiler(cfg, settings, null);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
-    private TransferDescription compileModelViaValidator(String modelDir) {
-        try {
-            Settings s = new Settings();
-            s.setValue(Validator.SETTING_ILIDIRS, modelDir);
-            IliManager mgr = Validator.createRepositoryManager(modelDir, null, s);
-            if (mgr == null) return null;
-            return Validator.compileIli(mgr, modelDir, null, null, s);
-        } catch (Exception e) { return null; }
+    private static String extractModelName(String className) {
+        if (className == null) return null;
+        int dot = className.indexOf('.');
+        return dot > 0 ? className.substring(0, dot) : null;
+    }
+
+    private AbstractClassDef findClass(TransferDescription td, String mn, String tn, String cn) {
+        for (Iterator<Model> it = td.iterator(); it.hasNext(); ) {
+            Model m = it.next();
+            if (!mn.equals(m.getName())) continue;
+            for (Iterator<Element> eit = m.iterator(); eit.hasNext(); ) {
+                Element el = eit.next();
+                if (el instanceof Topic t && tn.equals(t.getName())) {
+                    for (Iterator<Element> tit = t.iterator(); tit.hasNext(); ) {
+                        Element tel = tit.next();
+                        if (tel instanceof AbstractClassDef c && !(tel instanceof AssociationDef) && cn.equals(c.getName()))
+                            return c;
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    private String buildUnsupported(IomObject obj, List<String> known) {
+        Set<String> knownSet = new HashSet<>(known);
+        StringBuilder sb = new StringBuilder("{");
+        boolean first = true;
+        int n = obj.getattrcount();
+        for (int i = 0; i < n; i++) {
+            String an = obj.getattrname(i);
+            if (knownSet.contains(an)) continue;
+            if (!first) sb.append(",");
+            first = false;
+            sb.append("\"").append(escJson(an)).append("\":\"");
+            sb.append(escJson(obj.getattrvalue(an))).append("\"");
+        }
+        sb.append("}");
+        return first ? "" : sb.toString();
     }
 
     private String buildAttrs(IomObject obj) {
         StringBuilder j = new StringBuilder("{");
-        int n = obj.getattrcount(); boolean f = true;
+        boolean first = true;
+        int n = obj.getattrcount();
         for (int i = 0; i < n; i++) {
             String nm = obj.getattrname(i), v = obj.getattrvalue(nm);
             if (v == null) continue;
-            if (!f) j.append(","); f = false;
+            if (!first) j.append(",");
+            first = false;
             j.append("\"").append(escJson(nm)).append("\":\"").append(escJson(v)).append("\"");
         }
         j.append("}"); return j.toString();
     }
 
     private String buildRefs(IomObject obj) {
+        String oid = obj.getobjectrefoid(), bid = obj.getobjectrefbid();
+        if ((oid == null || oid.isBlank()) && (bid == null || bid.isBlank())) return "{}";
         StringBuilder j = new StringBuilder("{");
-        String oid = obj.getobjectrefoid(), bid = obj.getobjectrefbid(); boolean f = true;
-        if (oid != null && !oid.isBlank()) {
-            j.append("\"_ref_tid\":\"").append(escJson(oid)).append("\""); f = false;
-        }
+        if (oid != null && !oid.isBlank()) j.append("\"_ref_tid\":\"").append(escJson(oid)).append("\"");
         if (bid != null && !bid.isBlank()) {
-            if (!f) j.append(",");
+            if (oid != null && !oid.isBlank()) j.append(",");
             j.append("\"_ref_bid\":\"").append(escJson(bid)).append("\"");
         }
         j.append("}"); return j.toString();

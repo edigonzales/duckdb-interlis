@@ -299,23 +299,66 @@ public class NativeEntryPoints {
         String request = CTypeConversion.toJavaString(requestJson);
         String input = extractJsonField(request, "input");
         String modelDir = extractJsonField(request, "modeldir");
+        String modelNames = extractJsonField(request, "models");
 
         if (input == null || input.isBlank()) {
             outPayload.write(allocCString("ERROR: Missing 'input' field"));
             return 1;
         }
-        if (modelDir == null || modelDir.isBlank()) {
-            outPayload.write(allocCString("ERROR: Missing 'modeldir' field"));
-            return 1;
-        }
 
         try {
-            String tsv = XTF_READER.readObjects(input, modelDir);
+            String tsv = XTF_READER.readObjects(input, modelDir, modelNames);
             outPayload.write(allocCString(tsv));
             return 0;
         } catch (Exception e) {
             outPayload.write(allocCString("ERROR: " + e.getMessage()));
             return 1;
         }
+    }
+
+    @CEntryPoint(name = "ili_native_read_xtf_class")
+    public static int nativeReadXtfClass(
+            IsolateThread thread,
+            CCharPointer requestJson,
+            CCharPointerPointer outPayload) {
+
+        String request = CTypeConversion.toJavaString(requestJson);
+        String input = extractJsonField(request, "input");
+        String className = extractJsonField(request, "class");
+        String modelDir = extractJsonField(request, "modeldir");
+
+        if (input == null || className == null) {
+            outPayload.write(allocCString("ERROR: Missing input/class fields"));
+            return 1;
+        }
+        try {
+            String tsv = XTF_READER.readClass(input, className, modelDir);
+            outPayload.write(allocCString(tsv));
+            return 0;
+        } catch (Exception e) {
+            outPayload.write(allocCString("ERROR: " + e.getMessage()));
+            return 1;
+        }
+    }
+
+    @CEntryPoint(name = "ili_native_read_xtf_class_schema")
+    public static int nativeReadXtfClassSchema(
+            IsolateThread thread,
+            CCharPointer requestJson,
+            CCharPointerPointer outPayload) {
+
+        String request = CTypeConversion.toJavaString(requestJson);
+        String className = extractJsonField(request, "class");
+        String modelDir = extractJsonField(request, "modeldir");
+
+        if (className == null) {
+            outPayload.write(allocCString(""));
+            return 1;
+        }
+        // Returns just the column names as tab-separated line
+        // Same logic as readClass but returns only header
+        String tsv = XTF_READER.readClassSchema(className, modelDir);
+        outPayload.write(allocCString(tsv));
+        return 0;
     }
 }

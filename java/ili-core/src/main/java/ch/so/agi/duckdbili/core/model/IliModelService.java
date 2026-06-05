@@ -3,9 +3,8 @@ package ch.so.agi.duckdbili.core.model;
 import ch.interlis.ili2c.Ili2cSettings;
 import ch.interlis.ili2c.Main;
 import ch.interlis.ili2c.config.Configuration;
-import ch.interlis.ili2c.config.FileEntry;
-import ch.interlis.ili2c.config.FileEntryKind;
 import ch.interlis.ili2c.metamodel.*;
+import ch.interlis.ilirepository.IliManager;
 
 import java.io.IOException;
 import java.nio.file.*;
@@ -19,15 +18,27 @@ public class IliModelService {
         String key = modelDir;
         if (cache.containsKey(key)) return cache.get(key);
         try {
+            IliManager manager = new IliManager();
+            manager.setRepositories(new String[]{modelDir});
+
+            ArrayList<String> entries = new ArrayList<>();
+            try {
+                Path dir = Path.of(modelDir);
+                if (Files.isDirectory(dir)) {
+                    try (DirectoryStream<Path> stream = Files.newDirectoryStream(dir, "*.ili")) {
+                        for (Path f : stream)
+                            entries.add(f.toAbsolutePath().toString());
+                    }
+                }
+            } catch (IOException ignored) {}
+
+            Configuration cfg = manager.getConfigWithFiles(entries, null, 0.0);
+            if (cfg == null) return null;
+
             Ili2cSettings settings = new Ili2cSettings();
             Main.setDefaultIli2cPathMap(settings);
             settings.setIlidirs(modelDir);
-            Configuration cfg = new Configuration();
-            try (DirectoryStream<Path> stream = Files.newDirectoryStream(Path.of(modelDir), "*.ili")) {
-                for (Path f : stream)
-                    cfg.addFileEntry(new FileEntry(f.toAbsolutePath().toString(), FileEntryKind.ILIMODELFILE));
-            } catch (IOException e) { return null; }
-            cfg.setAutoCompleteModelList(true);
+
             TransferDescription td = Main.runCompiler(cfg, settings, null);
             if (td != null) cache.put(key, td);
             return td;
