@@ -99,4 +99,81 @@ class XtfObjectReaderTest {
             }
         }
     }
+
+    // -------------------------------------------------------------------
+    // Association tests
+    // -------------------------------------------------------------------
+    private static final Path ASSOC_DIR;
+    static {
+        Path cwd = Path.of("").toAbsolutePath();
+        if (Files.isRegularFile(cwd.resolve("testdata/synthetic/associations/SO_AGI_Associations_20260605.ili"))) {
+            ASSOC_DIR = cwd.resolve("testdata/synthetic/associations");
+        } else if (Files.isRegularFile(cwd.getParent().resolve("testdata/synthetic/associations/SO_AGI_Associations_20260605.ili"))) {
+            ASSOC_DIR = cwd.getParent().resolve("testdata/synthetic/associations");
+        } else {
+            ASSOC_DIR = cwd.getParent().getParent().resolve("testdata/synthetic/associations");
+        }
+    }
+
+    private static final String ASSOC_MODELDIR = ASSOC_DIR.toString();
+    private static final String ASSOC_XTF = ASSOC_DIR.resolve("valid.xtf").toString();
+    private static final String ASSOC_BESITZ = "SO_AGI_Associations_20260605.Topic.Besitz";
+    private static final String ASSOC_PERSON = "SO_AGI_Associations_20260605.Topic.Person";
+
+    @Test
+    void readAssociationSchema_hasRefColumns() {
+        String schema = reader.readAssociationSchema(ASSOC_BESITZ, ASSOC_MODELDIR);
+        assertNotNull(schema);
+        assertTrue(schema.contains("besitzer_ref"), "Should contain besitzer_ref column");
+        assertTrue(schema.contains("grundstueck_ref"), "Should contain grundstueck_ref column");
+        assertTrue(schema.contains("Anteil"), "Should contain Anteil attribute column");
+    }
+
+    @Test
+    void readAssociation_hasRefValues() {
+        String result = reader.readAssociation(ASSOC_XTF, ASSOC_BESITZ, ASSOC_MODELDIR);
+        assertNotNull(result);
+        String[] lines = result.split("\n");
+        assertTrue(lines.length >= 2, "Should have header + data rows");
+
+        String header = lines[0];
+        int besitzerIdx = -1, grundIdx = -1, anteilIdx = -1;
+        String[] hdr = header.split("\t");
+        for (int i = 0; i < hdr.length; i++) {
+            if (hdr[i].equals("besitzer_ref")) besitzerIdx = i;
+            if (hdr[i].equals("grundstueck_ref")) grundIdx = i;
+            if (hdr[i].equals("Anteil")) anteilIdx = i;
+        }
+        assertTrue(besitzerIdx > 0, "Should have besitzer_ref column");
+        assertTrue(grundIdx > 0, "Should have grundstueck_ref column");
+        assertTrue(anteilIdx > 0, "Should have Anteil column");
+
+        for (int i = 1; i < lines.length; i++) {
+            String[] fields = lines[i].split("\t", -1);
+            assertFalse(fields[besitzerIdx].isEmpty(), "besitzer_ref should not be empty");
+            assertFalse(fields[grundIdx].isEmpty(), "grundstueck_ref should not be empty");
+            assertFalse(fields[anteilIdx].isEmpty(), "Anteil should not be empty");
+        }
+    }
+
+    @Test
+    void readAssociation_unsupportedJson_isEmpty() {
+        String result = reader.readAssociation(ASSOC_XTF, ASSOC_BESITZ, ASSOC_MODELDIR);
+        for (String line : result.split("\n")) {
+            if (line.startsWith("xtf_bid")) continue;
+            if (line.isBlank()) continue;
+            String[] fields = line.split("\t", -1);
+            String lastField = fields[fields.length - 1];
+            assertTrue(lastField.isEmpty(), "unsupported_json should be empty, got: " + lastField);
+        }
+    }
+
+    @Test
+    void readClass_personHasNameColumn() {
+        String schema = reader.readClassSchema(ASSOC_PERSON, ASSOC_MODELDIR);
+        assertTrue(schema.contains("Name"), "Person schema should contain Name column");
+        String result = reader.readClass(ASSOC_XTF, ASSOC_PERSON, ASSOC_MODELDIR);
+        assertTrue(result.contains("Max Muster"));
+        assertTrue(result.contains("Anna Beispiel"));
+    }
 }

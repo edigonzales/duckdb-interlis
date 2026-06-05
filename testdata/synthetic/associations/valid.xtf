@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TRANSFER xmlns="http://www.interlis.ch/INTERLIS2.3">
+  <HEADERSECTION VERSION="2.3" SENDER="test">
+    <MODELS>
+      <MODEL NAME="SO_AGI_Associations_20260605" VERSION="2026-06-05" URI="https://models.interlis.ch"/>
+    </MODELS>
+  </HEADERSECTION>
+  <DATASECTION>
+    <SO_AGI_Associations_20260605.Topic BID="basket1">
+      <SO_AGI_Associations_20260605.Topic.Person TID="p1">
+        <Name>Max Muster</Name>
+      </SO_AGI_Associations_20260605.Topic.Person>
+      <SO_AGI_Associations_20260605.Topic.Person TID="p2">
+        <Name>Anna Beispiel</Name>
+      </SO_AGI_Associations_20260605.Topic.Person>
+      <SO_AGI_Associations_20260605.Topic.Grundstueck TID="g1">
+        <Nummer>1234</Nummer>
+        <Flaeche>500</Flaeche>
+      </SO_AGI_Associations_20260605.Topic.Grundstueck>
+      <SO_AGI_Associations_20260605.Topic.Grundstueck TID="g2">
+        <Nummer>5678</Nummer>
+        <Flaeche>350</Flaeche>
+      </SO_AGI_Associations_20260605.Topic.Grundstueck>
+      <SO_AGI_Associations_20260605.Topic.Besitz TID="b1">
+        <besitzer REF="p1"/>
+        <grundstueck REF="g1"/>
+        <Anteil>50</Anteil>
+      </SO_AGI_Associations_20260605.Topic.Besitz>
+      <SO_AGI_Associations_20260605.Topic.Besitz TID="b2">
+        <besitzer REF="p2"/>
+        <grundstueck REF="g1"/>
+        <Anteil>50</Anteil>
+      </SO_AGI_Associations_20260605.Topic.Besitz>
+      <SO_AGI_Associations_20260605.Topic.Besitz TID="b3">
+        <besitzer REF="p2"/>
+        <grundstueck REF="g2"/>
+        <Anteil>100</Anteil>
+      </SO_AGI_Associations_20260605.Topic.Besitz>
+    </SO_AGI_Associations_20260605.Topic>
+  </DATASECTION>
+</TRANSFER>

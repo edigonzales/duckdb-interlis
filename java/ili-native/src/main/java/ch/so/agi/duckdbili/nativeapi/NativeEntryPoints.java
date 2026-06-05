@@ -385,4 +385,48 @@ public class NativeEntryPoints {
             return 1;
         }
     }
+
+    @CEntryPoint(name = "ili_native_read_xtf_association")
+    public static int nativeReadXtfAssociation(
+            IsolateThread thread,
+            CCharPointer requestJson,
+            CCharPointerPointer outPayload) {
+
+        String request = CTypeConversion.toJavaString(requestJson);
+        String input = extractJsonField(request, "input");
+        String associationName = extractJsonField(request, "association");
+        String modelDir = extractJsonField(request, "modeldir");
+
+        if (input == null || associationName == null) {
+            outPayload.write(allocCString("ERROR: Missing input/association fields"));
+            return 1;
+        }
+        try {
+            String tsv = XTF_READER.readAssociation(input, associationName, modelDir);
+            outPayload.write(allocCString(tsv));
+            return 0;
+        } catch (Exception e) {
+            outPayload.write(allocCString("ERROR: " + e.getMessage()));
+            return 1;
+        }
+    }
+
+    @CEntryPoint(name = "ili_native_read_xtf_association_schema")
+    public static int nativeReadXtfAssociationSchema(
+            IsolateThread thread,
+            CCharPointer requestJson,
+            CCharPointerPointer outPayload) {
+
+        String request = CTypeConversion.toJavaString(requestJson);
+        String associationName = extractJsonField(request, "association");
+        String modelDir = extractJsonField(request, "modeldir");
+
+        if (associationName == null) {
+            outPayload.write(allocCString(""));
+            return 1;
+        }
+        String tsv = XTF_READER.readAssociationSchema(associationName, modelDir);
+        outPayload.write(allocCString(tsv));
+        return 0;
+    }
 }

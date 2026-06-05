@@ -70,6 +70,8 @@ public class XtfObjectReader {
                     sb.append('\t').append(e(ad.getName() + colSuffix));
                 else
                     sb.append('\t').append(e(ad.getName()));
+            } else if (vte.obj instanceof RoleDef rd) {
+                sb.append('\t').append(e(rd.getName() + "_ref"));
             }
         }
         sb.append("\tunsupported_json");
@@ -106,6 +108,7 @@ public class XtfObjectReader {
         List<String> scalarAttrs = new ArrayList<>();
         List<String> structureAttrs = new ArrayList<>();
         List<String> bagAttrs = new ArrayList<>();
+        List<String> roleRefs = new ArrayList<>();
         if (classDef != null) {
             Iterator<?> ait = classDef.getAttributesAndRoles2();
             while (ait.hasNext()) {
@@ -118,6 +121,10 @@ public class XtfObjectReader {
                         bagAttrs.add(ad.getName());
                     else
                         scalarAttrs.add(ad.getName());
+                } else if (vte.obj instanceof RoleDef rd) {
+                    String refName = rd.getName() + "_ref";
+                    attrNames.add(rd.getName());
+                    roleRefs.add(rd.getName());
                 }
             }
         }
@@ -131,6 +138,7 @@ public class XtfObjectReader {
             for (String an : scalarAttrs) sb.append('\t').append(e(an));
             for (String an : structureAttrs) sb.append('\t').append(e(an + colSuffix));
             for (String an : bagAttrs) sb.append('\t').append(e(an + colSuffix));
+            for (String rn : roleRefs) sb.append('\t').append(e(rn + "_ref"));
             sb.append("\tunsupported_json\n");
         }
 
@@ -171,6 +179,8 @@ public class XtfObjectReader {
                             sb.append('\t').append(e(buildSingleStructureJson(obj, an)));
                         for (String an : bagAttrs)
                             sb.append('\t').append(e(buildBagStructureJson(obj, an)));
+                        for (String rn : roleRefs)
+                            sb.append('\t').append(e(getRoleRef(obj, rn)));
                         sb.append('\t').append(e(buildUnsupported(obj, attrNames))).append('\n');
                     } else {
                         // Generic object stream output
@@ -489,5 +499,141 @@ public class XtfObjectReader {
             }
         }
         return sb.toString();
+    }
+
+    // -----------------------------------------------------------------------
+    // Role / Reference extraction
+    // -----------------------------------------------------------------------
+
+    private static String getRoleRef(IomObject obj, String roleName) {
+        int cnt = obj.getattrvaluecount(roleName);
+        if (cnt == 0) return "";
+        IomObject child = obj.getattrobj(roleName, 0);
+        if (child == null) return "";
+        String ref = child.getobjectrefoid();
+        return ref != null ? ref : "";
+    }
+
+    // -----------------------------------------------------------------------
+    // Association reading
+    // -----------------------------------------------------------------------
+
+    public String readAssociationSchema(String associationName, String modelDir) {
+        TransferDescription td = compileModel(modelDir, extractModelName(associationName));
+        if (td == null) return "";
+
+        String[] parts = associationName.split("\\.");
+        if (parts.length < 3) return "";
+
+        AssociationDef adef = findAssociation(td, parts[0], parts[1], parts[2]);
+        if (adef == null) return "";
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("xtf_bid\txtf_tid\txtf_class");
+        Iterator<?> ait = adef.getAttributesAndRoles2();
+        while (ait.hasNext()) {
+            ViewableTransferElement vte = (ViewableTransferElement) ait.next();
+            if (vte.obj instanceof RoleDef rd) {
+                sb.append('\t').append(e(rd.getName() + "_ref"));
+            } else if (vte.obj instanceof AttributeDef ad) {
+                sb.append('\t').append(e(ad.getName()));
+            }
+        }
+        sb.append("\tunsupported_json");
+        return sb.toString();
+    }
+
+    public String readAssociation(String xtfPath, String associationName, String modelDir) {
+        TransferDescription td = compileModel(modelDir, extractModelName(associationName));
+        if (td == null) return "";
+
+        String[] parts = associationName.split("\\.");
+        if (parts.length < 3) return "";
+
+        AssociationDef assocDef = findAssociation(td, parts[0], parts[1], parts[2]);
+        if (assocDef == null) return "";
+
+        List<String> roleNames = new ArrayList<>();
+        List<String> attrNames = new ArrayList<>();
+        List<String> allNames = new ArrayList<>();
+        Iterator<?> ait = assocDef.getAttributesAndRoles2();
+        while (ait.hasNext()) {
+            ViewableTransferElement vte = (ViewableTransferElement) ait.next();
+            if (vte.obj instanceof RoleDef rd) {
+                roleNames.add(rd.getName());
+                allNames.add(rd.getName());
+            } else if (vte.obj instanceof AttributeDef ad) {
+                attrNames.add(ad.getName());
+                allNames.add(ad.getName());
+            }
+        }
+
+        String xtfDir = "";
+        try { xtfDir = new File(xtfPath).getAbsoluteFile().getParent(); } catch (Exception ignored) {}
+        String md = (modelDir != null && !modelDir.isBlank()) ? modelDir
+                : (!xtfDir.isBlank() ? xtfDir + ";" + DEFAULT_MODELDIR : DEFAULT_MODELDIR);
+        td = compileModel(md, extractModelName(associationName));
+        if (td == null) return "";
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("xtf_bid\txtf_tid\txtf_class");
+        for (String rn : roleNames) sb.append('\t').append(e(rn + "_ref"));
+        for (String an : attrNames) sb.append('\t').append(e(an));
+        sb.append("\tunsupported_json\n");
+
+        IoxReader reader = null;
+        try {
+            reader = new ReaderFactory().createReader(new File(xtfPath), null);
+            if (reader == null) reader = new Xtf24Reader(new File(xtfPath));
+            if (reader instanceof IoxIliReader iliReader) iliReader.setModel(td);
+
+            String currentBid = "";
+            IoxEvent event;
+            while ((event = reader.read()) != null) {
+                if (event instanceof StartBasketEvent sbe) {
+                    currentBid = sbe.getBid() != null ? sbe.getBid() : "";
+                } else if (event instanceof ObjectEvent oe) {
+                    IomObject obj = oe.getIomObject();
+                    if (obj == null) continue;
+                    String tag = obj.getobjecttag();
+                    if (tag == null) continue;
+                    if (!tag.endsWith("." + parts[2])) continue;
+
+                    String cn = tag.contains(".") ? tag.substring(tag.lastIndexOf('.') + 1) : tag;
+                    String tid = obj.getobjectoid();
+                    if (tid == null) tid = "";
+
+                    sb.append(e(currentBid)).append('\t').append(e(tid)).append('\t').append(e(cn));
+                    for (String rn : roleNames)
+                        sb.append('\t').append(e(getRoleRef(obj, rn)));
+                    for (String an : attrNames)
+                        sb.append('\t').append(e(obj.getattrvalue(an)));
+                    sb.append('\t').append(e(buildUnsupported(obj, allNames))).append('\n');
+                }
+            }
+        } catch (Exception ex) {
+            System.err.println("XTF association read: " + ex.getMessage());
+        } finally {
+            if (reader != null) { try { reader.close(); } catch (Exception ignored) {} }
+        }
+        return sb.toString();
+    }
+
+    private AssociationDef findAssociation(TransferDescription td, String mn, String tn, String an) {
+        for (Iterator<Model> it = td.iterator(); it.hasNext(); ) {
+            Model m = it.next();
+            if (!mn.equals(m.getName())) continue;
+            for (Iterator<Element> eit = m.iterator(); eit.hasNext(); ) {
+                Element el = eit.next();
+                if (el instanceof Topic t && tn.equals(t.getName())) {
+                    for (Iterator<Element> tit = t.iterator(); tit.hasNext(); ) {
+                        Element tel = tit.next();
+                        if (tel instanceof AssociationDef a && an.equals(a.getName()))
+                            return a;
+                    }
+                }
+            }
+        }
+        return null;
     }
 }

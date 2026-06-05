@@ -37,6 +37,8 @@ static native_read_xtf_fn g_native_read_xtf = NULL;
 static native_read_xtf_fn g_native_read_xtf_class = NULL;
 static native_read_xtf_fn g_native_read_xtf_class_schema = NULL;
 static native_read_xtf_fn g_native_read_xtf_structures = NULL;
+static native_read_xtf_fn g_native_read_xtf_association = NULL;
+static native_read_xtf_fn g_native_read_xtf_association_schema = NULL;
 static native_free_fn g_native_free = NULL;
 
 static bool g_initialized = false;
@@ -105,6 +107,8 @@ static bool init_native_library(void) {
     g_native_read_xtf_class = (native_read_xtf_fn)dlsym(g_native_handle, "ili_native_read_xtf_class");
     g_native_read_xtf_class_schema = (native_read_xtf_fn)dlsym(g_native_handle, "ili_native_read_xtf_class_schema");
     g_native_read_xtf_structures = (native_read_xtf_fn)dlsym(g_native_handle, "ili_native_read_xtf_structures");
+    g_native_read_xtf_association = (native_read_xtf_fn)dlsym(g_native_handle, "ili_native_read_xtf_association");
+    g_native_read_xtf_association_schema = (native_read_xtf_fn)dlsym(g_native_handle, "ili_native_read_xtf_association_schema");
     g_native_free = (native_free_fn)dlsym(g_native_handle, "ili_free_string");
 
     if (!g_native_version || !g_native_validate || !g_native_validate_tsv || !g_native_model_info
@@ -1084,6 +1088,123 @@ static void xtf_structures_init(duckdb_init_info info) {
 }
 
 // ---------------------------------------------------------------------------
+// read_xtf_association
+// ---------------------------------------------------------------------------
+typedef struct {
+    char *input;
+    char *association_name;
+    char *modeldir;
+    char **col_names;
+    int col_count;
+} xtf_assoc_bind_data;
+
+static void xtf_assoc_bind_destroy(void *d) {
+    xtf_assoc_bind_data *bd = (xtf_assoc_bind_data *)d;
+    if (bd) {
+        free(bd->input); free(bd->association_name); free(bd->modeldir);
+        for (int i = 0; i < bd->col_count; i++) free(bd->col_names[i]);
+        free(bd->col_names); free(bd);
+    }
+}
+
+static void xtf_assoc_bind(duckdb_bind_info info) {
+    duckdb_value dv = duckdb_bind_get_parameter(info, 0);
+    char *input = dv ? duckdb_get_varchar(dv) : NULL;
+    dv = duckdb_bind_get_named_parameter(info, "association");
+    char *assoc = dv ? duckdb_get_varchar(dv) : NULL;
+    dv = duckdb_bind_get_named_parameter(info, "modeldir");
+    char *modeldir = dv ? duckdb_get_varchar(dv) : NULL;
+    if (dv) duckdb_destroy_value(&dv);
+
+    xtf_assoc_bind_data *bd = malloc(sizeof(xtf_assoc_bind_data));
+    memset(bd, 0, sizeof(*bd));
+    bd->input = input ? strdup(input) : NULL;
+    bd->association_name = assoc ? strdup(assoc) : NULL;
+    bd->modeldir = modeldir ? strdup(modeldir) : NULL;
+
+    if (!g_initialized && !init_native_library()) {
+        duckdb_bind_set_error(info, g_error_buf);
+    } else if (g_native_read_xtf_association_schema && bd->association_name && bd->modeldir) {
+        char req[4096];
+        int slen = snprintf(req, sizeof(req),
+            "{\"association\":\"%s\",\"modeldir\":\"%s\"}", bd->association_name, bd->modeldir);
+        if (slen < 0 || slen >= (int)sizeof(req)) req[sizeof(req)-1] = '\0';
+        char *header = native_call_with_input_str(g_native_read_xtf_association_schema, req);
+        if (header) {
+            bd->col_count = 0;
+            for (char *p = header; *p; p++) if (*p == '\t') bd->col_count++;
+            bd->col_count++;
+            bd->col_names = malloc(bd->col_count * sizeof(char*));
+            char *h = header;
+            for (int i = 0; i < bd->col_count; i++) {
+                char *tab = strchr(h, '\t');
+                idx_t len = tab ? (idx_t)(tab - h) : strlen(h);
+                bd->col_names[i] = malloc(len + 1);
+                memcpy(bd->col_names[i], h, len);
+                bd->col_names[i][len] = '\0';
+                h = tab ? tab + 1 : h + len;
+            }
+            native_free_str(header);
+        }
+    }
+
+    duckdb_logical_type vt = duckdb_create_logical_type(DUCKDB_TYPE_VARCHAR);
+    if (bd->col_count > 0) {
+        for (int i = 0; i < bd->col_count; i++)
+            duckdb_bind_add_result_column(info, bd->col_names[i], vt);
+    } else {
+        duckdb_bind_add_result_column(info, "xtf_bid", vt);
+        duckdb_bind_add_result_column(info, "xtf_tid", vt);
+        duckdb_bind_add_result_column(info, "xtf_class", vt);
+    }
+    duckdb_destroy_logical_type(&vt);
+    duckdb_bind_set_bind_data(info, bd, xtf_assoc_bind_destroy);
+}
+
+static void xtf_assoc_init(duckdb_init_info info) {
+    if (!g_initialized && !init_native_library()) {
+        duckdb_init_set_error(info, g_error_buf); return;
+    }
+    xtf_assoc_bind_data *bd = (xtf_assoc_bind_data *)duckdb_init_get_bind_data(info);
+    if (!bd || !bd->input || !bd->association_name || !bd->modeldir) {
+        duckdb_init_set_error(info, "Missing input, association, or modeldir"); return;
+    }
+
+    char req[8192];
+    int slen = snprintf(req, sizeof(req),
+        "{\"input\":\"%s\",\"association\":\"%s\",\"modeldir\":\"%s\"}",
+        bd->input, bd->association_name, bd->modeldir);
+    if (slen < 0 || slen >= (int)sizeof(req)) req[sizeof(req)-1] = '\0';
+
+    char *result = native_call_with_input_str(g_native_read_xtf_association, req);
+    if (!result) { duckdb_init_set_error(info, "XTF association read failed"); return; }
+
+    mi_init_data *id = malloc(sizeof(mi_init_data));
+    memset(id, 0, sizeof(*id));
+
+    const char *p = result;
+    while (*p && *p != '\n') p++;
+    if (*p == '\n') p++;
+
+    const char *tmp = p;
+    while (*tmp) { id->row_count++; while (*tmp && *tmp != '\n') tmp++; if (*tmp == '\n') tmp++; }
+
+    if (id->row_count == 0) { free(id); native_free_str(result); return; }
+
+    id->rows = malloc(id->row_count * sizeof(char*));
+    for (idx_t i = 0; i < id->row_count; i++) {
+        const char *start = p; size_t len = 0;
+        while (*p && *p != '\n') { p++; len++; }
+        id->rows[i] = malloc(len + 1);
+        memcpy(id->rows[i], start, len);
+        id->rows[i][len] = '\0';
+        if (*p == '\n') p++;
+    }
+    native_free_str(result);
+    duckdb_init_set_init_data(info, id, mi_init_destroy);
+}
+
+// ---------------------------------------------------------------------------
 // Extension entry point
 // ---------------------------------------------------------------------------
 DUCKDB_EXTENSION_ENTRYPOINT(duckdb_connection connection, duckdb_extension_info info, struct duckdb_extension_access *access) {
@@ -1133,6 +1254,22 @@ DUCKDB_EXTENSION_ENTRYPOINT(duckdb_connection connection, duckdb_extension_info 
         duckdb_table_function_add_named_parameter(fn, "modeldir", vt);
         duckdb_table_function_set_bind(fn, xtf_structures_bind);
         duckdb_table_function_set_init(fn, xtf_structures_init);
+        duckdb_table_function_set_function(fn, mi_function);
+        duckdb_register_table_function(connection, fn);
+        duckdb_destroy_table_function(&fn);
+        duckdb_destroy_logical_type(&vt);
+    }
+
+    // read_xtf_association
+    {
+        duckdb_table_function fn = duckdb_create_table_function();
+        duckdb_table_function_set_name(fn, "read_xtf_association");
+        duckdb_logical_type vt = duckdb_create_logical_type(DUCKDB_TYPE_VARCHAR);
+        duckdb_table_function_add_parameter(fn, vt);
+        duckdb_table_function_add_named_parameter(fn, "association", vt);
+        duckdb_table_function_add_named_parameter(fn, "modeldir", vt);
+        duckdb_table_function_set_bind(fn, xtf_assoc_bind);
+        duckdb_table_function_set_init(fn, xtf_assoc_init);
         duckdb_table_function_set_function(fn, mi_function);
         duckdb_register_table_function(connection, fn);
         duckdb_destroy_table_function(&fn);

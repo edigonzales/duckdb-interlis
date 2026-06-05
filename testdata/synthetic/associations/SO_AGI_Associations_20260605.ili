@@ -1,0 +1,26 @@
+INTERLIS 2.3;
+
+!!@ technicalContact=mailto:test@example.com
+
+MODEL SO_AGI_Associations_20260605 (de)
+AT "https://models.interlis.ch"
+VERSION "2026-06-05" =
+  TOPIC Topic =
+
+    CLASS Person =
+      Name : MANDATORY TEXT*60;
+    END Person;
+
+    CLASS Grundstueck =
+      Nummer : MANDATORY TEXT*20;
+      Flaeche : 0 .. 999999;
+    END Grundstueck;
+
+    ASSOCIATION Besitz =
+      besitzer -- {0..*} Person;
+      grundstueck -- {0..*} Grundstueck;
+      Anteil : 0 .. 100;
+    END Besitz;
+
+  END Topic;
+END SO_AGI_Associations_20260605.
