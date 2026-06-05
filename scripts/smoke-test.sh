@@ -10,12 +10,15 @@ fi
 
 DUCKDB="${DUCKDB_CLI:-~/bin/duckdb}"
 EXTENSION="${DUCKDB_ILI_EXTENSION:-$REPO_ROOT/duckdb-extension/build/interlis.duckdb_extension}"
+NATIVE_LIB="${DUCKDB_ILI_NATIVE_LIB:-$REPO_ROOT/java/ili-native/build/native/libduckdb_ili_native.dylib}"
 
 echo "=== Smoke Test ==="
 echo "Extension: $EXTENSION"
+echo "Native lib: $NATIVE_LIB"
 echo ""
 
-"$DUCKDB" -unsigned -c "LOAD '$EXTENSION';" -c "SELECT ili_extension_version();"
+export DUCKDB_ILI_NATIVE_LIB="$NATIVE_LIB"
+"$DUCKDB" -unsigned < "$REPO_ROOT/sql/smoke.sql"
 
 echo ""
 echo "=== Smoke test passed ==="

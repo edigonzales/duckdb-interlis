@@ -19,6 +19,13 @@ add_library(${EXTENSION_NAME} SHARED ${EXTENSION_SOURCES})
 
 target_include_directories(${EXTENSION_NAME} PRIVATE ${DUCKDB_CAPI_DIR})
 
+# Link system libraries
+if(APPLE)
+    target_link_libraries(${EXTENSION_NAME} PRIVATE dl)
+else()
+    target_link_libraries(${EXTENSION_NAME} PRIVATE dl)
+endif()
+
 set_target_properties(${EXTENSION_NAME} PROPERTIES
     OUTPUT_NAME "interlis"
     PREFIX ""

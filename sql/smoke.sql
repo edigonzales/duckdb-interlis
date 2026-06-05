@@ -1,7 +1,30 @@
--- Smoke test for DuckDB ILI extension
+-- Smoke test for DuckDB ILI extension (Phase 3)
 -- Run with: duckdb -unsigned < sql/smoke.sql
--- Or: scripts/smoke-test.sh
 
 LOAD '/Users/stefan/sources/duckdb-interlis/duckdb-extension/build/interlis.duckdb_extension';
 
-SELECT ili_extension_version();
+SELECT '--- Extension Version ---' AS test;
+SELECT ili_extension_version() AS version;
+
+SELECT '--- Native Version ---' AS test;
+SELECT ili_native_version() AS version;
+
+SELECT '--- Validate: valid XTF ---' AS test;
+SELECT json_extract(result, '$.valid') AS valid,
+       json_extract(result, '$.errorCount') AS errors
+FROM (
+    SELECT ili_validate_summary_json(
+        'testdata/synthetic/simple/valid.xtf',
+        'testdata/synthetic/simple'
+    ) AS result
+);
+
+SELECT '--- Validate: invalid XTF ---' AS test;
+SELECT json_extract(result, '$.valid') AS valid,
+       json_extract(result, '$.errorCount') AS errors
+FROM (
+    SELECT ili_validate_summary_json(
+        'testdata/synthetic/simple/invalid.xtf',
+        'testdata/synthetic/simple'
+    ) AS result
+);
