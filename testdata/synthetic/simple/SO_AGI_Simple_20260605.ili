@@ -1,0 +1,18 @@
+INTERLIS 2.3;
+
+!!@ technicalContact=mailto:test@example.com
+
+MODEL SO_AGI_Simple_20260605 (de)
+AT "https://models.interlis.ch"
+VERSION "2026-06-05" =
+  TOPIC Topic =
+    CLASS Gemeinde =
+      Name : MANDATORY TEXT*60;
+      BFS_Nr : 0 .. 9999;
+    END Gemeinde;
+    CLASS Abbaustelle =
+      Name : MANDATORY TEXT*80;
+      Status : (aktiv, inaktiv, geplant);
+    END Abbaustelle;
+  END Topic;
+END SO_AGI_Simple_20260605.

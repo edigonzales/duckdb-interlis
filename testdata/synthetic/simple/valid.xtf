@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TRANSFER xmlns="http://www.interlis.ch/INTERLIS2.3">
+  <HEADERSECTION VERSION="2.3" SENDER="test">
+    <MODELS>
+      <MODEL NAME="SO_AGI_Simple_20260605" VERSION="2026-06-05" URI="https://models.interlis.ch"/>
+    </MODELS>
+  </HEADERSECTION>
+  <DATASECTION>
+    <SO_AGI_Simple_20260605.Topic BID="basket1">
+      <SO_AGI_Simple_20260605.Topic.Gemeinde TID="1">
+        <Name>TestGemeinde</Name>
+        <BFS_Nr>1234</BFS_Nr>
+      </SO_AGI_Simple_20260605.Topic.Gemeinde>
+      <SO_AGI_Simple_20260605.Topic.Abbaustelle TID="2">
+        <Name>Kiesgrube Nord</Name>
+        <Status>aktiv</Status>
+      </SO_AGI_Simple_20260605.Topic.Abbaustelle>
+    </SO_AGI_Simple_20260605.Topic>
+  </DATASECTION>
+</TRANSFER>

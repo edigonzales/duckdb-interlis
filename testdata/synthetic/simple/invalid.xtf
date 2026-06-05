@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TRANSFER xmlns="http://www.interlis.ch/INTERLIS2.3">
+  <HEADERSECTION VERSION="2.3" SENDER="test">
+    <MODELS>
+      <MODEL NAME="SO_AGI_Simple_20260605" VERSION="2026-06-05" URI="https://models.interlis.ch"/>
+    </MODELS>
+  </HEADERSECTION>
+  <DATASECTION>
+    <SO_AGI_Simple_20260605.Topic BID="basket1">
+      <SO_AGI_Simple_20260605.Topic.Gemeinde TID="1">
+        <!-- MISSING: mandatory Name -->
+        <BFS_Nr>99999</BFS_Nr>
+        <!-- INVALID: BFS_Nr exceeds max 9999 -->
+      </SO_AGI_Simple_20260605.Topic.Gemeinde>
+      <SO_AGI_Simple_20260605.Topic.Abbaustelle TID="2">
+        <Name>Kiesgrube Nord</Name>
+        <Status>stillgelegt</Status>
+        <!-- INVALID: Status enum value 'stillgelegt' not defined -->
+      </SO_AGI_Simple_20260605.Topic.Abbaustelle>
+    </SO_AGI_Simple_20260605.Topic>
+  </DATASECTION>
+</TRANSFER>

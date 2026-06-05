@@ -3,6 +3,9 @@ plugins {
 }
 
 dependencies {
+    implementation 'ch.interlis:ilivalidator:1.15.0'
+    implementation 'ch.ehi:ehibasics:1.4.1'
+
     testImplementation platform('org.junit:junit-bom:5.11.4')
     testImplementation 'org.junit.jupiter:junit-jupiter'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'

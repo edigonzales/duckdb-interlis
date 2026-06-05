@@ -66,6 +66,46 @@ int main(void) {
     free_string(thread, NULL);
     fprintf(stderr, "  PASS (no crash)\n");
 
+    // Test 4: Validation
+    fprintf(stderr, "\nTest 4: ili_native_validate (valid)\n");
+    ili_native_validate_fn_t native_validate = (ili_native_validate_fn_t)dlsym(handle, "ili_native_validate");
+    fprintf(stderr, "  native_validate=%p\n", (void*)native_validate);
+    if (native_validate) {
+        char *result = NULL;
+        rc = native_validate(thread, "{\"input\":\"testdata/synthetic/simple/valid.xtf\",\"modeldir\":\"testdata/synthetic/simple\"}", &result);
+        fprintf(stderr, "  rc=%d result=%p\n", rc, (void*)result);
+        if (rc == 0 && result) {
+            fprintf(stderr, "  result=%s\n", result);
+            if (strstr(result, "\"valid\":true")) {
+                fprintf(stderr, "  PASS\n");
+            } else {
+                fprintf(stderr, "  FAIL (expected valid=true)\n");
+            }
+            free_string(thread, result);
+        } else {
+            fprintf(stderr, "  FAIL\n");
+        }
+    }
+
+    // Test 5: Validation (invalid)
+    fprintf(stderr, "\nTest 5: ili_native_validate (invalid)\n");
+    if (native_validate) {
+        char *result = NULL;
+        rc = native_validate(thread, "{\"input\":\"testdata/synthetic/simple/invalid.xtf\",\"modeldir\":\"testdata/synthetic/simple\"}", &result);
+        fprintf(stderr, "  rc=%d result=%p\n", rc, (void*)result);
+        if (rc == 0 && result) {
+            fprintf(stderr, "  result=%s\n", result);
+            if (strstr(result, "\"valid\":false")) {
+                fprintf(stderr, "  PASS\n");
+            } else {
+                fprintf(stderr, "  FAIL (expected valid=false)\n");
+            }
+            free_string(thread, result);
+        } else {
+            fprintf(stderr, "  FAIL\n");
+        }
+    }
+
     if (tear_down) tear_down(thread);
     dlclose(handle);
     printf("\nDone.\n");
