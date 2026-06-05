@@ -11,6 +11,7 @@ import org.graalvm.nativeimage.UnmanagedMemory;
 import org.graalvm.word.WordFactory;
 
 import ch.so.agi.duckdbili.core.CoreVersion;
+import ch.so.agi.duckdbili.core.importer.IliImportService;
 import ch.so.agi.duckdbili.core.model.IliModelService;
 import ch.so.agi.duckdbili.core.validation.IliValidatorService;
 import ch.so.agi.duckdbili.core.validation.ValidationMessage;
@@ -428,5 +429,39 @@ public class NativeEntryPoints {
         String tsv = XTF_READER.readAssociationSchema(associationName, modelDir);
         outPayload.write(allocCString(tsv));
         return 0;
+    }
+
+    // -----------------------------------------------------------------------
+    // XTF import entry point
+    // -----------------------------------------------------------------------
+
+    @CEntryPoint(name = "ili_native_import_xtf")
+    public static int nativeImportXtf(
+            IsolateThread thread,
+            CCharPointer requestJson,
+            CCharPointerPointer outPayload) {
+
+        String request = CTypeConversion.toJavaString(requestJson);
+        String input = extractJsonField(request, "input");
+        String modelDir = extractJsonField(request, "modeldir");
+        String schema = extractJsonField(request, "schema");
+        String mapping = extractJsonField(request, "mapping");
+
+        if (input == null || input.isBlank() || schema == null || schema.isBlank()
+                || modelDir == null || modelDir.isBlank()) {
+            outPayload.write(allocCString("ERROR: Missing required fields (input, schema, modeldir)"));
+            return 1;
+        }
+
+        try {
+            IliImportService importService = new IliImportService();
+            String sql = importService.generateImportSql(input, modelDir, schema,
+                    mapping != null ? mapping : "relational");
+            outPayload.write(allocCString(sql));
+            return 0;
+        } catch (Exception e) {
+            outPayload.write(allocCString("ERROR: " + e.getMessage()));
+            return 1;
+        }
     }
 }

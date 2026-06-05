@@ -39,10 +39,12 @@ static native_read_xtf_fn g_native_read_xtf_class_schema = NULL;
 static native_read_xtf_fn g_native_read_xtf_structures = NULL;
 static native_read_xtf_fn g_native_read_xtf_association = NULL;
 static native_read_xtf_fn g_native_read_xtf_association_schema = NULL;
+static native_read_xtf_fn g_native_import_xtf = NULL;
 static native_free_fn g_native_free = NULL;
 
 static bool g_initialized = false;
 static char g_error_buf[512];
+static duckdb_connection g_connection = NULL;
 
 // ---------------------------------------------------------------------------
 // Library path resolution
@@ -109,6 +111,7 @@ static bool init_native_library(void) {
     g_native_read_xtf_structures = (native_read_xtf_fn)dlsym(g_native_handle, "ili_native_read_xtf_structures");
     g_native_read_xtf_association = (native_read_xtf_fn)dlsym(g_native_handle, "ili_native_read_xtf_association");
     g_native_read_xtf_association_schema = (native_read_xtf_fn)dlsym(g_native_handle, "ili_native_read_xtf_association_schema");
+    g_native_import_xtf = (native_read_xtf_fn)dlsym(g_native_handle, "ili_native_import_xtf");
     g_native_free = (native_free_fn)dlsym(g_native_handle, "ili_free_string");
 
     if (!g_native_version || !g_native_validate || !g_native_validate_tsv || !g_native_model_info
@@ -1205,9 +1208,109 @@ static void xtf_assoc_init(duckdb_init_info info) {
 }
 
 // ---------------------------------------------------------------------------
+// ili_import_xtf table function (returns generated SQL script)
+// ---------------------------------------------------------------------------
+
+typedef struct {
+    char *sql_script;
+    char *cursor;       // current position in sql_script
+} import_init_data;
+
+static void import_init_destroy(void *d) {
+    import_init_data *id = (import_init_data *)d;
+    if (id) { free(id->sql_script); free(id); }
+}
+
+static void import_bind(duckdb_bind_info info) {
+    // Store bind data in the standard model info pattern
+    duckdb_logical_type vt = duckdb_create_logical_type(DUCKDB_TYPE_VARCHAR);
+    duckdb_bind_add_result_column(info, "sql_statement", vt);
+    duckdb_destroy_logical_type(&vt);
+
+    duckdb_value dv = duckdb_bind_get_parameter(info, 0);
+    char *input = dv ? duckdb_get_varchar(dv) : NULL;
+
+    dv = duckdb_bind_get_named_parameter(info, "schema");
+    char *schema_name = dv ? duckdb_get_varchar(dv) : NULL;
+
+    dv = duckdb_bind_get_named_parameter(info, "modeldir");
+    char *modeldir = dv ? duckdb_get_varchar(dv) : NULL;
+
+    dv = duckdb_bind_get_named_parameter(info, "mapping");
+    char *mapping = dv ? duckdb_get_varchar(dv) : NULL;
+    if (dv) duckdb_destroy_value(&dv);
+
+    mi_bind_data *bd = malloc(sizeof(mi_bind_data));
+    memset(bd, 0, sizeof(*bd));
+    bd->cmd = strdup("import");
+    bd->modeldir = modeldir ? strdup(modeldir) : NULL;
+    // abuse model to hold input, class to hold schema
+    bd->model = input ? strdup(input) : NULL;
+    bd->class = schema_name ? strdup(schema_name) : NULL;
+    duckdb_bind_set_bind_data(info, bd, mi_bind_destroy);
+}
+
+static void import_init_func(duckdb_init_info info) {
+    if (!g_initialized && !init_native_library()) {
+        duckdb_init_set_error(info, g_error_buf); return;
+    }
+    mi_bind_data *bd = (mi_bind_data *)duckdb_init_get_bind_data(info);
+    if (!bd || !bd->model || !bd->class || !bd->modeldir) {
+        duckdb_init_set_error(info, "Missing input, schema, or modeldir"); return;
+    }
+
+    char req[8192];
+    snprintf(req, sizeof(req),
+        "{\"input\":\"%s\",\"schema\":\"%s\",\"modeldir\":\"%s\",\"mapping\":\"relational\"}",
+        bd->model, bd->class, bd->modeldir);
+
+    char *sql_result = native_call_with_input_str(g_native_import_xtf, req);
+    if (!sql_result) {
+        duckdb_init_set_error(info, "Native import call failed"); return;
+    }
+
+    import_init_data *id = malloc(sizeof(import_init_data));
+    id->sql_script = sql_result;
+    id->cursor = id->sql_script;
+    duckdb_init_set_init_data(info, id, import_init_destroy);
+}
+
+static void import_function(duckdb_function_info tfinfo, duckdb_data_chunk output) {
+    import_init_data *id = (import_init_data *)duckdb_function_get_init_data(tfinfo);
+    if (!id || !id->sql_script || !id->cursor || !*id->cursor) {
+        duckdb_data_chunk_set_size(output, 0); return;
+    }
+
+    duckdb_vector sql_vec = duckdb_data_chunk_get_vector(output, 0);
+    duckdb_vector_ensure_validity_writable(sql_vec);
+    uint64_t *validity = duckdb_vector_get_validity(sql_vec);
+
+    char *data = id->cursor;
+    idx_t row_count = 0;
+    while (*data && row_count < 1024) {
+        char *nl = strchr(data, '\n');
+        idx_t len = nl ? (idx_t)(nl - data) : strlen(data);
+        if (len > 0) {
+            duckdb_validity_set_row_valid(validity, row_count);
+            duckdb_vector_assign_string_element_len(sql_vec, row_count, data, len);
+            row_count++;
+        }
+        if (nl) data = nl + 1;
+        else {
+            data += len;
+            break;
+        }
+    }
+    id->cursor = data;
+    duckdb_data_chunk_set_size(output, row_count);
+}
+
+// ---------------------------------------------------------------------------
 // Extension entry point
 // ---------------------------------------------------------------------------
 DUCKDB_EXTENSION_ENTRYPOINT(duckdb_connection connection, duckdb_extension_info info, struct duckdb_extension_access *access) {
+    g_connection = connection;
+
     register_functions(connection);
     register_table_functions(connection);
     register_model_table_functions(connection);
@@ -1271,6 +1374,23 @@ DUCKDB_EXTENSION_ENTRYPOINT(duckdb_connection connection, duckdb_extension_info 
         duckdb_table_function_set_bind(fn, xtf_assoc_bind);
         duckdb_table_function_set_init(fn, xtf_assoc_init);
         duckdb_table_function_set_function(fn, mi_function);
+        duckdb_register_table_function(connection, fn);
+        duckdb_destroy_table_function(&fn);
+        duckdb_destroy_logical_type(&vt);
+    }
+
+    // ili_import_xtf
+    {
+        duckdb_table_function fn = duckdb_create_table_function();
+        duckdb_table_function_set_name(fn, "ili_import_xtf");
+        duckdb_logical_type vt = duckdb_create_logical_type(DUCKDB_TYPE_VARCHAR);
+        duckdb_table_function_add_parameter(fn, vt);
+        duckdb_table_function_add_named_parameter(fn, "schema", vt);
+        duckdb_table_function_add_named_parameter(fn, "modeldir", vt);
+        duckdb_table_function_add_named_parameter(fn, "mapping", vt);
+        duckdb_table_function_set_bind(fn, import_bind);
+        duckdb_table_function_set_init(fn, import_init_func);
+        duckdb_table_function_set_function(fn, import_function);
         duckdb_register_table_function(connection, fn);
         duckdb_destroy_table_function(&fn);
         duckdb_destroy_logical_type(&vt);
