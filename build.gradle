@@ -1,0 +1,16 @@
+plugins {
+    id 'java'
+}
+
+allprojects {
+    group = 'ch.so.agi'
+    version = '0.1.0-dev'
+
+    tasks.withType(JavaCompile).configureEach {
+        options.compilerArgs += ['--add-modules', 'org.graalvm.nativeimage,org.graalvm.word']
+    }
+
+    tasks.withType(Test).configureEach {
+        useJUnitPlatform()
+    }
+}
