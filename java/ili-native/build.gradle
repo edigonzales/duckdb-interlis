@@ -10,8 +10,6 @@ dependencies {
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
-def nativeImageDir = layout.projectDirectory.dir('build/native')
-
 tasks.register('nativeSharedLibrary', Exec) {
     group = 'native'
     description = 'Build GraalVM native shared library'
@@ -23,16 +21,17 @@ tasks.register('nativeSharedLibrary', Exec) {
     def nativeImage = "${javaHome}/bin/native-image"
     def classpath = sourceSets.main.runtimeClasspath.asPath
     def mainClass = 'ch.so.agi.duckdbili.nativeapi.NativeEntryPoints'
+    def outputDir = layout.buildDirectory.dir('native').get().asFile
+    def outputFile = new File(outputDir, 'libduckdb_ili_native')
 
     commandLine(
         nativeImage,
         '--shared',
-        '-H:Name=duckdb_ili_native',
-        '-H:Path=' + nativeImageDir.asFile.absolutePath,
+        '-o', outputFile.absolutePath,
         '-cp', classpath,
         mainClass
     )
 
     inputs.files(sourceSets.main.output)
-    outputs.dir(nativeImageDir)
+    outputs.file(outputFile)
 }

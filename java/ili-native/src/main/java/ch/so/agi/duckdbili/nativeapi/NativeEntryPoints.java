@@ -3,43 +3,32 @@ package ch.so.agi.duckdbili.nativeapi;
 import org.graalvm.nativeimage.IsolateThread;
 import org.graalvm.nativeimage.c.function.CEntryPoint;
 import org.graalvm.nativeimage.c.type.CCharPointer;
+import org.graalvm.nativeimage.c.type.CCharPointerPointer;
 import org.graalvm.nativeimage.c.type.CTypeConversion;
-import org.graalvm.word.Pointer;
 import org.graalvm.nativeimage.UnmanagedMemory;
+import org.graalvm.word.WordFactory;
 
 import ch.so.agi.duckdbili.core.CoreVersion;
 
-/**
- * C ABI entry points for the DuckDB ILI native library.
- * <p>
- * All functions follow the convention:
- * <pre>{@code
- *   int ili_<name>(graal_isolatethread_t* thread, ili_params* params, ili_result* out);
- * }</pre>
- * <p>
- * The {@code code} field indicates: 0 = success, non-zero = error.
- * Strings returned in payload/error_message are owned by the native library
- * and must be freed via {@code ili_free_result()}.
- */
 public class NativeEntryPoints {
+
+    public static void main(String[] args) {
+        System.out.println("ILI Native Library - use as shared library only");
+    }
 
     @CEntryPoint(name = "ili_native_version")
     public static int nativeVersion(
             IsolateThread thread,
-            NativeResult result) {
+            CCharPointerPointer outPayload) {
 
-        String payload = "{"
+        String json = "{"
                 + "\"native_version\": \"" + NativeVersion.VERSION + "\","
                 + "\"core_version\": \"" + CoreVersion.VERSION + "\","
                 + "\"graalvm_version\": \"" + NativeVersion.GRAALVM_VERSION + "\","
                 + "\"platform\": \"" + NativeVersion.PLATFORM + "\","
                 + "\"native_lib\": \"" + NativeVersion.NATIVE_LIB + "\""
                 + "}";
-
-        CCharPointer cPayload = CTypeConversion.toCString(payload).get();
-        result.setCode(0);
-        result.setPayload(cPayload);
-        result.setErrorMessage(org.graalvm.word.WordFactory.nullPointer());
+        outPayload.write(allocCString(json));
         return 0;
     }
 
@@ -47,29 +36,35 @@ public class NativeEntryPoints {
     public static int nativeEcho(
             IsolateThread thread,
             CCharPointer requestJson,
-            NativeResult result) {
+            CCharPointerPointer outPayload) {
 
         String request = CTypeConversion.toJavaString(requestJson);
-        String payload = "{\"echo\": \"" + escapeJson(request) + "\"}";
-
-        CCharPointer cPayload = CTypeConversion.toCString(payload).get();
-        result.setCode(0);
-        result.setPayload(cPayload);
-        result.setErrorMessage(org.graalvm.word.WordFactory.nullPointer());
+        String json = "{\"echo\": \"" + escapeJson(request) + "\"}";
+        outPayload.write(allocCString(json));
         return 0;
     }
 
-    @CEntryPoint(name = "ili_free_result")
-    public static void freeResult(
+    @CEntryPoint(name = "ili_free_string")
+    public static void freeString(
             IsolateThread thread,
-            NativeResult result) {
+            CCharPointer str) {
 
-        if (result.getPayload().isNonNull()) {
-            UnmanagedMemory.free(result.getPayload());
+        if (str.isNonNull()) {
+            UnmanagedMemory.free(str);
         }
-        if (result.getErrorMessage().isNonNull()) {
-            UnmanagedMemory.free(result.getErrorMessage());
+    }
+
+    private static CCharPointer allocCString(String s) {
+        if (s == null) {
+            return WordFactory.nullPointer();
         }
+        byte[] bytes = s.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        CCharPointer ptr = UnmanagedMemory.malloc(bytes.length + 1);
+        for (int i = 0; i < bytes.length; i++) {
+            ptr.write(i, bytes[i]);
+        }
+        ptr.write(bytes.length, (byte) 0);
+        return ptr;
     }
 
     private static String escapeJson(String s) {
