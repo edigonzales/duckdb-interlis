@@ -27,6 +27,7 @@ tasks.register('nativeSharedLibrary', Exec) {
     commandLine(
         nativeImage,
         '--shared',
+        '--enable-url-protocols=https,http',
         '-o', outputFile.absolutePath,
         '-cp', classpath,
         mainClass

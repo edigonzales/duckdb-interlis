@@ -265,14 +265,18 @@ static void ili_validate_summary_json_fn(duckdb_function_info info, duckdb_data_
             return;
         }
 
-        // Extract C strings from DuckDB VARCHAR
-        const char *path_str = duckdb_string_t_data(&path_data[row]);
-        const char *modeldir_str = duckdb_string_t_data(&modeldir_data[row]);
+        // Extract C strings from DuckDB VARCHAR (may not be null-terminated)
+        duckdb_string_t path_str = path_data[row];
+        duckdb_string_t modeldir_str = modeldir_data[row];
+        idx_t path_len = duckdb_string_t_length(path_str);
+        idx_t modeldir_len = duckdb_string_t_length(modeldir_str);
 
-        // Build JSON request
-        char request[4096];
+        // Build JSON request with length-limited strings
+        char request[8192];
         snprintf(request, sizeof(request),
-            "{\"input\":\"%s\",\"modeldir\":\"%s\"}", path_str, modeldir_str);
+            "{\"input\":\"%.*s\",\"modeldir\":\"%.*s\"}",
+            (int)path_len, duckdb_string_t_data(&path_str),
+            (int)modeldir_len, duckdb_string_t_data(&modeldir_str));
 
         char *result = native_call_with_input_str(g_native_validate, request);
         if (result) {
