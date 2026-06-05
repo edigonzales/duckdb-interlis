@@ -11,6 +11,7 @@ import org.graalvm.nativeimage.UnmanagedMemory;
 import org.graalvm.word.WordFactory;
 
 import ch.so.agi.duckdbili.core.CoreVersion;
+import ch.so.agi.duckdbili.core.model.IliModelService;
 import ch.so.agi.duckdbili.core.validation.IliValidatorService;
 import ch.so.agi.duckdbili.core.validation.ValidationMessage;
 import ch.so.agi.duckdbili.core.validation.ValidationResult;
@@ -18,6 +19,7 @@ import ch.so.agi.duckdbili.core.validation.ValidationResult;
 public class NativeEntryPoints {
 
     private static final IliValidatorService VALIDATOR = new IliValidatorService();
+    private static final IliModelService MODEL_SERVICE = new IliModelService();
 
     public static void main(String[] args) {
         System.out.println("ILI Native Library - use as shared library only");
@@ -240,5 +242,44 @@ public class NativeEntryPoints {
             }
         }
         return sb.toString();
+    }
+
+    // -----------------------------------------------------------------------
+    // Model analysis entry point
+    // -----------------------------------------------------------------------
+
+    @CEntryPoint(name = "ili_native_model_info")
+    public static int nativeModelInfo(
+            IsolateThread thread,
+            CCharPointer requestJson,
+            CCharPointerPointer outPayload) {
+
+        String request = CTypeConversion.toJavaString(requestJson);
+        String cmd = extractJsonField(request, "cmd");      // models, topics, classes, attributes, enumerations
+        String modelDir = extractJsonField(request, "modeldir");
+        String modelName = extractJsonField(request, "model");
+        String className = extractJsonField(request, "class");
+
+        if (modelDir == null || modelDir.isBlank()) {
+            outPayload.write(allocCString("ERROR: Missing 'modeldir' field"));
+            return 1;
+        }
+
+        String result;
+        try {
+            result = switch (cmd != null ? cmd : "") {
+                case "models" -> MODEL_SERVICE.getModels(modelDir);
+                case "topics" -> MODEL_SERVICE.getTopics(modelDir, modelName);
+                case "classes" -> MODEL_SERVICE.getClasses(modelDir, modelName);
+                case "attributes" -> MODEL_SERVICE.getAttributes(modelDir, className);
+                case "enumerations" -> MODEL_SERVICE.getEnumerations(modelDir, modelName);
+                default -> "ERROR: Unknown command: " + cmd;
+            };
+        } catch (Exception e) {
+            result = "ERROR: " + e.getMessage();
+        }
+
+        outPayload.write(allocCString(result));
+        return 0;
     }
 }
