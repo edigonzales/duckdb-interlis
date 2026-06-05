@@ -3,6 +3,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <stdbool.h>
 #include <unistd.h>
 #include <dlfcn.h>
 
@@ -23,10 +24,12 @@ static graal_tear_down_isolate_fn_t g_tear_down = NULL;
 // Native API functions
 typedef int (*native_version_fn)(graal_isolatethread_t*, char**);
 typedef int (*native_validate_fn)(graal_isolatethread_t*, char*, char**);
+typedef int (*native_validate_tsv_fn)(graal_isolatethread_t*, char*, char**);
 typedef void (*native_free_fn)(graal_isolatethread_t*, char*);
 
 static native_version_fn g_native_version = NULL;
 static native_validate_fn g_native_validate = NULL;
+static native_validate_tsv_fn g_native_validate_tsv = NULL;
 static native_free_fn g_native_free = NULL;
 
 static bool g_initialized = false;
@@ -89,9 +92,10 @@ static bool init_native_library(void) {
     // Resolve API functions
     g_native_version = (native_version_fn)dlsym(g_native_handle, "ili_native_version");
     g_native_validate = (native_validate_fn)dlsym(g_native_handle, "ili_native_validate");
+    g_native_validate_tsv = (native_validate_tsv_fn)dlsym(g_native_handle, "ili_native_validate_tsv");
     g_native_free = (native_free_fn)dlsym(g_native_handle, "ili_free_string");
 
-    if (!g_native_version || !g_native_validate || !g_native_free) {
+    if (!g_native_version || !g_native_validate || !g_native_validate_tsv || !g_native_free) {
         snprintf(g_error_buf, sizeof(g_error_buf),
             "Failed to resolve ILI API symbols in '%s'", lib_path);
         dlclose(g_native_handle);
@@ -333,9 +337,290 @@ static void register_functions(duckdb_connection connection) {
 }
 
 // ---------------------------------------------------------------------------
+// Table function: ili_validate
+// ---------------------------------------------------------------------------
+
+#define ILI_VALIDATE_COLS 13
+
+typedef struct {
+    char *input;
+    char *modeldir;
+} ili_validate_bind_data;
+
+typedef struct {
+    char *severity;
+    char *code;
+    char *message;
+    char *filename;
+    int line;
+    int column;
+    char *xtf_tid;
+    char *xtf_bid;
+    char *model;
+    char *topic;
+    char *class_name;
+    char *attribute_name;
+    char *raw;
+} ili_validate_row;
+
+typedef struct {
+    ili_validate_row *rows;
+    idx_t row_count;
+    idx_t current_row;
+    int error_count;
+    int warning_count;
+    int info_count;
+} ili_validate_init_data;
+
+static void bind_data_destroy(void *data) {
+    ili_validate_bind_data *bd = (ili_validate_bind_data *)data;
+    if (bd) {
+        free(bd->input);
+        free(bd->modeldir);
+        free(bd);
+    }
+}
+
+static void init_data_destroy(void *data) {
+    ili_validate_init_data *id = (ili_validate_init_data *)data;
+    if (id) {
+        for (idx_t i = 0; i < id->row_count; i++) {
+            free(id->rows[i].severity);
+            free(id->rows[i].code);
+            free(id->rows[i].message);
+            free(id->rows[i].filename);
+            free(id->rows[i].xtf_tid);
+            free(id->rows[i].xtf_bid);
+            free(id->rows[i].model);
+            free(id->rows[i].topic);
+            free(id->rows[i].class_name);
+            free(id->rows[i].attribute_name);
+            free(id->rows[i].raw);
+        }
+        free(id->rows);
+        free(id);
+    }
+}
+
+static char *parse_tsv_field(const char **p) {
+    if (!*p || !**p) return NULL;
+    const char *start = *p;
+    size_t len = 0;
+    while (**p && **p != '\t' && **p != '\n') { (*p)++; len++; }
+    char *result = malloc(len + 1);
+    if (!result) return NULL;
+    const char *s = start;
+    char *d = result;
+    while (s < *p) {
+        if (*s == '\\' && (s + 1) < *p) {
+            switch (s[1]) {
+                case 't': *d++ = '\t'; s += 2; break;
+                case 'n': *d++ = '\n'; s += 2; break;
+                case 'r': *d++ = '\r'; s += 2; break;
+                case '\\': *d++ = '\\'; s += 2; break;
+                default: *d++ = *s++; break;
+            }
+        } else {
+            *d++ = *s++;
+        }
+    }
+    *d = '\0';
+    if (**p == '\t') (*p)++;
+    return result;
+}
+
+static int parse_tsv_int(const char **p) {
+    int val = 0;
+    if (**p == '\t' || **p == '\n') { (*p)++; return 0; }
+    bool neg = false;
+    if (**p == '-') { neg = true; (*p)++; }
+    while (**p >= '0' && **p <= '9') { val = val * 10 + (**p - '0'); (*p)++; }
+    if (**p == '\t') (*p)++;
+    if (**p == '\n') (*p)++;
+    return neg ? -val : val;
+}
+
+static void ili_validate_bind(duckdb_bind_info info) {
+    duckdb_logical_type varchar_type = duckdb_create_logical_type(DUCKDB_TYPE_VARCHAR);
+    duckdb_logical_type int_type = duckdb_create_logical_type(DUCKDB_TYPE_INTEGER);
+
+    duckdb_bind_add_result_column(info, "severity", varchar_type);
+    duckdb_bind_add_result_column(info, "code", varchar_type);
+    duckdb_bind_add_result_column(info, "message", varchar_type);
+    duckdb_bind_add_result_column(info, "filename", varchar_type);
+    duckdb_bind_add_result_column(info, "line", int_type);
+    duckdb_bind_add_result_column(info, "column", int_type);
+    duckdb_bind_add_result_column(info, "xtf_tid", varchar_type);
+    duckdb_bind_add_result_column(info, "xtf_bid", varchar_type);
+    duckdb_bind_add_result_column(info, "model", varchar_type);
+    duckdb_bind_add_result_column(info, "topic", varchar_type);
+    duckdb_bind_add_result_column(info, "class_name", varchar_type);
+    duckdb_bind_add_result_column(info, "attribute_name", varchar_type);
+    duckdb_bind_add_result_column(info, "raw", varchar_type);
+
+    // Extract parameter values
+    duckdb_value input_val = duckdb_bind_get_parameter(info, 0);
+    char *input_str = input_val ? duckdb_get_varchar(input_val) : NULL;
+
+    duckdb_value modeldir_val = duckdb_bind_get_named_parameter(info, "modeldir");
+    char *modeldir_str = modeldir_val ? duckdb_get_varchar(modeldir_val) : NULL;
+
+    // Store in bind data
+    ili_validate_bind_data *bd = malloc(sizeof(ili_validate_bind_data));
+    bd->input = input_str ? strdup(input_str) : NULL;
+    bd->modeldir = modeldir_str ? strdup(modeldir_str) : NULL;
+    duckdb_bind_set_bind_data(info, bd, bind_data_destroy);
+
+    if (input_val) duckdb_destroy_value(&input_val);
+    if (modeldir_val) duckdb_destroy_value(&modeldir_val);
+}
+
+static void ili_validate_init(duckdb_init_info info) {
+    if (!g_initialized && !init_native_library()) {
+        duckdb_init_set_error(info, g_error_buf);
+        return;
+    }
+
+    ili_validate_bind_data *bd = (ili_validate_bind_data *)duckdb_init_get_bind_data(info);
+    if (!bd || !bd->input || !bd->modeldir) {
+        duckdb_init_set_error(info, "Missing input path or modeldir");
+        return;
+    }
+
+    // Build JSON request and call native validation
+    char request[8192];
+    snprintf(request, sizeof(request),
+        "{\"input\":\"%s\",\"modeldir\":\"%s\"}", bd->input, bd->modeldir);
+
+    fprintf(stderr, "Calling validate_tsv...\n");
+
+    char *tsv_result = native_call_with_input_str(g_native_validate_tsv, request);
+    if (!tsv_result) {
+        duckdb_init_set_error(info, "Validation call failed");
+        return;
+    }
+
+    // Parse TSV result
+    ili_validate_init_data *id = malloc(sizeof(ili_validate_init_data));
+    memset(id, 0, sizeof(*id));
+
+    // Parse header line: errorCount\twarningCount\tinfoCount\n
+    const char *p = tsv_result;
+    id->error_count = parse_tsv_int(&p);
+    id->warning_count = parse_tsv_int(&p);
+    id->info_count = parse_tsv_int(&p);
+    if (*p == '\n') p++;
+
+    // Count rows first
+    const char *tmp = p;
+    id->row_count = 0;
+    while (*tmp) {
+        id->row_count++;
+        while (*tmp && *tmp != '\n') tmp++;
+        if (*tmp == '\n') tmp++;
+    }
+
+    // Allocate and parse rows
+    id->rows = malloc(id->row_count * sizeof(ili_validate_row));
+    memset(id->rows, 0, id->row_count * sizeof(ili_validate_row));
+
+    for (idx_t i = 0; i < id->row_count; i++) {
+        ili_validate_row *row = &id->rows[i];
+        row->severity = parse_tsv_field(&p);        // 0
+        row->code = parse_tsv_field(&p);             // 1
+        row->message = parse_tsv_field(&p);          // 2
+        row->filename = parse_tsv_field(&p);         // 3
+        row->line = parse_tsv_int(&p);              // 4
+        row->column = parse_tsv_int(&p);            // 5
+        row->xtf_tid = parse_tsv_field(&p);          // 6
+        row->xtf_bid = parse_tsv_field(&p);          // 7
+        row->model = parse_tsv_field(&p);            // 8
+        row->topic = parse_tsv_field(&p);            // 9
+        row->class_name = parse_tsv_field(&p);       // 10
+        row->attribute_name = parse_tsv_field(&p);   // 11
+        row->raw = parse_tsv_field(&p);              // 12
+        if (*p == '\n') p++;
+    }
+
+    native_free_str(tsv_result);
+    duckdb_init_set_init_data(info, id, init_data_destroy);
+}
+
+static void ili_validate_function(duckdb_function_info tfinfo, duckdb_data_chunk output) {
+    ili_validate_init_data *id = (ili_validate_init_data *)duckdb_function_get_init_data(tfinfo);
+    if (!id || id->row_count == 0 || id->current_row >= id->row_count) {
+        duckdb_data_chunk_set_size(output, 0);
+        return;
+    }
+
+    // Use a fixed chunk size of 1024 (standard DuckDB vector size)
+    idx_t count = id->row_count - id->current_row;
+    if (count > 1024) count = 1024;
+
+    if (count == 0) {
+        duckdb_data_chunk_set_size(output, 0);
+        return;
+    }
+
+    // Get output vectors
+    duckdb_vector severity_vec = duckdb_data_chunk_get_vector(output, 0);
+    duckdb_vector code_vec = duckdb_data_chunk_get_vector(output, 1);
+    duckdb_vector message_vec = duckdb_data_chunk_get_vector(output, 2);
+    duckdb_vector filename_vec = duckdb_data_chunk_get_vector(output, 3);
+    duckdb_vector line_vec = duckdb_data_chunk_get_vector(output, 4);
+    duckdb_vector column_vec = duckdb_data_chunk_get_vector(output, 5);
+    duckdb_vector xtf_tid_vec = duckdb_data_chunk_get_vector(output, 6);
+    duckdb_vector xtf_bid_vec = duckdb_data_chunk_get_vector(output, 7);
+    duckdb_vector model_vec = duckdb_data_chunk_get_vector(output, 8);
+    duckdb_vector topic_vec = duckdb_data_chunk_get_vector(output, 9);
+    duckdb_vector class_name_vec = duckdb_data_chunk_get_vector(output, 10);
+    duckdb_vector attribute_name_vec = duckdb_data_chunk_get_vector(output, 11);
+    duckdb_vector raw_vec = duckdb_data_chunk_get_vector(output, 12);
+
+    for (idx_t i = 0; i < count; i++) {
+        ili_validate_row *row = &id->rows[id->current_row + i];
+
+        duckdb_vector_assign_string_element(severity_vec, i, row->severity ? row->severity : "");
+        duckdb_vector_assign_string_element(code_vec, i, row->code ? row->code : "");
+        duckdb_vector_assign_string_element(message_vec, i, row->message ? row->message : "");
+        duckdb_vector_assign_string_element(filename_vec, i, row->filename ? row->filename : "");
+        ((int32_t *)duckdb_vector_get_data(line_vec))[i] = row->line;
+        ((int32_t *)duckdb_vector_get_data(column_vec))[i] = row->column;
+        duckdb_vector_assign_string_element(xtf_tid_vec, i, row->xtf_tid ? row->xtf_tid : "");
+        duckdb_vector_assign_string_element(xtf_bid_vec, i, row->xtf_bid ? row->xtf_bid : "");
+        duckdb_vector_assign_string_element(model_vec, i, row->model ? row->model : "");
+        duckdb_vector_assign_string_element(topic_vec, i, row->topic ? row->topic : "");
+        duckdb_vector_assign_string_element(class_name_vec, i, row->class_name ? row->class_name : "");
+        duckdb_vector_assign_string_element(attribute_name_vec, i, row->attribute_name ? row->attribute_name : "");
+        duckdb_vector_assign_string_element(raw_vec, i, row->raw ? row->raw : "");
+    }
+
+    duckdb_data_chunk_set_size(output, count);
+    id->current_row += count;
+}
+
+static void register_table_functions(duckdb_connection connection) {
+    duckdb_table_function fn = duckdb_create_table_function();
+    duckdb_table_function_set_name(fn, "ili_validate");
+
+    duckdb_logical_type varchar_type = duckdb_create_logical_type(DUCKDB_TYPE_VARCHAR);
+    duckdb_table_function_add_parameter(fn, varchar_type);
+    duckdb_table_function_add_named_parameter(fn, "modeldir", varchar_type);
+
+    duckdb_table_function_set_bind(fn, ili_validate_bind);
+    duckdb_table_function_set_init(fn, ili_validate_init);
+    duckdb_table_function_set_function(fn, ili_validate_function);
+
+    duckdb_register_table_function(connection, fn);
+    duckdb_destroy_table_function(&fn);
+    duckdb_destroy_logical_type(&varchar_type);
+}
+
+// ---------------------------------------------------------------------------
 // Extension entry point
 // ---------------------------------------------------------------------------
 DUCKDB_EXTENSION_ENTRYPOINT(duckdb_connection connection, duckdb_extension_info info, struct duckdb_extension_access *access) {
     register_functions(connection);
+    register_table_functions(connection);
     return true;
 }

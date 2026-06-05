@@ -115,6 +115,63 @@ public class NativeEntryPoints {
         return 0;
     }
 
+    @CEntryPoint(name = "ili_native_validate_tsv")
+    public static int nativeValidateTsv(
+            IsolateThread thread,
+            CCharPointer requestJson,
+            CCharPointerPointer outPayload) {
+
+        String request = CTypeConversion.toJavaString(requestJson);
+        String input = extractJsonField(request, "input");
+        String modelDir = extractJsonField(request, "modeldir");
+        int maxMessages = extractJsonInt(request, "maxMessages", -1);
+
+        if (input == null || input.isBlank()) {
+            outPayload.write(allocCString("-1\t0\t0\nMissing 'input' field"));
+            return 1;
+        }
+        if (modelDir == null || modelDir.isBlank()) {
+            outPayload.write(allocCString("-1\t0\t0\nMissing 'modeldir' field"));
+            return 1;
+        }
+
+        IliValidatorService service = new IliValidatorService();
+        ValidationResult result = service.validate(Path.of(input), modelDir, maxMessages);
+
+        StringBuilder tsv = new StringBuilder();
+        // Header line: errorCount, warningCount, infoCount
+        tsv.append(result.getErrorCount()).append('\t');
+        tsv.append(result.getWarningCount()).append('\t');
+        tsv.append(result.getInfoCount()).append('\n');
+
+        for (ValidationMessage msg : result.getMessages()) {
+            tsv.append(escapeTsv(msg.getSeverity())).append('\t');
+            tsv.append(escapeTsv("")).append('\t');  // code
+            tsv.append(escapeTsv(msg.getMessage())).append('\t');
+            tsv.append(escapeTsv(msg.getFileName())).append('\t');
+            tsv.append(msg.getLine() == null ? "" : String.valueOf(msg.getLine())).append('\t');
+            tsv.append("").append('\t');  // column
+            tsv.append(escapeTsv(msg.getXtfTid())).append('\t');
+            tsv.append(escapeTsv(null)).append('\t');  // xtfBid
+            tsv.append(escapeTsv(msg.getModel())).append('\t');
+            tsv.append(escapeTsv(msg.getTopic())).append('\t');
+            tsv.append(escapeTsv(msg.getClassName())).append('\t');
+            tsv.append(escapeTsv(msg.getAttributeName())).append('\t');
+            tsv.append(escapeTsv(msg.getRaw())).append('\n');
+        }
+
+        outPayload.write(allocCString(tsv.toString()));
+        return 0;
+    }
+
+    private static String escapeTsv(String s) {
+        if (s == null) return "";
+        return s.replace("\\", "\\\\")
+                .replace("\t", "\\t")
+                .replace("\n", "\\n")
+                .replace("\r", "\\r");
+    }
+
     private static String quoteOrNull(String s) {
         if (s == null) return "null";
         return "\"" + escapeJson(s) + "\"";
