@@ -15,6 +15,7 @@ import ch.so.agi.duckdbili.core.model.IliModelService;
 import ch.so.agi.duckdbili.core.validation.IliValidatorService;
 import ch.so.agi.duckdbili.core.validation.ValidationMessage;
 import ch.so.agi.duckdbili.core.validation.ValidationResult;
+import ch.so.agi.duckdbili.core.xtf.XtfObjectReader;
 
 public class NativeEntryPoints {
 
@@ -281,5 +282,40 @@ public class NativeEntryPoints {
 
         outPayload.write(allocCString(result));
         return 0;
+    }
+
+    // -----------------------------------------------------------------------
+    // XTF reading entry point
+    // -----------------------------------------------------------------------
+
+    private static final XtfObjectReader XTF_READER = new XtfObjectReader();
+
+    @CEntryPoint(name = "ili_native_read_xtf")
+    public static int nativeReadXtf(
+            IsolateThread thread,
+            CCharPointer requestJson,
+            CCharPointerPointer outPayload) {
+
+        String request = CTypeConversion.toJavaString(requestJson);
+        String input = extractJsonField(request, "input");
+        String modelDir = extractJsonField(request, "modeldir");
+
+        if (input == null || input.isBlank()) {
+            outPayload.write(allocCString("ERROR: Missing 'input' field"));
+            return 1;
+        }
+        if (modelDir == null || modelDir.isBlank()) {
+            outPayload.write(allocCString("ERROR: Missing 'modeldir' field"));
+            return 1;
+        }
+
+        try {
+            String tsv = XTF_READER.readObjects(input, modelDir);
+            outPayload.write(allocCString(tsv));
+            return 0;
+        } catch (Exception e) {
+            outPayload.write(allocCString("ERROR: " + e.getMessage()));
+            return 1;
+        }
     }
 }

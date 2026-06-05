@@ -26,12 +26,14 @@ typedef int (*native_version_fn)(graal_isolatethread_t*, char**);
 typedef int (*native_validate_fn)(graal_isolatethread_t*, char*, char**);
 typedef int (*native_validate_tsv_fn)(graal_isolatethread_t*, char*, char**);
 typedef int (*native_model_info_fn)(graal_isolatethread_t*, char*, char**);
+typedef int (*native_read_xtf_fn)(graal_isolatethread_t*, char*, char**);
 typedef void (*native_free_fn)(graal_isolatethread_t*, char*);
 
 static native_version_fn g_native_version = NULL;
 static native_validate_fn g_native_validate = NULL;
 static native_validate_tsv_fn g_native_validate_tsv = NULL;
 static native_model_info_fn g_native_model_info = NULL;
+static native_read_xtf_fn g_native_read_xtf = NULL;
 static native_free_fn g_native_free = NULL;
 
 static bool g_initialized = false;
@@ -96,9 +98,10 @@ static bool init_native_library(void) {
     g_native_validate = (native_validate_fn)dlsym(g_native_handle, "ili_native_validate");
     g_native_validate_tsv = (native_validate_tsv_fn)dlsym(g_native_handle, "ili_native_validate_tsv");
     g_native_model_info = (native_model_info_fn)dlsym(g_native_handle, "ili_native_model_info");
+    g_native_read_xtf = (native_read_xtf_fn)dlsym(g_native_handle, "ili_native_read_xtf");
     g_native_free = (native_free_fn)dlsym(g_native_handle, "ili_free_string");
 
-    if (!g_native_version || !g_native_validate || !g_native_validate_tsv || !g_native_model_info || !g_native_free) {
+    if (!g_native_version || !g_native_validate || !g_native_validate_tsv || !g_native_model_info || !g_native_read_xtf || !g_native_free) {
         snprintf(g_error_buf, sizeof(g_error_buf),
             "Failed to resolve ILI API symbols in '%s'", lib_path);
         dlclose(g_native_handle);
@@ -790,11 +793,92 @@ static void register_model_table_functions(duckdb_connection conn) {
 }
 
 // ---------------------------------------------------------------------------
+// read_xtf_objects table function
+// ---------------------------------------------------------------------------
+
+static void xtf_objects_bind(duckdb_bind_info info) {
+    static const char *cols[] = {
+        "xtf_bid","xtf_topic","xtf_class","xtf_tid",
+        "operation","attributes_json","refs_json","geom_json","raw_event_json"
+    };
+    duckdb_logical_type vt = duckdb_create_logical_type(DUCKDB_TYPE_VARCHAR);
+    for (int i = 0; i < 9; i++)
+        duckdb_bind_add_result_column(info, cols[i], vt);
+    duckdb_destroy_logical_type(&vt);
+
+    // Get input path (positional) and modeldir (named)
+    duckdb_value dv = duckdb_bind_get_parameter(info, 0);
+    char *input = dv ? duckdb_get_varchar(dv) : NULL;
+
+    dv = duckdb_bind_get_named_parameter(info, "modeldir");
+    char *modeldir = dv ? duckdb_get_varchar(dv) : NULL;
+
+    mi_bind_data *bd = malloc(sizeof(mi_bind_data));
+    bd->cmd = strdup("xtf");
+    bd->modeldir = modeldir ? strdup(modeldir) : NULL;
+    bd->model = input ? strdup(input) : NULL; // hijack 'model' field for input path
+    bd->class = NULL;
+    duckdb_bind_set_bind_data(info, bd, mi_bind_destroy);
+    if (dv) duckdb_destroy_value(&dv);
+}
+
+static void xtf_objects_init(duckdb_init_info info) {
+    if (!g_initialized && !init_native_library()) {
+        duckdb_init_set_error(info, g_error_buf); return;
+    }
+    mi_bind_data *bd = (mi_bind_data *)duckdb_init_get_bind_data(info);
+    if (!bd || !bd->model || !bd->modeldir) {
+        duckdb_init_set_error(info, "Missing input path or modeldir"); return;
+    }
+
+    char req[8192];
+    snprintf(req, sizeof(req), "{\"input\":\"%s\",\"modeldir\":\"%s\"}",
+        bd->model, bd->modeldir);
+
+    char *result = native_call_with_input_str(g_native_read_xtf, req);
+    if (!result) { duckdb_init_set_error(info, "XTF read call failed"); return; }
+
+    mi_init_data *id = malloc(sizeof(mi_init_data));
+    memset(id, 0, sizeof(*id));
+
+    const char *p = result;
+    while (*p) { id->row_count++; while (*p && *p != '\n') p++; if (*p == '\n') p++; }
+    id->rows = malloc(id->row_count * sizeof(char*));
+    p = result;
+    for (idx_t i = 0; i < id->row_count; i++) {
+        const char *start = p; size_t len = 0;
+        while (*p && *p != '\n') { p++; len++; }
+        id->rows[i] = malloc(len + 1);
+        memcpy(id->rows[i], start, len);
+        id->rows[i][len] = '\0';
+        if (*p == '\n') p++;
+    }
+    native_free_str(result);
+    duckdb_init_set_init_data(info, id, mi_init_destroy);
+}
+
+// ---------------------------------------------------------------------------
 // Extension entry point
 // ---------------------------------------------------------------------------
 DUCKDB_EXTENSION_ENTRYPOINT(duckdb_connection connection, duckdb_extension_info info, struct duckdb_extension_access *access) {
     register_functions(connection);
     register_table_functions(connection);
     register_model_table_functions(connection);
+
+    // read_xtf_objects
+    {
+        duckdb_table_function fn = duckdb_create_table_function();
+        duckdb_table_function_set_name(fn, "read_xtf_objects");
+        duckdb_logical_type vt = duckdb_create_logical_type(DUCKDB_TYPE_VARCHAR);
+        duckdb_table_function_add_parameter(fn, vt);
+        duckdb_table_function_add_named_parameter(fn, "modeldir", vt);
+        duckdb_table_function_set_bind(fn, xtf_objects_bind);
+        duckdb_table_function_set_init(fn, xtf_objects_init);
+        duckdb_table_function_set_function(fn, mi_function);
+        duckdb_register_table_function(connection, fn);
+        duckdb_destroy_table_function(&fn);
+        duckdb_destroy_logical_type(&vt);
+    }
+
     return true;
 }
