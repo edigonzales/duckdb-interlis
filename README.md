@@ -47,37 +47,34 @@ scripts/smoke-test.sh
 
 ## Installation (Pre-built Binaries)
 
-Download the extension and native library from the [latest GitHub Release](https://github.com/SOAG/duckdb-interlis/releases). Pick the archive matching your platform:
+The extension ships as a single self-contained file — the GraalVM native library is embedded.
 
-| Platform | Download |
-|---|---|
-| Linux x86_64 | `interlis-linux-x86_64` |
-| Linux ARM64 | `interlis-linux-aarch64` |
-| macOS ARM64 | `interlis-osx-aarch64` |
-| Windows x86_64 | `interlis-windows-x86_64` |
+### From a Custom Repository
 
-Each archive contains:
-- `interlis.duckdb_extension` — the DuckDB extension
-- `libduckdb_ili_native.{so,dylib,dll}` — the GraalVM native shared library
-
-### Load the Extension
-
-```bash
-# Point DuckDB to the native library
-export DUCKDB_ILI_NATIVE_LIB=/path/to/libduckdb_ili_native.dylib
-
-# Start DuckDB with unsigned extension loading
-duckdb -unsigned -cmd "LOAD '/path/to/interlis.duckdb_extension'"
+```sql
+INSTALL interlis FROM 'https://duckdb-ext.sogeo.services';
+LOAD interlis;
 ```
 
-Or load from within DuckDB:
+### From GitHub Releases
+
+Download the `interlis.duckdb_extension` for your platform from the [latest GitHub Release](https://github.com/SOAG/duckdb-interlis/releases):
+
+| Platform | File |
+|---|---|
+| Linux x86_64 | `interlis-linux-x86_64/interlis.duckdb_extension` |
+| Linux ARM64 | `interlis-linux-aarch64/interlis.duckdb_extension` |
+| macOS ARM64 | `interlis-osx-aarch64/interlis.duckdb_extension` |
+| Windows x86_64 | `interlis-windows-x86_64/interlis.duckdb_extension` |
+
+Then load it:
 
 ```sql
 LOAD '/path/to/interlis.duckdb_extension';
-
-SELECT ili_extension_version();
 SELECT ili_native_version();
 ```
+
+The native library is extracted automatically to `~/.duckdb/extensions/` on first load.
 
 ## Project Structure
 

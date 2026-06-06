@@ -128,8 +128,6 @@ jobs:
 
       - name: Smoke tests
         shell: bash
-        env:
-          DUCKDB_ILI_NATIVE_LIB: ${{ github.workspace }}/duckdb-extension/build/native/current/${{ matrix.native-lib }}
         run: |
           EXT_PATH="${{ github.workspace }}/duckdb-extension/build/interlis.duckdb_extension"
           ./${{ matrix.duckdb-cli-bin }} -unsigned -cmd "LOAD '$EXT_PATH'" < sql/smoke.sql
@@ -140,7 +138,6 @@ jobs:
           name: interlis-${{ matrix.classifier }}
           path: |
             duckdb-extension/build/interlis.duckdb_extension
-            duckdb-extension/build/native/current/${{ matrix.native-lib }}
 
   deploy:
     name: Deploy to Repository
@@ -205,11 +202,7 @@ jobs:
   #         draft: ${{ github.event_name == 'workflow_dispatch' }}
   #         files: |
   #           interlis-linux-x86_64/interlis.duckdb_extension
-  #           interlis-linux-x86_64/libduckdb_ili_native.so
   #           interlis-linux-aarch64/interlis.duckdb_extension
-  #           interlis-linux-aarch64/libduckdb_ili_native.so
   #           interlis-osx-aarch64/interlis.duckdb_extension
-  #           interlis-osx-aarch64/libduckdb_ili_native.dylib
   #           interlis-windows-x86_64/interlis.duckdb_extension
-  #           interlis-windows-x86_64/libduckdb_ili_native.dll
   #         generate_release_notes: true
