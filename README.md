@@ -45,6 +45,40 @@ SELECT ili_extension_version();
 scripts/smoke-test.sh
 ```
 
+## Installation (Pre-built Binaries)
+
+Download the extension and native library from the [latest GitHub Release](https://github.com/SOAG/duckdb-interlis/releases). Pick the archive matching your platform:
+
+| Platform | Download |
+|---|---|
+| Linux x86_64 | `interlis-linux-x86_64` |
+| Linux ARM64 | `interlis-linux-aarch64` |
+| macOS ARM64 | `interlis-osx-aarch64` |
+| Windows x86_64 | `interlis-windows-x86_64` |
+
+Each archive contains:
+- `interlis.duckdb_extension` — the DuckDB extension
+- `libduckdb_ili_native.{so,dylib,dll}` — the GraalVM native shared library
+
+### Load the Extension
+
+```bash
+# Point DuckDB to the native library
+export DUCKDB_ILI_NATIVE_LIB=/path/to/libduckdb_ili_native.dylib
+
+# Start DuckDB with unsigned extension loading
+duckdb -unsigned -cmd "LOAD '/path/to/interlis.duckdb_extension'"
+```
+
+Or load from within DuckDB:
+
+```sql
+LOAD '/path/to/interlis.duckdb_extension';
+
+SELECT ili_extension_version();
+SELECT ili_native_version();
+```
+
 ## Project Structure
 
 ```
