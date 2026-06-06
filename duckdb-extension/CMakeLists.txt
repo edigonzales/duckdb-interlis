@@ -47,20 +47,31 @@ set(NATIVE_LIB_DIR "${CMAKE_SOURCE_DIR}/build/native/current")
 set(NATIVE_LIB_PATH "${NATIVE_LIB_DIR}/libduckdb_ili_native${CMAKE_SHARED_LIBRARY_SUFFIX}")
 set(EMBEDDED_C_FILE "${CMAKE_CURRENT_BINARY_DIR}/embedded_native_lib.c")
 
-if(EXISTS "${NATIVE_LIB_PATH}")
-    add_custom_command(
-        OUTPUT "${EMBEDDED_C_FILE}"
-        COMMAND "${CMAKE_SOURCE_DIR}/../scripts/embed_native_lib.py" "${NATIVE_LIB_PATH}" "${EMBEDDED_C_FILE}"
-        DEPENDS "${NATIVE_LIB_PATH}" "${CMAKE_SOURCE_DIR}/../scripts/embed_native_lib.py"
-        COMMENT "Embedding native library: ${NATIVE_LIB_PATH}"
-    )
-    list(APPEND EXTENSION_SOURCES "${EMBEDDED_C_FILE}")
-    message(STATUS "Native library found: ${NATIVE_LIB_PATH} (will embed)")
+if(EXISTS "${EMBEDDED_C_FILE}")
+    message(STATUS "Using pre-generated embedded native lib: ${EMBEDDED_C_FILE}")
+elseif(EXISTS "${NATIVE_LIB_PATH}")
+    find_package(Python3 QUIET COMPONENTS Interpreter)
+    if(Python3_FOUND)
+        add_custom_command(
+            OUTPUT "${EMBEDDED_C_FILE}"
+            COMMAND Python3::Interpreter "${CMAKE_SOURCE_DIR}/../scripts/embed_native_lib.py" "${NATIVE_LIB_PATH}" "${EMBEDDED_C_FILE}"
+            DEPENDS "${NATIVE_LIB_PATH}" "${CMAKE_SOURCE_DIR}/../scripts/embed_native_lib.py"
+            COMMENT "Embedding native library (Python): ${NATIVE_LIB_PATH}"
+        )
+        message(STATUS "Native library found: ${NATIVE_LIB_PATH} (will embed via Python)")
+    else()
+        message(WARNING "Native library found but Python3 not available, embedding skipped")
+    endif()
 else()
-    message(WARNING "Native library not found: ${NATIVE_LIB_PATH} (extension will need external native lib)")
-    # Generate a dummy file so compilation doesn't fail
+    message(WARNING "Native library not found, building extension without embedded lib")
+endif()
+
+if(EXISTS "${EMBEDDED_C_FILE}" OR (EXISTS "${NATIVE_LIB_PATH}" AND Python3_FOUND))
+    list(APPEND EXTENSION_SOURCES "${EMBEDDED_C_FILE}")
+else()
+    # Dummy to satisfy external symbol references
     file(WRITE "${EMBEDDED_C_FILE}"
-        "// Dummy - native library not available\n"
+        "// Dummy - native library not embedded\n"
         "#include <stddef.h>\n"
         "const unsigned char embedded_native_lib_data[1] = {0};\n"
         "const size_t embedded_native_lib_size = 0;\n"

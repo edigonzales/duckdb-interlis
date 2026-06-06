@@ -90,6 +90,19 @@ jobs:
             fi
           done
 
+      - name: Embed native library
+        shell: bash
+        run: |
+          NATIVE_LIB=$(find duckdb-extension/build/native/current -name "libduckdb_ili_native.*" | head -1)
+          if [ -z "$NATIVE_LIB" ]; then
+            echo "ERROR: Native library not found"
+            find duckdb-extension/build/native/current -type f || true
+            exit 1
+          fi
+          PYTHON=$(command -v python3 || command -v python)
+          $PYTHON scripts/embed_native_lib.py "$NATIVE_LIB" duckdb-extension/build/embedded_native_lib.c
+          echo "Generated embedded_native_lib.c"
+
       - name: Build DuckDB C extension
         shell: bash
         run: |
