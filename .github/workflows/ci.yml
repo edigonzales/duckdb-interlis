@@ -1,0 +1,148 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  java-tests:
+    name: Java Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: graalvm/setup-graalvm@v1
+        with:
+          java-version: '25'
+          distribution: 'graalvm-community'
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          cache: 'gradle'
+
+      - name: Run Java tests
+        run: ./gradlew :java:ili-core:test :java:ili-native:test
+
+  build:
+    name: Build ${{ matrix.classifier }}
+    needs: java-tests
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - classifier: linux-x86_64
+            os: ubuntu-24.04
+            duckdb-platform: linux_amd64
+            native-lib: libduckdb_ili_native.so
+            duckdb-cli-url: https://github.com/duckdb/duckdb/releases/download/v1.5.3/duckdb_cli-linux-amd64.zip
+            duckdb-cli-bin: duckdb
+          - classifier: linux-aarch64
+            os: ubuntu-24.04-arm
+            duckdb-platform: linux_arm64
+            native-lib: libduckdb_ili_native.so
+            duckdb-cli-url: https://github.com/duckdb/duckdb/releases/download/v1.5.3/duckdb_cli-linux-aarch64.zip
+            duckdb-cli-bin: duckdb
+          - classifier: osx-aarch64
+            os: macos-15
+            duckdb-platform: osx_arm64
+            native-lib: libduckdb_ili_native.dylib
+            duckdb-cli-url: https://github.com/duckdb/duckdb/releases/download/v1.5.3/duckdb_cli-osx-universal.zip
+            duckdb-cli-bin: duckdb
+          - classifier: windows-x86_64
+            os: windows-2025
+            duckdb-platform: windows_amd64
+            native-lib: libduckdb_ili_native.dll
+            duckdb-cli-url: https://github.com/duckdb/duckdb/releases/download/v1.5.3/duckdb_cli-windows-amd64.zip
+            duckdb-cli-bin: duckdb.exe
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: graalvm/setup-graalvm@v1
+        with:
+          java-version: '25'
+          distribution: 'graalvm-community'
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          cache: 'gradle'
+
+      - name: Build GraalVM native shared library
+        run: ./gradlew :java:ili-native:nativeSharedLibrary
+
+      - name: Copy native library to extension directory
+        shell: bash
+        run: |
+          mkdir -p duckdb-extension/build/native/current
+          cp java/ili-native/build/native/${{ matrix.native-lib }} duckdb-extension/build/native/current/
+
+      - name: Build DuckDB C extension
+        run: |
+          cmake -S duckdb-extension -B duckdb-extension/build -DCMAKE_BUILD_TYPE=Release
+          cmake --build duckdb-extension/build -j
+
+      - name: Append extension metadata
+        shell: bash
+        run: |
+          PYTHON=$(command -v python3 || command -v python)
+          $PYTHON scripts/append_extension_metadata.py \
+            -l duckdb-extension/build/interlis.duckdb_extension \
+            -n interlis \
+            -p ${{ matrix.duckdb-platform }} \
+            -dv v1.2.0 \
+            -ev 0.1.0-dev \
+            -o duckdb-extension/build/interlis.duckdb_extension
+
+      - name: Install DuckDB CLI
+        shell: bash
+        run: |
+          curl -L -o duckdb_cli.zip "${{ matrix.duckdb-cli-url }}"
+          unzip -o duckdb_cli.zip
+          chmod +x ${{ matrix.duckdb-cli-bin }}
+          ./${{ matrix.duckdb-cli-bin }} --version
+
+      - name: Smoke tests
+        shell: bash
+        env:
+          DUCKDB_ILI_NATIVE_LIB: ${{ github.workspace }}/duckdb-extension/build/native/current/${{ matrix.native-lib }}
+        run: |
+          EXT_PATH="${{ github.workspace }}/duckdb-extension/build/interlis.duckdb_extension"
+          ./${{ matrix.duckdb-cli-bin }} -unsigned -cmd "LOAD '$EXT_PATH'" < sql/smoke.sql
+
+      - name: Upload extension artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: interlis-${{ matrix.classifier }}
+          path: |
+            duckdb-extension/build/interlis.duckdb_extension
+            duckdb-extension/build/native/current/${{ matrix.native-lib }}
+
+  release:
+    name: Create Release
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: interlis-*
+          merge-multiple: false
+
+      - name: Display structure
+        run: ls -R
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            interlis-linux-x86_64/interlis.duckdb_extension
+            interlis-linux-x86_64/libduckdb_ili_native.so
+            interlis-linux-aarch64/interlis.duckdb_extension
+            interlis-linux-aarch64/libduckdb_ili_native.so
+            interlis-osx-aarch64/interlis.duckdb_extension
+            interlis-osx-aarch64/libduckdb_ili_native.dylib
+            interlis-windows-x86_64/interlis.duckdb_extension
+            interlis-windows-x86_64/libduckdb_ili_native.dll
+          generate_release_notes: true

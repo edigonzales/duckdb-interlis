@@ -18,7 +18,7 @@ echo "Native lib: $NATIVE_LIB"
 echo ""
 
 export DUCKDB_ILI_NATIVE_LIB="$NATIVE_LIB"
-"$DUCKDB" -unsigned < "$REPO_ROOT/sql/smoke.sql"
+"$DUCKDB" -unsigned -cmd "LOAD '$EXTENSION'" < "$REPO_ROOT/sql/smoke.sql"
 
 echo ""
 echo "=== Smoke test passed ==="

@@ -7,7 +7,19 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 echo "Copying native library to extension build directory..."
 mkdir -p "$REPO_ROOT/duckdb-extension/build/native/current"
 
-NATIVE_LIB="$REPO_ROOT/java/ili-native/build/native/libduckdb_ili_native.dylib"
+# Detect native library suffix
+detect_lib_suffix() {
+    case "$(uname -s)" in
+        Darwin) echo "dylib" ;;
+        Linux)  echo "so" ;;
+        MINGW*|MSYS*|CYGWIN*) echo "dll" ;;
+        *) echo "so" ;;
+    esac
+}
+
+LIB_SUFFIX="${NATIVE_LIB_SUFFIX:-$(detect_lib_suffix)}"
+NATIVE_LIB="$REPO_ROOT/java/ili-native/build/native/libduckdb_ili_native.$LIB_SUFFIX"
+
 if [[ -f "$NATIVE_LIB" ]]; then
     cp "$NATIVE_LIB" "$REPO_ROOT/duckdb-extension/build/native/current/"
     echo "Copied $NATIVE_LIB"

@@ -1,7 +1,5 @@
 -- Structure and BAG OF STRUCTURE tests (Phase 9)
--- Run with: duckdb -unsigned < sql/structures.sql
-
-LOAD '/Users/stefan/sources/duckdb-interlis/duckdb-extension/build/interlis.duckdb_extension';
+-- Run with: duckdb -unsigned -cmd "LOAD 'interlis.duckdb_extension'" < sql/structures.sql
 
 SELECT '=== Schema ===' AS test;
 SELECT column_name, data_type

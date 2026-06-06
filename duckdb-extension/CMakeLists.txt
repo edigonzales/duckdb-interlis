@@ -21,8 +21,11 @@ target_include_directories(${EXTENSION_NAME} PRIVATE ${DUCKDB_CAPI_DIR})
 
 # Link system libraries
 if(APPLE)
-    target_link_libraries(${EXTENSION_NAME} PRIVATE dl)
+    # macOS: dlopen/dlsym are in libSystem, no extra linking needed
+elseif(WIN32)
+    # Windows: LoadLibrary/GetProcAddress are in kernel32 (linked implicitly)
 else()
+    # Linux: need -ldl for dlopen/dlsym
     target_link_libraries(${EXTENSION_NAME} PRIVATE dl)
 endif()
 

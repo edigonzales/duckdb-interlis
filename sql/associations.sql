@@ -1,7 +1,7 @@
 -- Association and Reference tests (Phase 10)
--- Run with: duckdb -unsigned < sql/associations.sql
+-- Run with: duckdb -unsigned -cmd "LOAD 'interlis.duckdb_extension'" < sql/associations.sql
 
-LOAD '/Users/stefan/sources/duckdb-interlis/duckdb-extension/build/interlis.duckdb_extension';
+-- Extension must be loaded before running this script.
 
 SELECT '=== read_xtf_class: Person ===' AS test;
 SELECT * FROM read_xtf_class(

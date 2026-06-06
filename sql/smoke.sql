@@ -1,7 +1,10 @@
 -- Smoke test for DuckDB ILI extension (Phase 4)
--- Run with: duckdb -unsigned < sql/smoke.sql
+-- Run with: duckdb -unsigned -cmd "LOAD 'interlis.duckdb_extension'" < sql/smoke.sql
+-- or load from a specific path:
+-- duckdb -unsigned -cmd "LOAD '/path/to/interlis.duckdb_extension'" < sql/smoke.sql
 
-LOAD '/Users/stefan/sources/duckdb-interlis/duckdb-extension/build/interlis.duckdb_extension';
+-- The extension must be loaded before running this script.
+-- This file is used by scripts/smoke-test.sh which handles loading.
 
 SELECT '--- Extension Version ---' AS test;
 SELECT ili_extension_version() AS version;

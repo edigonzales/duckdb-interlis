@@ -1,7 +1,6 @@
 -- Phase 12: ili_import_xtf smoke test (typed)
 -- Generates typed DDL with BIGINT for NUMERIC, VARCHAR for TEXT/Enum/Geom/Struct
-
-LOAD '${DUCKDB_ILI_EXTENSION}';
+-- Run with: duckdb -unsigned -cmd "LOAD 'interlis.duckdb_extension'" < sql/import.sql
 
 -- ================================================================================
 -- Part 1: Verify typed SQL generation for simple model

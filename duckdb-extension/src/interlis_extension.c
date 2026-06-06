@@ -4,8 +4,50 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdbool.h>
-#include <unistd.h>
+
+#ifdef _WIN32
+#include <windows.h>
+#define NATIVE_LIB_NAME "libduckdb_ili_native.dll"
+#elif __APPLE__
 #include <dlfcn.h>
+#include <unistd.h>
+#define NATIVE_LIB_NAME "libduckdb_ili_native.dylib"
+#else
+#include <dlfcn.h>
+#include <unistd.h>
+#define NATIVE_LIB_NAME "libduckdb_ili_native.so"
+#endif
+
+#ifdef _WIN32
+static int win32_file_exists(const char *path) {
+    return GetFileAttributesA(path) != INVALID_FILE_ATTRIBUTES;
+}
+static void *win32_dlopen(const char *path, int unused) {
+    (void)unused;
+    return (void *)LoadLibraryA(path);
+}
+static void *win32_dlsym(void *handle, const char *name) {
+    return (void *)GetProcAddress((HMODULE)handle, name);
+}
+static int win32_dlclose(void *handle) {
+    return FreeLibrary((HMODULE)handle) ? 0 : -1;
+}
+static const char *win32_dlerror(void) {
+    static char buf[256];
+    DWORD err = GetLastError();
+    FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+                   NULL, err, 0, buf, sizeof(buf), NULL);
+    return buf;
+}
+#define dlopen win32_dlopen
+#define dlsym win32_dlsym
+#define dlclose win32_dlclose
+#define dlerror win32_dlerror
+#define RTLD_LAZY 0
+#define file_exists win32_file_exists
+#else
+#define file_exists(path) (access(path, F_OK) == 0)
+#endif
 
 DUCKDB_EXTENSION_EXTERN
 
@@ -53,15 +95,14 @@ static const char *resolve_native_lib_path(void) {
     const char *env = getenv("DUCKDB_ILI_NATIVE_LIB");
     if (env && env[0]) return env;
 
-    // Try next to the extension
     static const char *fallbacks[] = {
-        "build/native/current/libduckdb_ili_native.dylib",
-        "../java/ili-native/build/native/libduckdb_ili_native.dylib",
-        "../../java/ili-native/build/native/libduckdb_ili_native.dylib",
+        "build/native/current/" NATIVE_LIB_NAME,
+        "../java/ili-native/build/native/" NATIVE_LIB_NAME,
+        "../../java/ili-native/build/native/" NATIVE_LIB_NAME,
         NULL
     };
     for (int i = 0; fallbacks[i]; i++) {
-        if (access(fallbacks[i], F_OK) == 0) return fallbacks[i];
+        if (file_exists(fallbacks[i])) return fallbacks[i];
     }
     return NULL;
 }

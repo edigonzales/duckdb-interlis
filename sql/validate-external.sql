@@ -3,10 +3,8 @@
 -- Source: https://files.geo.so.ch/ch.so.afu.abbaustellen/
 -- Model repo: https://geo.so.ch/models + https://models.interlis.ch
 --
--- Run with: duckdb -unsigned < sql/validate-external.sql
+-- Run with: duckdb -unsigned -cmd "LOAD 'interlis.duckdb_extension'" < sql/validate-external.sql
 -- Prerequisite: scripts/download-testdata.sh
-
-LOAD '/Users/stefan/sources/duckdb-interlis/duckdb-extension/build/interlis.duckdb_extension';
 
 -- Abbaustellen (simple XTF, ~37 KB)
 SELECT '=== Abbaustellen: Summary ===' AS info;
