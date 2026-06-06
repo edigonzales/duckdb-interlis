@@ -127,7 +127,7 @@ jobs:
             -l duckdb-extension/build/interlis.duckdb_extension \
             -n interlis \
             -p ${{ matrix.duckdb-platform }} \
-            -dv v1.2.0 \
+            -dv v1.5.3 \
             -ev 0.1.0-dev \
             -o duckdb-extension/build/interlis.duckdb_extension
 
@@ -165,8 +165,8 @@ jobs:
 
       - name: Organize into repository structure
         run: |
-          # Struktur: v1.2.0/<platform>/interlis.duckdb_extension
-          mkdir -p repo/v1.2.0/{osx_arm64,linux_amd64,linux_arm64,windows_amd64}
+          # Struktur: v1.5.3/<platform>/interlis.duckdb_extension
+          mkdir -p repo/v1.5.3/{osx_arm64,linux_amd64,linux_arm64,windows_amd64}
           
           declare -A PLATFORM_MAP=(
             ["linux-x86_64"]="linux_amd64"
@@ -178,7 +178,7 @@ jobs:
           for dir in interlis-*/; do
             classifier=$(basename "$dir" | sed 's/interlis-//')
             platform=${PLATFORM_MAP[$classifier]}
-            cp "$dir/interlis.duckdb_extension" "repo/v1.2.0/$platform/"
+            cp "$dir/interlis.duckdb_extension" "repo/v1.5.3/$platform/"
             echo "Copied $classifier -> $platform"
           done
           
