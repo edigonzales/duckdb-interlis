@@ -65,12 +65,26 @@ SELECT ili_native_version();
 
 ### Production: Install from Repository
 
+> **Wichtig**: Die Extension ist **unsigniert**. DuckDB muss zwingend mit `-unsigned` gestartet werden, sonst schlagen `INSTALL` und `LOAD` fehl.
+
+```bash
+duckdb -unsigned
+```
+
 ```sql
 INSTALL interlis FROM 'https://duckdb-ext.interlis.guru';
 LOAD interlis;
 ```
 
-This installs the extension into `~/.duckdb/extensions/` and loads it.
+Falls DuckDB bereits ohne `-unsigned` läuft:
+
+```sql
+SET allow_unsigned_extensions = true;
+INSTALL interlis FROM 'https://duckdb-ext.interlis.guru';
+LOAD interlis;
+```
+
+Die Extension wird nach `~/.duckdb/extensions/v1.2.0/{PLATFORM}/` installiert und beim ersten Laden automatisch die native GraalVM-Library extrahiert.
 
 ### Production: Manual Load from Release Binary
 
@@ -82,6 +96,10 @@ Download the `interlis.duckdb_extension` for your platform from [GitHub Releases
 | Linux ARM64 | `interlis-linux-aarch64/interlis.duckdb_extension` |
 | macOS ARM64 | `interlis-osx-aarch64/interlis.duckdb_extension` |
 | Windows x86_64 | `interlis-windows-x86_64/interlis.duckdb_extension` |
+
+```bash
+duckdb -unsigned
+```
 
 ```sql
 LOAD '/path/to/interlis.duckdb_extension';
