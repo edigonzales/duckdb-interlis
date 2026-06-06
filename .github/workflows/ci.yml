@@ -42,7 +42,7 @@ jobs:
             os: ubuntu-24.04-arm
             duckdb-platform: linux_arm64
             native-lib: libduckdb_ili_native.so
-            duckdb-cli-url: https://github.com/duckdb/duckdb/releases/download/v1.5.3/duckdb_cli-linux-aarch64.zip
+            duckdb-cli-url: https://github.com/duckdb/duckdb/releases/download/v1.5.3/duckdb_cli-linux-arm64.zip
             duckdb-cli-bin: duckdb
           - classifier: osx-aarch64
             os: macos-15
@@ -90,11 +90,19 @@ jobs:
         run: |
           cmake -S duckdb-extension -B duckdb-extension/build -DCMAKE_BUILD_TYPE=Release
           cmake --build duckdb-extension/build -j
-          # Windows: CMake may output interlis.dll despite SUFFIX override
-          if [ -f duckdb-extension/build/interlis.dll ]; then
-            mv duckdb-extension/build/interlis.dll duckdb-extension/build/interlis.duckdb_extension
+          echo "Build output structure:"
+          find duckdb-extension/build \( -name "interlis*" -o -name "*.duckdb_extension" \) -type f 2>/dev/null || true
+          # Find the built library (Windows may output interlis.dll in Release/ subdirectory)
+          LIB=$(find duckdb-extension/build -maxdepth 3 \( \
+            -name "interlis*.dll" -o \
+            -name "interlis*.so" -o \
+            -name "interlis*.dylib" \
+          \) ! -name "interlis.duckdb_extension" | head -1)
+          if [ -n "$LIB" ]; then
+            mv "$LIB" duckdb-extension/build/interlis.duckdb_extension
+            echo "Moved $LIB -> interlis.duckdb_extension"
           fi
-          ls -la duckdb-extension/build/interlis*
+          ls -la duckdb-extension/build/interlis.duckdb_extension
 
       - name: Append extension metadata
         shell: bash
