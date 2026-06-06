@@ -53,14 +53,14 @@ ili_native_version() → VARCHAR
 ```sql
 -- 1. Show full native version JSON
 SELECT ili_native_version();
--- => {"nativeVersion":"0.1.0","coreVersion":"0.1.0","graalvmVersion":"...","platform":"darwin-aarch64","nativeLibName":"libduckdb_ili_native.dylib"}
+-- => {"nativeVersion":"0.1.0","core_version":"0.1.0","graalvm_version":"...","platform":"darwin-aarch64","nativeLibName":"libduckdb_ili_native.dylib"}
 ```
 
 ```sql
 -- 2. Extract individual fields with json_extract
 SELECT
-    json_extract_string(ili_native_version(), '$.nativeVersion') AS native_version,
-    json_extract_string(ili_native_version(), '$.coreVersion') AS core_version,
+    json_extract_string(ili_native_version(), '$.native_version') AS native_version,
+    json_extract_string(ili_native_version(), '$.core_version') AS core_version,
     json_extract_string(ili_native_version(), '$.platform') AS platform;
 ```
 
