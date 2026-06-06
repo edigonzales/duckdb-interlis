@@ -142,30 +142,74 @@ jobs:
             duckdb-extension/build/interlis.duckdb_extension
             duckdb-extension/build/native/current/${{ matrix.native-lib }}
 
-  release:
-    name: Create Release
+  deploy:
+    name: Deploy to Repository
     if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
     needs: build
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
       - uses: actions/download-artifact@v4
         with:
           pattern: interlis-*
           merge-multiple: false
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+      - name: Organize into repository structure
+        run: |
+          # Struktur: v1.2.0/<platform>/interlis.duckdb_extension
+          mkdir -p repo/v1.2.0/{osx_arm64,linux_amd64,linux_arm64,windows_amd64}
+          
+          declare -A PLATFORM_MAP=(
+            ["linux-x86_64"]="linux_amd64"
+            ["linux-aarch64"]="linux_arm64"
+            ["osx-aarch64"]="osx_arm64"
+            ["windows-x86_64"]="windows_amd64"
+          )
+          
+          for dir in interlis-*/; do
+            classifier=$(basename "$dir" | sed 's/interlis-//')
+            platform=${PLATFORM_MAP[$classifier]}
+            cp "$dir/interlis.duckdb_extension" "repo/v1.2.0/$platform/"
+            echo "Copied $classifier -> $platform"
+          done
+          
+          echo "Repository structure:"
+          find repo -type f
+
+      - name: Deploy via SCP
+        uses: appleboy/scp-action@v0.1.7
         with:
-          draft: ${{ github.event_name == 'workflow_dispatch' }}
-          files: |
-            interlis-linux-x86_64/interlis.duckdb_extension
-            interlis-linux-x86_64/libduckdb_ili_native.so
-            interlis-linux-aarch64/interlis.duckdb_extension
-            interlis-linux-aarch64/libduckdb_ili_native.so
-            interlis-osx-aarch64/interlis.duckdb_extension
-            interlis-osx-aarch64/libduckdb_ili_native.dylib
-            interlis-windows-x86_64/interlis.duckdb_extension
-            interlis-windows-x86_64/libduckdb_ili_native.dll
-          generate_release_notes: true
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          source: "repo/*"
+          target: ${{ secrets.DEPLOY_PATH }}
+          strip_components: 1
+          rm: false
+
+  # release:
+  #   name: Create Release
+  #   if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
+  #   needs: build
+  #   runs-on: ubuntu-latest
+  #   permissions:
+  #     contents: write
+  #   steps:
+  #     - uses: actions/download-artifact@v4
+  #       with:
+  #         pattern: interlis-*
+  #         merge-multiple: false
+
+  #     - name: Create GitHub Release
+  #       uses: softprops/action-gh-release@v2
+  #       with:
+  #         draft: ${{ github.event_name == 'workflow_dispatch' }}
+  #         files: |
+  #           interlis-linux-x86_64/interlis.duckdb_extension
+  #           interlis-linux-x86_64/libduckdb_ili_native.so
+  #           interlis-linux-aarch64/interlis.duckdb_extension
+  #           interlis-linux-aarch64/libduckdb_ili_native.so
+  #           interlis-osx-aarch64/interlis.duckdb_extension
+  #           interlis-osx-aarch64/libduckdb_ili_native.dylib
+  #           interlis-windows-x86_64/interlis.duckdb_extension
+  #           interlis-windows-x86_64/libduckdb_ili_native.dll
+  #         generate_release_notes: true
