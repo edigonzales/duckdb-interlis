@@ -13,7 +13,7 @@ dependencies {
 tasks.register('nativeSharedLibrary', Exec) {
     group = 'native'
     description = 'Build GraalVM native shared library'
-    dependsOn(jar)
+    dependsOn(jar, ':java:ili-core:jar')
 
     def javaHome = providers.environmentVariable('GRAALVM_HOME')
             .orElse(providers.systemProperty('java.home'))

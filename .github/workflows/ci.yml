@@ -17,7 +17,7 @@ jobs:
       - uses: graalvm/setup-graalvm@v1
         with:
           java-version: '25'
-          distribution: 'graalvm-community'
+          distribution: 'graalvm'
           github-token: ${{ secrets.GITHUB_TOKEN }}
           cache: 'gradle'
 
@@ -63,7 +63,7 @@ jobs:
       - uses: graalvm/setup-graalvm@v1
         with:
           java-version: '25'
-          distribution: 'graalvm-community'
+          distribution: 'graalvm'
           github-token: ${{ secrets.GITHUB_TOKEN }}
           cache: 'gradle'
 
@@ -86,9 +86,15 @@ jobs:
           done
 
       - name: Build DuckDB C extension
+        shell: bash
         run: |
           cmake -S duckdb-extension -B duckdb-extension/build -DCMAKE_BUILD_TYPE=Release
           cmake --build duckdb-extension/build -j
+          # Windows: CMake may output interlis.dll despite SUFFIX override
+          if [ -f duckdb-extension/build/interlis.dll ]; then
+            mv duckdb-extension/build/interlis.dll duckdb-extension/build/interlis.duckdb_extension
+          fi
+          ls -la duckdb-extension/build/interlis*
 
       - name: Append extension metadata
         shell: bash
