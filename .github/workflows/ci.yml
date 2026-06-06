@@ -74,7 +74,16 @@ jobs:
         shell: bash
         run: |
           mkdir -p duckdb-extension/build/native/current
-          cp java/ili-native/build/native/${{ matrix.native-lib }} duckdb-extension/build/native/current/
+          NATIVE_DIR="java/ili-native/build/native"
+          NATIVE_FILE="libduckdb_ili_native"
+          ls -la "$NATIVE_DIR/" || echo "No files in $NATIVE_DIR"
+          for ext in .dylib .so .dll ""; do
+            if [ -f "${NATIVE_DIR}/${NATIVE_FILE}${ext}" ]; then
+              cp "${NATIVE_DIR}/${NATIVE_FILE}${ext}" duckdb-extension/build/native/current/
+              echo "Copied ${NATIVE_FILE}${ext}"
+              break
+            fi
+          done
 
       - name: Build DuckDB C extension
         run: |

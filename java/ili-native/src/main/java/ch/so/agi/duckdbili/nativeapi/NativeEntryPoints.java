@@ -20,11 +20,51 @@ import ch.so.agi.duckdbili.core.xtf.XtfObjectReader;
 
 public class NativeEntryPoints {
 
-    private static final IliValidatorService VALIDATOR = new IliValidatorService();
-    private static final IliModelService MODEL_SERVICE = new IliModelService();
+    private static volatile IliModelService modelService;
+    private static volatile XtfObjectReader xtfReader;
+    private static volatile IliImportService importService;
 
     public static void main(String[] args) {
         System.out.println("ILI Native Library - use as shared library only");
+    }
+
+    private static IliModelService getModelService() {
+        IliModelService s = modelService;
+        if (s == null) {
+            synchronized (NativeEntryPoints.class) {
+                s = modelService;
+                if (s == null) {
+                    modelService = s = new IliModelService();
+                }
+            }
+        }
+        return s;
+    }
+
+    private static XtfObjectReader getXtfReader() {
+        XtfObjectReader r = xtfReader;
+        if (r == null) {
+            synchronized (NativeEntryPoints.class) {
+                r = xtfReader;
+                if (r == null) {
+                    xtfReader = r = new XtfObjectReader();
+                }
+            }
+        }
+        return r;
+    }
+
+    private static IliImportService getImportService() {
+        IliImportService s = importService;
+        if (s == null) {
+            synchronized (NativeEntryPoints.class) {
+                s = importService;
+                if (s == null) {
+                    importService = s = new IliImportService();
+                }
+            }
+        }
+        return s;
     }
 
     @CEntryPoint(name = "ili_native_version")
@@ -85,10 +125,11 @@ public class NativeEntryPoints {
             return 1;
         }
 
-        IliValidatorService service = new IliValidatorService();
-        ValidationResult result = service.validate(Path.of(input), modelDir, maxMessages);
+        try {
+            IliValidatorService service = new IliValidatorService();
+            ValidationResult result = service.validate(Path.of(input), modelDir, maxMessages);
 
-        StringBuilder json = new StringBuilder();
+            StringBuilder json = new StringBuilder();
         json.append("{");
         json.append("\"valid\":").append(result.isValid()).append(",");
         json.append("\"errorCount\":").append(result.getErrorCount()).append(",");
@@ -117,6 +158,11 @@ public class NativeEntryPoints {
 
         outPayload.write(allocCString(json.toString()));
         return 0;
+        } catch (Exception e) {
+            String err = "{\"valid\":false,\"error\":\"" + escapeJson("Validation error: " + e.getMessage()) + "\"}";
+            outPayload.write(allocCString(err));
+            return 1;
+        }
     }
 
     @CEntryPoint(name = "ili_native_validate_tsv")
@@ -139,10 +185,11 @@ public class NativeEntryPoints {
             return 1;
         }
 
-        IliValidatorService service = new IliValidatorService();
-        ValidationResult result = service.validate(Path.of(input), modelDir, maxMessages);
+        try {
+            IliValidatorService service = new IliValidatorService();
+            ValidationResult result = service.validate(Path.of(input), modelDir, maxMessages);
 
-        StringBuilder tsv = new StringBuilder();
+            StringBuilder tsv = new StringBuilder();
         // Header line: errorCount, warningCount, infoCount
         tsv.append(result.getErrorCount()).append('\t');
         tsv.append(result.getWarningCount()).append('\t');
@@ -166,6 +213,11 @@ public class NativeEntryPoints {
 
         outPayload.write(allocCString(tsv.toString()));
         return 0;
+        } catch (Exception e) {
+            String err = "-1\t0\t0\nValidation error: " + e.getMessage();
+            outPayload.write(allocCString(err));
+            return 1;
+        }
     }
 
     private static String escapeTsv(String s) {
@@ -270,11 +322,11 @@ public class NativeEntryPoints {
         String result;
         try {
             result = switch (cmd != null ? cmd : "") {
-                case "models" -> MODEL_SERVICE.getModels(modelDir);
-                case "topics" -> MODEL_SERVICE.getTopics(modelDir, modelName);
-                case "classes" -> MODEL_SERVICE.getClasses(modelDir, modelName);
-                case "attributes" -> MODEL_SERVICE.getAttributes(modelDir, className);
-                case "enumerations" -> MODEL_SERVICE.getEnumerations(modelDir, modelName);
+                case "models" -> getModelService().getModels(modelDir);
+                case "topics" -> getModelService().getTopics(modelDir, modelName);
+                case "classes" -> getModelService().getClasses(modelDir, modelName);
+                case "attributes" -> getModelService().getAttributes(modelDir, className);
+                case "enumerations" -> getModelService().getEnumerations(modelDir, modelName);
                 default -> "ERROR: Unknown command: " + cmd;
             };
         } catch (Exception e) {
@@ -288,8 +340,6 @@ public class NativeEntryPoints {
     // -----------------------------------------------------------------------
     // XTF reading entry point
     // -----------------------------------------------------------------------
-
-    private static final XtfObjectReader XTF_READER = new XtfObjectReader();
 
     @CEntryPoint(name = "ili_native_read_xtf")
     public static int nativeReadXtf(
@@ -308,7 +358,7 @@ public class NativeEntryPoints {
         }
 
         try {
-            String tsv = XTF_READER.readObjects(input, modelDir, modelNames);
+            String tsv = getXtfReader().readObjects(input, modelDir, modelNames);
             outPayload.write(allocCString(tsv));
             return 0;
         } catch (Exception e) {
@@ -334,7 +384,7 @@ public class NativeEntryPoints {
             return 1;
         }
         try {
-            String tsv = XTF_READER.readClass(input, className, modelDir, nested);
+            String tsv = getXtfReader().readClass(input, className, modelDir, nested);
             outPayload.write(allocCString(tsv));
             return 0;
         } catch (Exception e) {
@@ -358,7 +408,7 @@ public class NativeEntryPoints {
             outPayload.write(allocCString(""));
             return 1;
         }
-        String tsv = XTF_READER.readClassSchema(className, modelDir, nested);
+        String tsv = getXtfReader().readClassSchema(className, modelDir, nested);
         outPayload.write(allocCString(tsv));
         return 0;
     }
@@ -378,7 +428,7 @@ public class NativeEntryPoints {
             return 1;
         }
         try {
-            String tsv = XTF_READER.readStructures(className, modelDir);
+            String tsv = getXtfReader().readStructures(className, modelDir);
             outPayload.write(allocCString(tsv));
             return 0;
         } catch (Exception e) {
@@ -403,7 +453,7 @@ public class NativeEntryPoints {
             return 1;
         }
         try {
-            String tsv = XTF_READER.readAssociation(input, associationName, modelDir);
+            String tsv = getXtfReader().readAssociation(input, associationName, modelDir);
             outPayload.write(allocCString(tsv));
             return 0;
         } catch (Exception e) {
@@ -426,7 +476,7 @@ public class NativeEntryPoints {
             outPayload.write(allocCString(""));
             return 1;
         }
-        String tsv = XTF_READER.readAssociationSchema(associationName, modelDir);
+        String tsv = getXtfReader().readAssociationSchema(associationName, modelDir);
         outPayload.write(allocCString(tsv));
         return 0;
     }
@@ -454,8 +504,8 @@ public class NativeEntryPoints {
         }
 
         try {
-            IliImportService importService = new IliImportService();
-            String sql = importService.generateImportSql(input, modelDir, schema,
+            IliImportService impSvc = getImportService();
+            String sql = impSvc.generateImportSql(input, modelDir, schema,
                     mapping != null ? mapping : "relational");
             outPayload.write(allocCString(sql));
             return 0;

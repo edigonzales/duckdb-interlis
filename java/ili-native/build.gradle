@@ -28,6 +28,7 @@ tasks.register('nativeSharedLibrary', Exec) {
         nativeImage,
         '--shared',
         '--enable-url-protocols=https,http',
+        '-H:+ReportExceptionStackTraces',
         '-o', outputFile.absolutePath,
         '-cp', classpath,
         mainClass
