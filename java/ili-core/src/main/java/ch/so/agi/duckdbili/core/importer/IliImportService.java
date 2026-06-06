@@ -35,18 +35,16 @@ public class IliImportService {
                     Element tel = tit.next();
                     if (tel instanceof AssociationDef assocDef) {
                         String assocFqn = model.getName() + "." + topic.getName() + "." + assocDef.getName();
-                        String ddl = generateAssociationDdl(schema, td, model.getName(), topic.getName(), assocDef);
-                        if (ddl != null) {
-                            sql.append(ddl).append('\n');
-                            sql.append(generateAssociationInsert(schema, xtfPath, modelDir, assocFqn)).append('\n');
-                        }
+                        List<ColInfo> cols = buildAssociationColumns(assocDef);
+                        String ddl = generateDdl(schema, sanitizeTableName(assocDef.getName()), cols);
+                        sql.append(ddl).append('\n');
+                        sql.append(generateAssociationInsert(schema, xtfPath, modelDir, assocFqn, cols)).append('\n');
                     } else if (tel instanceof AbstractClassDef classDef && !(tel instanceof AssociationDef)) {
                         String classFqn = model.getName() + "." + topic.getName() + "." + classDef.getName();
-                        String ddl = generateClassDdl(schema, td, model.getName(), topic.getName(), classDef);
-                        if (ddl != null) {
-                            sql.append(ddl).append('\n');
-                            sql.append(generateClassInsert(schema, xtfPath, modelDir, classFqn)).append('\n');
-                        }
+                        List<ColInfo> cols = buildClassColumns(classDef);
+                        String ddl = generateDdl(schema, sanitizeTableName(classDef.getName()), cols);
+                        sql.append(ddl).append('\n');
+                        sql.append(generateClassInsert(schema, xtfPath, modelDir, classFqn, cols)).append('\n');
                     }
                 }
             }
@@ -54,85 +52,168 @@ public class IliImportService {
         return sql.toString();
     }
 
-    private String generateClassDdl(String schema, TransferDescription td,
-                                     String modelName, String topicName, AbstractClassDef cdef) {
-        StringBuilder sb = new StringBuilder();
-        String tableName = sanitizeTableName(cdef.getName());
-        sb.append("CREATE TABLE IF NOT EXISTS ").append(quoteIdent(schema)).append(".")
-          .append(quoteIdent(tableName)).append(" (");
+    // -----------------------------------------------------------------------
+    // Column info
+    // -----------------------------------------------------------------------
 
-        List<String> cols = new ArrayList<>();
-        cols.add("xtf_bid VARCHAR");
-        cols.add("xtf_tid VARCHAR");
-        cols.add("xtf_class VARCHAR");
+    private static final class ColInfo {
+        final String name;
+        final String duckdbType;
+
+        ColInfo(String name, String duckdbType) {
+            this.name = safeColName(name);
+            this.duckdbType = duckdbType;
+        }
+    }
+
+    private static final List<String> TECH_COLS = List.of("xtf_bid", "xtf_tid", "xtf_class");
+
+    private List<ColInfo> buildClassColumns(AbstractClassDef cdef) {
+        List<ColInfo> cols = new ArrayList<>();
+        for (String tc : TECH_COLS) cols.add(new ColInfo(tc, "VARCHAR"));
 
         Iterator<?> ait = cdef.getAttributesAndRoles2();
         while (ait.hasNext()) {
             ViewableTransferElement vte = (ViewableTransferElement) ait.next();
             if (vte.obj instanceof AttributeDef ad) {
-                if (isGeometryDomain(ad) || isMultiGeometryDomain(ad))
-                    cols.add(safeColName(ad.getName() + "_wkb") + " VARCHAR");
-                else if (isStructureDomain(ad) || isCompositionDomain(ad))
-                    cols.add(safeColName(ad.getName() + "_json") + " VARCHAR");
-                else
-                    cols.add(safeColName(ad.getName()) + " VARCHAR");
+                String type = mapScalarType(ad);
+                if (isGeometryDomain(ad) || isMultiGeometryDomain(ad)) {
+                    cols.add(new ColInfo(ad.getName() + "_wkb", type));
+                } else if (isStructureDomain(ad) || isCompositionDomain(ad)) {
+                    cols.add(new ColInfo(ad.getName() + "_json", type));
+                } else {
+                    cols.add(new ColInfo(ad.getName(), type));
+                }
             } else if (vte.obj instanceof RoleDef rd) {
-                cols.add(safeColName(rd.getName() + "_ref") + " VARCHAR");
+                cols.add(new ColInfo(rd.getName() + "_ref", "VARCHAR"));
             }
         }
-        cols.add("unsupported_json VARCHAR");
-
-        sb.append(String.join(", ", cols));
-        sb.append(");");
-        return sb.toString();
+        cols.add(new ColInfo("unsupported_json", "VARCHAR"));
+        return cols;
     }
 
-    private String generateAssociationDdl(String schema, TransferDescription td,
-                                           String modelName, String topicName, AssociationDef adef) {
-        StringBuilder sb = new StringBuilder();
-        String tableName = sanitizeTableName(adef.getName());
-        sb.append("CREATE TABLE IF NOT EXISTS ").append(quoteIdent(schema)).append(".")
-          .append(quoteIdent(tableName)).append(" (");
-
-        List<String> cols = new ArrayList<>();
-        cols.add("xtf_bid VARCHAR");
-        cols.add("xtf_tid VARCHAR");
-        cols.add("xtf_class VARCHAR");
+    private List<ColInfo> buildAssociationColumns(AssociationDef adef) {
+        List<ColInfo> cols = new ArrayList<>();
+        for (String tc : TECH_COLS) cols.add(new ColInfo(tc, "VARCHAR"));
 
         Iterator<?> ait = adef.getAttributesAndRoles2();
         while (ait.hasNext()) {
             ViewableTransferElement vte = (ViewableTransferElement) ait.next();
             if (vte.obj instanceof RoleDef rd) {
-                cols.add(safeColName(rd.getName() + "_ref") + " VARCHAR");
+                cols.add(new ColInfo(rd.getName() + "_ref", "VARCHAR"));
             } else if (vte.obj instanceof AttributeDef ad) {
-                cols.add(safeColName(ad.getName()) + " VARCHAR");
+                cols.add(new ColInfo(ad.getName(), mapScalarType(ad)));
             }
         }
-        cols.add("unsupported_json VARCHAR");
+        cols.add(new ColInfo("unsupported_json", "VARCHAR"));
+        return cols;
+    }
 
-        sb.append(String.join(", ", cols));
+    // -----------------------------------------------------------------------
+    // DDL generation
+    // -----------------------------------------------------------------------
+
+    private static String generateDdl(String schema, String tableName, List<ColInfo> cols) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("CREATE TABLE IF NOT EXISTS ").append(quoteIdent(schema)).append(".")
+          .append(quoteIdent(tableName)).append(" (");
+        List<String> parts = new ArrayList<>();
+        for (ColInfo ci : cols) {
+            parts.add(ci.name + " " + ci.duckdbType);
+        }
+        sb.append(String.join(", ", parts));
         sb.append(");");
         return sb.toString();
     }
 
-    private String generateClassInsert(String schema, String xtfPath, String modelDir, String classFqn) {
+    // -----------------------------------------------------------------------
+    // INSERT generation with typed CASTs
+    // -----------------------------------------------------------------------
+
+    private String generateClassInsert(String schema, String xtfPath, String modelDir,
+                                        String classFqn, List<ColInfo> cols) {
         String tableName = sanitizeTableName(extractClassName(classFqn));
+        String colList = buildTargetColList(cols);
+        String selList = buildSelectList(cols);
         return "INSERT INTO " + quoteIdent(schema) + "." + quoteIdent(tableName)
-             + " SELECT * FROM read_xtf_class("
+             + " (" + colList + ")"
+             + " SELECT " + selList
+             + " FROM read_xtf_class("
              + sqlString(xtfPath)
              + ", class := " + sqlString(classFqn)
              + ", modeldir := " + sqlString(modelDir)
              + ");";
     }
 
-    private String generateAssociationInsert(String schema, String xtfPath, String modelDir, String assocFqn) {
+    private String generateAssociationInsert(String schema, String xtfPath, String modelDir,
+                                              String assocFqn, List<ColInfo> cols) {
         String tableName = sanitizeTableName(extractClassName(assocFqn));
+        String colList = buildTargetColList(cols);
+        String selList = buildSelectList(cols);
         return "INSERT INTO " + quoteIdent(schema) + "." + quoteIdent(tableName)
-             + " SELECT * FROM read_xtf_association("
+             + " (" + colList + ")"
+             + " SELECT " + selList
+             + " FROM read_xtf_association("
              + sqlString(xtfPath)
              + ", association := " + sqlString(assocFqn)
              + ", modeldir := " + sqlString(modelDir)
              + ");";
+    }
+
+    private static String buildTargetColList(List<ColInfo> cols) {
+        List<String> names = new ArrayList<>();
+        for (ColInfo ci : cols) names.add(ci.name);
+        return String.join(", ", names);
+    }
+
+    private static String buildSelectList(List<ColInfo> cols) {
+        List<String> parts = new ArrayList<>();
+        for (ColInfo ci : cols) {
+            if ("VARCHAR".equals(ci.duckdbType)) {
+                // read_xtf_class/read_xtf_association returns VARCHAR for everything
+                parts.add(ci.name);
+            } else {
+                parts.add("CAST(" + ci.name + " AS " + ci.duckdbType + ")");
+            }
+        }
+        return String.join(", ", parts);
+    }
+
+    // -----------------------------------------------------------------------
+    // Type mapping from INTERLIS domain to DuckDB
+    // -----------------------------------------------------------------------
+
+    private static String mapScalarType(AttributeDef ad) {
+        Type domain = resolveToBaseType(ad);
+        if (domain == null) return "VARCHAR";
+
+        if (domain instanceof NumericType nt) {
+            PrecisionDecimal min = nt.getMinimum();
+            PrecisionDecimal max = nt.getMaximum();
+            boolean hasDecimals = (min != null && min.getExponent() < 0)
+                               || (max != null && max.getExponent() < 0);
+            return hasDecimals ? "DOUBLE" : "BIGINT";
+        }
+        if (domain instanceof TextType) return "VARCHAR";
+        if (domain instanceof EnumerationType) return "VARCHAR";
+        if (domain instanceof AbstractCoordType
+                || domain instanceof LineType
+                || domain instanceof AbstractSurfaceOrAreaType
+                || domain instanceof MultiCoordType
+                || domain instanceof MultiSurfaceType
+                || domain instanceof MultiPolylineType
+                || domain instanceof MultiAreaType) return "VARCHAR"; // geometry → WKB as VARCHAR
+        if (domain instanceof ObjectType || domain instanceof CompositionType) return "VARCHAR"; // structures → JSON
+        if (domain instanceof ReferenceType) return "VARCHAR";
+        // BOOLEAN, DATE, TIMESTAMP etc. are mapped by name
+        String typeName = domain.getScopedName(null);
+        if (typeName == null) typeName = domain.getName();
+        if (typeName != null) {
+            if (typeName.contains("BOOLEAN")) return "BOOLEAN";
+            if (typeName.contains("DATE") && !typeName.contains("DATETIME")) return "DATE";
+            if (typeName.contains("DATETIME")) return "TIMESTAMP";
+        }
+        return "VARCHAR";
     }
 
     // -----------------------------------------------------------------------
@@ -149,7 +230,6 @@ public class IliImportService {
     }
 
     private static String safeColName(String s) {
-        // Return unquoted, lowercase; matches what read_xtf_class returns as column names
         if (s == null) return "";
         return s.toLowerCase();
     }
@@ -218,7 +298,7 @@ public class IliImportService {
     }
 
     // -----------------------------------------------------------------------
-    // Domain detection (mirrors XtfObjectReader)
+    // Domain detection
     // -----------------------------------------------------------------------
 
     private static boolean isStructureDomain(AttributeDef ad) {

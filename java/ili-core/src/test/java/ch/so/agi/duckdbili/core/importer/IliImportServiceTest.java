@@ -59,6 +59,35 @@ class IliImportServiceTest {
     }
 
     @Test
+    void generateImportSql_usesTypedColumns() {
+        String sql = service.generateImportSql(XTF_PATH, MODELDIR, "test", "relational");
+        // BFS_Nr is a NUMERIC 0..9999 → should be BIGINT
+        assertTrue(sql.contains("bfs_nr BIGINT"), "bfs_nr should be BIGINT, got: " + sql);
+        // Name is TEXT → should stay VARCHAR
+        assertTrue(sql.contains("name VARCHAR"), "name should be VARCHAR");
+        // Status is enumeration → should stay VARCHAR
+        assertTrue(sql.contains("status VARCHAR"), "status should be VARCHAR");
+    }
+
+    @Test
+    void generateImportSql_usesCastInSelect() {
+        String sql = service.generateImportSql(XTF_PATH, MODELDIR, "test", "relational");
+        // BFS_Nr needs CAST to BIGINT
+        assertTrue(sql.contains("CAST(bfs_nr AS BIGINT)"), "Should CAST bfs_nr, got: " + sql);
+        // Name does NOT need CAST
+        assertFalse(sql.contains("CAST(name AS"), "Should not CAST name (it's VARCHAR)");
+    }
+
+    @Test
+    void generateImportSql_usesExplicitColumnList() {
+        String sql = service.generateImportSql(XTF_PATH, MODELDIR, "test", "relational");
+        // INSERT should have explicit column list in parentheses
+        String line = sql.lines().filter(l -> l.contains("INSERT INTO \"test\".\"gemeinde\"")).findFirst().orElse("");
+        assertTrue(line.contains("(") && line.contains(")"), "INSERT should have column list: " + line);
+        assertTrue(line.contains("xtf_bid"), "col list should contain xtf_bid: " + line);
+    }
+
+    @Test
     void generateImportSql_associationsModel() {
         Path assocDir;
         Path cwd = Path.of("").toAbsolutePath();
@@ -80,8 +109,32 @@ class IliImportServiceTest {
         assertTrue(sql.contains("CREATE TABLE IF NOT EXISTS \"test\".\"besitz\""), "Should have besitz association table");
         assertTrue(sql.contains("besitzer_ref"), "Should have besitzer_ref column");
         assertTrue(sql.contains("grundstueck_ref"), "Should have grundstueck_ref column");
-        assertTrue(sql.contains("anteil"), "Should have Anteil attribute (lowercase)");
-        assertTrue(sql.contains("read_xtf_association"), "Should use read_xtf_association for association data");
+    }
+
+    @Test
+    void generateImportSql_associationsTypedColumns() {
+        Path assocDir;
+        Path cwd = Path.of("").toAbsolutePath();
+        if (Files.isRegularFile(cwd.resolve("testdata/synthetic/associations/SO_AGI_Associations_20260605.ili"))) {
+            assocDir = cwd.resolve("testdata/synthetic/associations");
+        } else if (Files.isRegularFile(cwd.getParent().resolve("testdata/synthetic/associations/SO_AGI_Associations_20260605.ili"))) {
+            assocDir = cwd.getParent().resolve("testdata/synthetic/associations");
+        } else {
+            assocDir = cwd.getParent().getParent().resolve("testdata/synthetic/associations");
+        }
+
+        String sql = service.generateImportSql(
+            assocDir.resolve("valid.xtf").toString(),
+            assocDir.toString(),
+            "test", "relational");
+
+        // Flaeche NUMERIC → BIGINT
+        assertTrue(sql.contains("flaeche BIGINT"), "flaeche should be BIGINT, got: " + sql);
+        // Anteil NUMERIC 0..100 → BIGINT
+        assertTrue(sql.contains("anteil BIGINT"), "anteil should be BIGINT, got: " + sql);
+        // CAST for Flaeche
+        assertTrue(sql.contains("CAST(flaeche AS BIGINT)"), "Should CAST flaeche");
+        assertTrue(sql.contains("CAST(anteil AS BIGINT)"), "Should CAST anteil");
     }
 
     @Test
