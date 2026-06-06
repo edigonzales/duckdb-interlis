@@ -68,7 +68,12 @@ jobs:
           cache: 'gradle'
 
       - name: Build GraalVM native shared library
-        run: ./gradlew :java:ili-native:nativeSharedLibrary
+        shell: bash
+        run: |
+          echo "GRAALVM_HOME=$GRAALVM_HOME"
+          ls "$GRAALVM_HOME/bin/native-image"* 2>/dev/null || echo "native-image missing"
+          ./gradlew :java:ili-native:nativeSharedLibrary
+          ls -la java/ili-native/build/native/ 2>/dev/null || echo "No native output"
 
       - name: Copy native library to extension directory
         shell: bash
