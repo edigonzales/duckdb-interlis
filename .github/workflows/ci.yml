@@ -89,16 +89,13 @@ jobs:
         shell: bash
         run: |
           cmake -S duckdb-extension -B duckdb-extension/build -DCMAKE_BUILD_TYPE=Release
-          cmake --build duckdb-extension/build -j
+          cmake --build duckdb-extension/build --config Release -j
+          # Multi-config generators (VS, Xcode) output to Debug/Release/ subdirectory
+          # Single-config generators (Make, Ninja) ignore --config and output to build/
           echo "Build output structure:"
-          find duckdb-extension/build \( -name "interlis*" -o -name "*.duckdb_extension" \) -type f 2>/dev/null || true
-          # Find the built library (Windows may output interlis.dll in Release/ subdirectory)
-          LIB=$(find duckdb-extension/build -maxdepth 3 \( \
-            -name "interlis*.dll" -o \
-            -name "interlis*.so" -o \
-            -name "interlis*.dylib" \
-          \) ! -name "interlis.duckdb_extension" | head -1)
-          if [ -n "$LIB" ]; then
+          find duckdb-extension/build -name "interlis.duckdb_extension" -type f 2>/dev/null || true
+          LIB=$(find duckdb-extension/build -name "interlis.duckdb_extension" -type f | head -1)
+          if [ -n "$LIB" ] && [ "$LIB" != "duckdb-extension/build/interlis.duckdb_extension" ]; then
             mv "$LIB" duckdb-extension/build/interlis.duckdb_extension
             echo "Moved $LIB -> interlis.duckdb_extension"
           fi
