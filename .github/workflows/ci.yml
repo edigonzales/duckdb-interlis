@@ -127,7 +127,7 @@ jobs:
             -l duckdb-extension/build/interlis.duckdb_extension \
             -n interlis \
             -p ${{ matrix.duckdb-platform }} \
-            -dv v1.5.3 \
+             -dv v1.2.0 \
             -ev 0.1.0-dev \
             -o duckdb-extension/build/interlis.duckdb_extension
 

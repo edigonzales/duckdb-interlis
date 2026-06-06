@@ -74,14 +74,14 @@ SELECT
 ili_validate_summary_json(path VARCHAR, modeldir VARCHAR) → VARCHAR
 ```
 
-**Description:** Validates an XTF file and returns a JSON summary with `valid` (boolean), `errorCount`, `warningCount`, `infoCount`, and `messages` (array). Both parameters are positional.
+**Description:** Validates an XTF file and returns a JSON summary with `valid` (boolean), `errorCount`, `warningCount`, `infoCount`, and `messages` (array).
 
 **Parameters:**
 
-| # | Name | Type | Description |
-|---|---|---|---|
-| 1 | `path` | VARCHAR | Path to the XTF file |
-| 2 | `modeldir` | VARCHAR | Directory with ILI model files or semicolon-separated URLs to model repositories |
+| # | Name | Kind | Type | Erforderlich | Beschreibung |
+|---|---|---|---|---|---|
+| 1 | `path` | positional | VARCHAR | Ja | Pfad zur XTF-Datei |
+| 2 | `modeldir` | positional | VARCHAR | Ja | Verzeichnis mit ILI-Modelldateien oder semikolon-getrennte URLs zu Modell-Repositories |
 
 **Examples:**
 
@@ -143,10 +143,10 @@ ili_validate(path VARCHAR, modeldir => VARCHAR) → TABLE(...)
 
 **Parameters:**
 
-| # | Name | Kind | Type | Description |
-|---|---|---|---|---|
-| 1 | `path` | positional | VARCHAR | Path to the XTF file |
-| 2 | `modeldir` | named | VARCHAR | Directory with ILI model files or semicolon-separated URLs |
+| # | Name | Kind | Type | Erforderlich | Beschreibung |
+|---|---|---|---|---|---|
+| 1 | `path` | positional | VARCHAR | Ja | Pfad zur XTF-Datei |
+| 2 | `modeldir` | named | VARCHAR | Ja | Verzeichnis mit ILI-Modelldateien oder semikolon-getrennte URLs |
 
 **Return columns:**
 
@@ -210,10 +210,11 @@ ili_models(modeldir VARCHAR, model => VARCHAR) → TABLE(...)
 
 **Parameters:**
 
-| # | Name | Kind | Type | Description |
-|---|---|---|---|---|
-| 1 | `modeldir` | positional | VARCHAR | Directory with ILI files |
-| 2 | `model` | named | VARCHAR | Optional: filter by model name |
+| # | Name | Kind | Type | Erforderlich | Beschreibung |
+|---|---|---|---|---|---|
+| 1 | `modeldir` | positional | VARCHAR | Ja | Verzeichnis mit ILI-Dateien |
+| 2 | `model` | named | VARCHAR | Nein | Optional: nach Modellnamen filtern |
+| 3 | `class` | named | VARCHAR | Nein | Optional: nach Klassennamen filtern |
 
 **Return columns:**
 
@@ -228,16 +229,23 @@ ili_models(modeldir VARCHAR, model => VARCHAR) → TABLE(...)
 **Examples:**
 
 ```sql
--- 1. List all models in a directory
+-- 1. Alle Modelle ohne Filter
 SELECT name, version, language, ili_version
 FROM ili_models('testdata/synthetic/simple');
 ```
 
 ```sql
--- 2. Filter by model name
+-- 2. Nach Modellnamen filtern
 SELECT name, version, ili_version
 FROM ili_models('testdata/synthetic/simple',
     model := 'SO_AGI_Simple_20260605');
+```
+
+```sql
+-- 3. Nach Klasse filtern
+SELECT name, version, language
+FROM ili_models('testdata/synthetic/simple',
+    class := 'Gemeinde');
 ```
 
 ---
@@ -254,25 +262,41 @@ ili_topics(modeldir VARCHAR, model => VARCHAR) → TABLE(...)
 
 **Parameters:**
 
-| # | Name | Kind | Type | Description |
-|---|---|---|---|---|
-| 1 | `modeldir` | positional | VARCHAR | Directory with ILI files |
-| 2 | `model` | named | VARCHAR | Optional: filter by model name |
+| # | Name | Kind | Type | Erforderlich | Beschreibung |
+|---|---|---|---|---|---|
+| 1 | `modeldir` | positional | VARCHAR | Ja | Verzeichnis mit ILI-Dateien |
+| 2 | `model` | named | VARCHAR | Nein | Optional: nach Modellnamen filtern |
+| 3 | `class` | named | VARCHAR | Nein | Optional: nach Klassennamen filtern |
 
 **Return columns:**
-
 | Column | Type |
 |---|---|
 | `model_name` | VARCHAR |
 | `topic_name` | VARCHAR |
-| `kind` | VARCHAR |
+| `enum_name` | VARCHAR |
+| `element` | VARCHAR |
+| `element_line` | VARCHAR |
 
 **Examples:**
 
 ```sql
--- 1. List all topics in a directory
-SELECT model_name, topic_name, kind
-FROM ili_topics('testdata/synthetic/simple');
+-- 1. Alle Enum-Werte
+SELECT model_name, enum_name, element
+FROM ili_enumerations('testdata/synthetic/simple');
+```
+
+```sql
+-- 2. Enum-Werte eines Modells
+SELECT enum_name, element
+FROM ili_enumerations('testdata/synthetic/simple',
+    model := 'SO_AGI_Simple_20260605');
+```
+
+```sql
+-- 2. Nach Modellnamen filtern
+SELECT model_name, topic_name
+FROM ili_topics('testdata/synthetic/simple',
+    model := 'SO_AGI_Simple_20260605');
 ```
 
 ```sql
@@ -296,13 +320,13 @@ ili_classes(modeldir VARCHAR, model => VARCHAR) → TABLE(...)
 
 **Parameters:**
 
-| # | Name | Kind | Type | Description |
-|---|---|---|---|---|
-| 1 | `modeldir` | positional | VARCHAR | Directory with ILI files |
-| 2 | `model` | named | VARCHAR | Optional: filter by model name |
+| # | Name | Kind | Type | Erforderlich | Beschreibung |
+|---|---|---|---|---|---|
+| 1 | `modeldir` | positional | VARCHAR | Ja | Verzeichnis mit ILI-Dateien |
+| 2 | `model` | named | VARCHAR | Nein | Optional: nach Modellnamen filtern |
+| 3 | `class` | named | VARCHAR | Nein | Optional: nach Klassennamen filtern |
 
 **Return columns:**
-
 | Column | Type |
 |---|---|
 | `model_name` | VARCHAR |
@@ -316,20 +340,20 @@ ili_classes(modeldir VARCHAR, model => VARCHAR) → TABLE(...)
 **Examples:**
 
 ```sql
--- 1. List all classes in a directory
+-- 1. Alle Klassen ohne Filter
 SELECT model_name, topic_name, class_name, kind, is_abstract
 FROM ili_classes('testdata/synthetic/simple');
 ```
 
 ```sql
--- 2. Filter classes by model
+-- 2. Nach Modellnamen filtern
 SELECT topic_name, class_name, is_abstract, is_extended
 FROM ili_classes('testdata/synthetic/simple',
     model := 'SO_AGI_Simple_20260605');
 ```
 
 ```sql
--- 3. List classes from the structures model
+-- 3. Klassen aus einem anderen Modell
 SELECT model_name, topic_name, class_name, kind
 FROM ili_classes('testdata/synthetic/structures');
 ```
@@ -348,14 +372,13 @@ ili_attributes(modeldir VARCHAR, model => VARCHAR, class => VARCHAR) → TABLE(.
 
 **Parameters:**
 
-| # | Name | Kind | Type | Description |
-|---|---|---|---|---|
-| 1 | `modeldir` | positional | VARCHAR | Directory with ILI files |
-| 2 | `model` | named | VARCHAR | Optional: filter by model name |
-| 3 | `class` | named | VARCHAR | Optional: filter by class name |
+| # | Name | Kind | Type | Erforderlich | Beschreibung |
+|---|---|---|---|---|---|
+| 1 | `modeldir` | positional | VARCHAR | Ja | Verzeichnis mit ILI-Dateien |
+| 2 | `model` | named | VARCHAR | Nein | Optional: nach Modellnamen filtern |
+| 3 | `class` | named | VARCHAR | Nein | Optional: nach Klassennamen filtern |
 
 **Return columns:**
-
 | Column | Type |
 |---|---|
 | `model_name` | VARCHAR |
@@ -371,21 +394,21 @@ ili_attributes(modeldir VARCHAR, model => VARCHAR, class => VARCHAR) → TABLE(.
 **Examples:**
 
 ```sql
--- 1. List all attributes of a specific class
+-- 1. Attribute einer bestimmten Klasse
 SELECT attr_name, type_name, kind, is_mandatory, card_min, card_max
 FROM ili_attributes('testdata/synthetic/simple',
     class := 'Gemeinde');
 ```
 
 ```sql
--- 2. List attributes filtered by model
+-- 2. Attribute nach Modell filtern
 SELECT class_name, attr_name, type_name, is_mandatory
 FROM ili_attributes('testdata/synthetic/simple',
     model := 'SO_AGI_Simple_20260605');
 ```
 
 ```sql
--- 3. Find all mandatory attributes across all classes
+-- 3. Nur Pflichtattribute (Mandatory)
 SELECT class_name, attr_name, type_name
 FROM ili_attributes('testdata/synthetic/simple')
 WHERE is_mandatory = 'true';
@@ -405,14 +428,13 @@ ili_enumerations(modeldir VARCHAR, model => VARCHAR, class => VARCHAR) → TABLE
 
 **Parameters:**
 
-| # | Name | Kind | Type | Description |
-|---|---|---|---|---|
-| 1 | `modeldir` | positional | VARCHAR | Directory with ILI files |
-| 2 | `model` | named | VARCHAR | Optional: filter by model name |
-| 3 | `class` | named | VARCHAR | Optional: filter by class name |
+| # | Name | Kind | Type | Erforderlich | Beschreibung |
+|---|---|---|---|---|---|
+| 1 | `modeldir` | positional | VARCHAR | Ja | Verzeichnis mit ILI-Dateien |
+| 2 | `model` | named | VARCHAR | Nein | Optional: nach Modellnamen filtern |
+| 3 | `class` | named | VARCHAR | Nein | Optional: nach Klassennamen filtern |
 
 **Return columns:**
-
 | Column | Type |
 |---|---|
 | `model_name` | VARCHAR |
@@ -424,13 +446,13 @@ ili_enumerations(modeldir VARCHAR, model => VARCHAR, class => VARCHAR) → TABLE
 **Examples:**
 
 ```sql
--- 1. List all enumeration values
+-- 1. Alle Enum-Werte
 SELECT model_name, enum_name, element
 FROM ili_enumerations('testdata/synthetic/simple');
 ```
 
 ```sql
--- 2. Filter enumerations for a specific model
+-- 2. Enum-Werte eines Modells
 SELECT enum_name, element
 FROM ili_enumerations('testdata/synthetic/simple',
     model := 'SO_AGI_Simple_20260605');
@@ -450,11 +472,11 @@ read_xtf_objects(input VARCHAR, modeldir => VARCHAR, models => VARCHAR) → TABL
 
 **Parameters:**
 
-| # | Name | Kind | Type | Description |
-|---|---|---|---|---|
-| 1 | `input` | positional | VARCHAR | Path to the XTF file |
-| 2 | `modeldir` | named | VARCHAR | Directory with ILI model files or semicolon-separated URLs |
-| 3 | `models` | named | VARCHAR | Optional: filter by model name(s) |
+| # | Name | Kind | Type | Erforderlich | Beschreibung |
+|---|---|---|---|---|---|
+| 1 | `input` | positional | VARCHAR | Ja | Pfad zur XTF-Datei |
+| 2 | `modeldir` | named | VARCHAR | Ja | Verzeichnis mit ILI-Modelldateien oder semikolon-getrennte URLs |
+| 3 | `models` | named | VARCHAR | Nein | Optional: nach Modellnamen filtern |
 
 **Return columns:**
 
@@ -496,6 +518,14 @@ FROM read_xtf_objects('testdata/synthetic/simple/valid.xtf',
     modeldir := 'testdata/synthetic/simple');
 ```
 
+```sql
+-- 4. Mit optionalem models-Filter
+SELECT xtf_class, xtf_tid, operation
+FROM read_xtf_objects('testdata/synthetic/simple/valid.xtf',
+    modeldir := 'testdata/synthetic/simple',
+    models := 'SO_AGI_Simple_20260605');
+```
+
 ---
 
 ### `read_xtf_class()`
@@ -510,12 +540,12 @@ read_xtf_class(input VARCHAR, class => VARCHAR, modeldir => VARCHAR, nested => V
 
 **Parameters:**
 
-| # | Name | Kind | Type | Description |
-|---|---|---|---|---|
-| 1 | `input` | positional | VARCHAR | Path to the XTF file |
-| 2 | `class` | named | VARCHAR | Fully qualified class name, e.g. `Model.Topic.Class` |
-| 3 | `modeldir` | named | VARCHAR | Directory with ILI model files or semicolon-separated URLs |
-| 4 | `nested` | named | VARCHAR | Nesting mode: `'json'` (default) or `'flat'` |
+| # | Name | Kind | Type | Erforderlich | Beschreibung |
+|---|---|---|---|---|---|
+| 1 | `input` | positional | VARCHAR | Ja | Pfad zur XTF-Datei |
+| 2 | `class` | named | VARCHAR | Ja | Voll qualifizierter Klassenname, z.B. `Model.Topic.Class` |
+| 3 | `modeldir` | named | VARCHAR | Ja | Verzeichnis mit ILI-Modelldateien oder semikolon-getrennte URLs |
+| 4 | `nested` | named | VARCHAR | Nein (Default: `"json"`) | Nesting-Modus: `'json'` (Default) oder `'flat'` |
 
 **Return columns:** Dynamic, plus always:
 - `xtf_bid` | VARCHAR
@@ -567,6 +597,15 @@ FROM read_xtf_class('testdata/synthetic/geometries/valid.xtf',
     modeldir := 'testdata/synthetic/geometries');
 ```
 
+```sql
+-- 5. nested-Modus explizit setzen (entspricht Default "json")
+SELECT Name, Adresse_json
+FROM read_xtf_class('testdata/synthetic/structures/valid.xtf',
+    class := 'SO_AGI_Structures_20260605.Topic.Betrieb',
+    modeldir := 'testdata/synthetic/structures',
+    nested := 'json');
+```
+
 ---
 
 ### `read_xtf_structures()`
@@ -581,10 +620,10 @@ read_xtf_structures(class => VARCHAR, modeldir => VARCHAR) → TABLE(...)
 
 **Parameters:**
 
-| # | Name | Kind | Type | Description |
-|---|---|---|---|---|
-| 1 | `class` | named | VARCHAR | Fully qualified class name |
-| 2 | `modeldir` | named | VARCHAR | Directory with ILI model files |
+| # | Name | Kind | Type | Erforderlich | Beschreibung |
+|---|---|---|---|---|---|
+| 1 | `class` | named | VARCHAR | Ja | Voll qualifizierter Klassenname |
+| 2 | `modeldir` | named | VARCHAR | Ja | Verzeichnis mit ILI-Modelldateien |
 
 **Return columns:**
 
@@ -631,11 +670,11 @@ read_xtf_association(input VARCHAR, association => VARCHAR, modeldir => VARCHAR)
 
 **Parameters:**
 
-| # | Name | Kind | Type | Description |
-|---|---|---|---|---|
-| 1 | `input` | positional | VARCHAR | Path to the XTF file |
-| 2 | `association` | named | VARCHAR | Fully qualified association name |
-| 3 | `modeldir` | named | VARCHAR | Directory with ILI model files |
+| # | Name | Kind | Type | Erforderlich | Beschreibung |
+|---|---|---|---|---|---|
+| 1 | `input` | positional | VARCHAR | Ja | Pfad zur XTF-Datei |
+| 2 | `association` | named | VARCHAR | Ja | Voll qualifizierter Assoziationsname |
+| 3 | `modeldir` | named | VARCHAR | Ja | Verzeichnis mit ILI-Modelldateien |
 
 **Return columns:** Dynamic, plus always:
 - `xtf_bid` | VARCHAR
@@ -701,12 +740,12 @@ ili_import_xtf(input VARCHAR, schema => VARCHAR, modeldir => VARCHAR, mapping =>
 
 **Parameters:**
 
-| # | Name | Kind | Type | Description |
-|---|---|---|---|---|
-| 1 | `input` | positional | VARCHAR | Path to the XTF file |
-| 2 | `schema` | named | VARCHAR | Target DuckDB schema name |
-| 3 | `modeldir` | named | VARCHAR | Directory with ILI model files |
-| 4 | `mapping` | named | VARCHAR | Mapping mode, default `'relational'` |
+| # | Name | Kind | Type | Erforderlich | Beschreibung |
+|---|---|---|---|---|---|
+| 1 | `input` | positional | VARCHAR | Ja | Pfad zur XTF-Datei |
+| 2 | `schema` | named | VARCHAR | Ja | Name des Ziel-Schemas in DuckDB |
+| 3 | `modeldir` | named | VARCHAR | Ja | Verzeichnis mit ILI-Modelldateien |
+| 4 | `mapping` | named | VARCHAR | Nein (Default: `"relational"`) | Mapping-Modus |
 
 **Return columns:**
 
@@ -725,7 +764,16 @@ FROM ili_import_xtf('testdata/synthetic/simple/valid.xtf',
 ```
 
 ```sql
--- 2. Execute generated SQL (full import pipeline)
+-- 2. Mit explizitem mapping-Parameter
+SELECT sql_statement
+FROM ili_import_xtf('testdata/synthetic/simple/valid.xtf',
+    schema := 'my_schema',
+    modeldir := 'testdata/synthetic/simple',
+    mapping := 'relational');
+```
+
+```sql
+-- 3. Generate and execute SQL (full import pipeline)
 CREATE SCHEMA IF NOT EXISTS my_schema;
 
 -- Generate and execute each statement
