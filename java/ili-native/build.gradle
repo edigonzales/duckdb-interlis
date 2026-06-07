@@ -27,11 +27,14 @@ tasks.register('nativeSharedLibrary', Exec) {
     def outputDir = layout.buildDirectory.dir('native').get().asFile
     def outputFile = new File(outputDir, 'libduckdb_ili_native')
 
+    def includeDir = new File(project.rootDir, 'duckdb-extension/src/include').absolutePath
     commandLine(
         nativeImage,
         '--shared',
         '--enable-url-protocols=https,http',
         '-H:+ReportExceptionStackTraces',
+        '-H:CLibraryPath=' + includeDir,
+        '-H:CCompilerOption=-I' + includeDir,
         '-o', outputFile.absolutePath,
         '-cp', classpath,
         mainClass

@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <dlfcn.h>
+#include "ili_request.h"
 #include "libduckdb_ili_native_dynamic.h"
 
 static int check_error_payload(int rc, char *payload, const char *test_name) {
@@ -31,6 +32,12 @@ static int check_error_payload(int rc, char *payload, const char *test_name) {
         }
     }
     return ok;
+}
+
+static void init_request(ili_request *req) {
+    memset(req, 0, sizeof(*req));
+    req->struct_size = sizeof(*req);
+    req->max_messages = -1;
 }
 
 int main(void) {
@@ -71,7 +78,7 @@ int main(void) {
     }
     if (payload) { free_string(thread, payload); payload = NULL; }
 
-    // Test 2: ili_native_echo
+    // Test 2: ili_native_echo (keeps char* - test only)
     fprintf(stderr, "\nTest 2: ili_native_echo\n");
     ili_native_echo_fn_t native_echo = (ili_native_echo_fn_t)dlsym(handle, "ili_native_echo");
     if (native_echo) {
@@ -98,7 +105,11 @@ int main(void) {
     ili_native_validate_fn_t native_validate = (ili_native_validate_fn_t)dlsym(handle, "ili_native_validate");
     if (native_validate) {
         char *result = NULL;
-        rc = native_validate(thread, "{\"input\":\"testdata/synthetic/simple/valid.xtf\",\"modeldir\":\"testdata/synthetic/simple\"}", &result);
+        ili_request req;
+        init_request(&req);
+        req.input = "testdata/synthetic/simple/valid.xtf";
+        req.modeldir = "testdata/synthetic/simple";
+        rc = native_validate(thread, &req, &result);
         if (rc == 0 && result && strstr(result, "\"valid\":true")) {
             passed++;
             fprintf(stderr, "  PASS\n");
@@ -109,11 +120,15 @@ int main(void) {
         if (result) { free_string(thread, result); result = NULL; }
     } else { failed++; }
 
-    // Test 5: Validation (invalid XTF — fachlicher Fehler, kein technischer)
+    // Test 5: Validation (invalid XTF — data error, status 0)
     fprintf(stderr, "\nTest 5: ili_native_validate (invalid — data error, status 0)\n");
     if (native_validate) {
         char *result = NULL;
-        rc = native_validate(thread, "{\"input\":\"testdata/synthetic/simple/invalid.xtf\",\"modeldir\":\"testdata/synthetic/simple\"}", &result);
+        ili_request req;
+        init_request(&req);
+        req.input = "testdata/synthetic/simple/invalid.xtf";
+        req.modeldir = "testdata/synthetic/simple";
+        rc = native_validate(thread, &req, &result);
         if (rc == 0 && result && strstr(result, "\"valid\":false")) {
             passed++;
             fprintf(stderr, "  PASS\n");
@@ -128,11 +143,13 @@ int main(void) {
     fprintf(stderr, "\nTest 6: ili_native_validate (non-existent file — validation error)\n");
     if (native_validate) {
         char *result = NULL;
-        rc = native_validate(thread, "{\"input\":\"/nonexistent/file.xtf\",\"modeldir\":\"testdata/synthetic/simple\"}", &result);
+        ili_request req;
+        init_request(&req);
+        req.input = "/nonexistent/file.xtf";
+        req.modeldir = "testdata/synthetic/simple";
+        rc = native_validate(thread, &req, &result);
         fprintf(stderr, "  rc=%d result=%p\n", rc, (void*)result);
         if (result) fprintf(stderr, "  payload (first 200 chars)='%.200s'\n", result);
-        // File-not-found is reported as a validation message (rc=0, valid=false)
-        // because IliValidatorService treats it as a validation precondition check
         if (rc == 0 && result && strstr(result, "\"valid\":false")) {
             passed++;
             fprintf(stderr, "  PASS (file-not-found returned as validation result)\n");
@@ -148,21 +165,29 @@ int main(void) {
     ili_native_model_info_fn_t native_model_info = (ili_native_model_info_fn_t)dlsym(handle, "ili_native_model_info");
     if (native_model_info) {
         char *result = NULL;
-        rc = native_model_info(thread, "{\"cmd\":\"models\",\"modeldir\":\"/nonexistent/path\"}", &result);
+        ili_request req;
+        init_request(&req);
+        req.cmd = "models";
+        req.modeldir = "/nonexistent/path";
+        rc = native_model_info(thread, &req, &result);
         if (check_error_payload(rc, result, "T7")) passed++; else failed++;
         if (result) { free_string(thread, result); result = NULL; }
     } else { failed++; }
 
-    // Test 8: Import SQL generation succeeds for non-existent file (SQL is generated before XTF is read)
+    // Test 8: Import SQL generation
     fprintf(stderr, "\nTest 8: ili_native_import_xtf (non-existent file — SQL generation succeeds)\n");
     ili_native_import_xtf_fn_t native_import_xtf = (ili_native_import_xtf_fn_t)dlsym(handle, "ili_native_import_xtf");
     if (native_import_xtf) {
         char *result = NULL;
-        rc = native_import_xtf(thread, "{\"input\":\"/nonexistent/file.xtf\",\"schema\":\"test\",\"modeldir\":\"testdata/synthetic/simple\"}", &result);
+        ili_request req;
+        init_request(&req);
+        req.input = "/nonexistent/file.xtf";
+        req.schema = "test";
+        req.modeldir = "testdata/synthetic/simple";
+        req.mapping = "relational";
+        rc = native_import_xtf(thread, &req, &result);
         fprintf(stderr, "  rc=%d result=%p\n", rc, (void*)result);
         if (result) fprintf(stderr, "  payload (first 200 chars)='%.200s'\n", result);
-        // SQL generation doesn't read the XTF — it succeeds (rc=0) for any modeldir
-        // The generated SQL will fail at execution time when read_xtf_class is called
         if (rc == 0 && result && strstr(result, "CREATE")) {
             passed++;
             fprintf(stderr, "  PASS (SQL generated — XTF read happens at SQL execution time)\n");
@@ -180,7 +205,11 @@ int main(void) {
     fprintf(stderr, "\nTest 9: ili_native_model_info error payload has no 'ERROR:' prefix\n");
     if (native_model_info) {
         char *result = NULL;
-        rc = native_model_info(thread, "{\"cmd\":\"models\",\"modeldir\":\"/nonexistent/path\"}", &result);
+        ili_request req;
+        init_request(&req);
+        req.cmd = "models";
+        req.modeldir = "/nonexistent/path";
+        rc = native_model_info(thread, &req, &result);
         if (rc != 0 && result && !strstr(result, "ERROR:")) {
             passed++;
             fprintf(stderr, "  PASS (no ERROR: prefix in error payload)\n");
@@ -196,7 +225,10 @@ int main(void) {
     ili_native_read_xtf_fn_t native_read_xtf = (ili_native_read_xtf_fn_t)dlsym(handle, "ili_native_read_xtf");
     if (native_read_xtf) {
         char *result = NULL;
-        rc = native_read_xtf(thread, "{\"input\":\"\"}", &result);
+        ili_request req;
+        init_request(&req);
+        req.input = "";
+        rc = native_read_xtf(thread, &req, &result);
         if (rc != 0 && result && strstr(result, "INVALID_ARGUMENT")) {
             passed++;
             fprintf(stderr, "  PASS\n");
@@ -211,7 +243,10 @@ int main(void) {
     fprintf(stderr, "\nTest 11: ili_native_model_info (unknown cmd -> UNSUPPORTED)\n");
     if (native_model_info) {
         char *result = NULL;
-        rc = native_model_info(thread, "{\"cmd\":\"invalidCommand\"}", &result);
+        ili_request req;
+        init_request(&req);
+        req.cmd = "invalidCommand";
+        rc = native_model_info(thread, &req, &result);
         if (rc != 0 && result && strstr(result, "UNSUPPORTED")) {
             passed++;
             fprintf(stderr, "  PASS\n");

@@ -1,5 +1,6 @@
 #include "duckdb_extension.h"
 #include "graal_isolate_dynamic.h"
+#include "ili_request.h"
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -82,10 +83,10 @@ static graal_tear_down_isolate_fn_t g_tear_down = NULL;
 
 // Native API functions
 typedef int (*native_version_fn)(graal_isolatethread_t*, char**);
-typedef int (*native_validate_fn)(graal_isolatethread_t*, char*, char**);
-typedef int (*native_validate_tsv_fn)(graal_isolatethread_t*, char*, char**);
-typedef int (*native_model_info_fn)(graal_isolatethread_t*, char*, char**);
-typedef int (*native_read_xtf_fn)(graal_isolatethread_t*, char*, char**);
+typedef int (*native_validate_fn)(graal_isolatethread_t*, ili_request*, char**);
+typedef int (*native_validate_tsv_fn)(graal_isolatethread_t*, ili_request*, char**);
+typedef int (*native_model_info_fn)(graal_isolatethread_t*, ili_request*, char**);
+typedef int (*native_read_xtf_fn)(graal_isolatethread_t*, ili_request*, char**);
 typedef void (*native_free_fn)(graal_isolatethread_t*, char*);
 
 static native_version_fn g_native_version = NULL;
@@ -109,9 +110,9 @@ static duckdb_connection g_connection = NULL;
 // Helper: recursive mkdir
 // ---------------------------------------------------------------------------
 static int make_dir_recursive(const char *path) {
-    char tmp[512];
     size_t len = strlen(path);
-    if (len >= sizeof(tmp)) return -1;
+    char *tmp = malloc(len + 1);
+    if (!tmp) return -1;
     memcpy(tmp, path, len + 1);
     for (char *p = tmp + 1; *p; p++) {
         if (*p == '/' || *p == '\\') {
@@ -121,7 +122,9 @@ static int make_dir_recursive(const char *path) {
             *p = saved;
         }
     }
-    return mkdir(tmp, 0755);
+    int result = mkdir(tmp, 0755);
+    free(tmp);
+    return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -346,6 +349,30 @@ static ili_call_result ili_call_input(
     return r;
 }
 
+// Low-level: call a with-ili_request native fn, return result struct
+static ili_call_result call_native_with_struct(graal_isolatethread_t *thread,
+        int (*fn)(graal_isolatethread_t *, ili_request *, char **),
+        const ili_request *req) {
+    ili_call_result r = {-1, NULL};
+    r.status = fn(thread, (ili_request *)req, &r.payload);
+    return r;
+}
+
+// High-level: attach thread, call with-ili_request fn, detach thread
+static ili_call_result ili_call_struct(
+        int (*fn)(graal_isolatethread_t *, ili_request *, char **),
+        const ili_request *req) {
+    ili_call_result r = {-1, NULL};
+    if (!g_initialized || !g_isolate) return r;
+
+    graal_isolatethread_t *thread = NULL;
+    if (g_attach_thread(g_isolate, &thread) != 0 || !thread) return r;
+
+    r = call_native_with_struct(thread, fn, req);
+    g_detach_thread(thread);
+    return r;
+}
+
 // Free a GraalVM-allocated string. Must be called with the isolate alive.
 static void ili_free_result(char *str) {
     if (!str || !g_isolate || !g_native_free) return;
@@ -509,21 +536,35 @@ static void ili_validate_summary_json_fn(duckdb_function_info info, duckdb_data_
         idx_t path_len = duckdb_string_t_length(path_str);
         bool modeldir_valid = duckdb_validity_row_is_valid(modeldir_validity, row);
 
-        // Build JSON request with length-limited strings
-        char request[8192];
+        char *path_z = malloc(path_len + 1);
+        if (!path_z) {
+            duckdb_validity_set_row_invalid(validity, row);
+            duckdb_scalar_function_set_error(info, "Out of memory");
+            return;
+        }
+        memcpy(path_z, duckdb_string_t_data(&path_str), path_len);
+        path_z[path_len] = '\0';
+
+        char *modeldir_z = NULL;
         if (modeldir_valid) {
             idx_t modeldir_len = duckdb_string_t_length(modeldir_str);
-            snprintf(request, sizeof(request),
-                "{\"input\":\"%.*s\",\"modeldir\":\"%.*s\"}",
-                (int)path_len, duckdb_string_t_data(&path_str),
-                (int)modeldir_len, duckdb_string_t_data(&modeldir_str));
-        } else {
-            snprintf(request, sizeof(request),
-                "{\"input\":\"%.*s\",\"modeldir\":\"\"}",
-                (int)path_len, duckdb_string_t_data(&path_str));
+            modeldir_z = malloc(modeldir_len + 1);
+            if (modeldir_z) {
+                memcpy(modeldir_z, duckdb_string_t_data(&modeldir_str), modeldir_len);
+                modeldir_z[modeldir_len] = '\0';
+            }
         }
 
-        ili_call_result cr = ili_call_input(g_native_validate, request);
+        ili_request req;
+        memset(&req, 0, sizeof(req));
+        req.struct_size = sizeof(req);
+        req.input = path_z;
+        req.modeldir = modeldir_z;
+        req.max_messages = -1;
+
+        ili_call_result cr = ili_call_struct(g_native_validate, &req);
+        free(path_z);
+        free(modeldir_z);
         if (cr.status == 0 && cr.payload) {
             duckdb_validity_set_row_valid(validity, row);
             duckdb_vector_assign_string_element(output, row, cr.payload);
@@ -739,13 +780,15 @@ static void ili_validate_init(duckdb_init_info info) {
         return;
     }
 
-    // Build JSON request and call native validation
-    char request[8192];
-    snprintf(request, sizeof(request),
-        "{\"input\":\"%s\",\"modeldir\":\"%s\"}", bd->input,
-        bd->modeldir ? bd->modeldir : "");
+    // Build request and call native validation
+    ili_request req;
+    memset(&req, 0, sizeof(req));
+    req.struct_size = sizeof(req);
+    req.input = bd->input;
+    req.modeldir = bd->modeldir;
+    req.max_messages = -1;
 
-    ili_call_result cr = ili_call_input(g_native_validate_tsv, request);
+    ili_call_result cr = ili_call_struct(g_native_validate_tsv, &req);
     if (cr.status != 0 || !cr.payload) {
         ili_result_error(cr, info, "Validation call failed");
         return;
@@ -932,13 +975,16 @@ static void mi_init(duckdb_init_info info) {
         duckdb_init_set_error(info, "Missing bind data"); return;
     }
 
-    char req[8192];
-    snprintf(req, sizeof(req), "{\"cmd\":\"%s\",\"modeldir\":\"%s\"%s%s%s%s}",
-        bd->cmd, bd->modeldir ? bd->modeldir : "",
-        bd->model ? ",\"model\":\"" : "", bd->model ? bd->model : "",
-        bd->class ? ",\"class\":\"" : "", bd->class ? bd->class : "");
+    ili_request req;
+    memset(&req, 0, sizeof(req));
+    req.struct_size = sizeof(req);
+    req.cmd = bd->cmd;
+    req.modeldir = bd->modeldir;
+    req.model = bd->model;
+    req.class_name = bd->class;
+    req.max_messages = -1;
 
-    ili_call_result cr = ili_call_input(g_native_model_info, req);
+    ili_call_result cr = ili_call_struct(g_native_model_info, &req);
     if (cr.status != 0 || !cr.payload) {
         ili_result_error(cr, info, "Model info call failed");
         return;
@@ -1077,13 +1123,15 @@ static void xtf_objects_init(duckdb_init_info info) {
         duckdb_init_set_error(info, "Missing input path"); return;
     }
 
-    char req[8192];
-    snprintf(req, sizeof(req), "{\"input\":\"%s\"%s%s%s%s}",
-        bd->model,
-        bd->modeldir ? ",\"modeldir\":\"" : "", bd->modeldir ? bd->modeldir : "",
-        bd->class ? ",\"models\":\"" : "", bd->class ? bd->class : "");
+    ili_request req;
+    memset(&req, 0, sizeof(req));
+    req.struct_size = sizeof(req);
+    req.input = bd->model;
+    req.modeldir = bd->modeldir;
+    req.models = bd->class;
+    req.max_messages = -1;
 
-    ili_call_result cr = ili_call_input(g_native_read_xtf, req);
+    ili_call_result cr = ili_call_struct(g_native_read_xtf, &req);
     if (cr.status != 0 || !cr.payload) {
         ili_result_error(cr, info, "XTF read call failed");
         return;
@@ -1150,13 +1198,15 @@ static void xtf_class_bind(duckdb_bind_info info) {
     if (!g_initialized && !init_native_library()) {
         duckdb_bind_set_error(info, g_error_buf);
     } else if (g_native_read_xtf_class_schema && bd->class_name) {
-        char req[4096];
-        int slen = snprintf(req, sizeof(req),
-            "{\"class\":\"%s\",\"modeldir\":\"%s\",\"nested\":\"%s\"}",
-            bd->class_name, bd->modeldir ? bd->modeldir : "",
-            bd->nested ? bd->nested : "json");
-        if (slen < 0 || slen >= (int)sizeof(req)) req[sizeof(req)-1] = '\0';
-        ili_call_result cr_schema = ili_call_input(g_native_read_xtf_class_schema, req);
+        ili_request req;
+        memset(&req, 0, sizeof(req));
+        req.struct_size = sizeof(req);
+        req.class_name = bd->class_name;
+        req.modeldir = bd->modeldir;
+        req.nested = bd->nested ? bd->nested : "json";
+        req.max_messages = -1;
+
+        ili_call_result cr_schema = ili_call_struct(g_native_read_xtf_class_schema, &req);
         if (cr_schema.payload) {
             // Count columns
             bd->col_count = 0;
@@ -1200,14 +1250,16 @@ static void xtf_class_init(duckdb_init_info info) {
         duckdb_init_set_error(info, "Missing input or class"); return;
     }
 
-    char req[8192];
-    int slen = snprintf(req, sizeof(req),
-        "{\"input\":\"%s\",\"class\":\"%s\",\"modeldir\":\"%s\",\"nested\":\"%s\"}",
-        bd->input, bd->class_name, bd->modeldir ? bd->modeldir : "",
-        bd->nested ? bd->nested : "json");
-    if (slen < 0 || slen >= (int)sizeof(req)) req[sizeof(req)-1] = '\0';
+    ili_request req;
+    memset(&req, 0, sizeof(req));
+    req.struct_size = sizeof(req);
+    req.input = bd->input;
+    req.class_name = bd->class_name;
+    req.modeldir = bd->modeldir;
+    req.nested = bd->nested ? bd->nested : "json";
+    req.max_messages = -1;
 
-    ili_call_result cr = ili_call_input(g_native_read_xtf_class, req);
+    ili_call_result cr = ili_call_struct(g_native_read_xtf_class, &req);
     if (cr.status != 0 || !cr.payload) {
         ili_result_error(cr, info, "XTF class read failed");
         return;
@@ -1293,12 +1345,14 @@ static void xtf_structures_init(duckdb_init_info info) {
         duckdb_init_set_error(info, "Missing class"); return;
     }
 
-    char req[4096];
-    int slen = snprintf(req, sizeof(req),
-        "{\"class\":\"%s\",\"modeldir\":\"%s\"}", bd->class_name, bd->modeldir ? bd->modeldir : "");
-    if (slen < 0 || slen >= (int)sizeof(req)) req[sizeof(req)-1] = '\0';
+    ili_request req;
+    memset(&req, 0, sizeof(req));
+    req.struct_size = sizeof(req);
+    req.class_name = bd->class_name;
+    req.modeldir = bd->modeldir;
+    req.max_messages = -1;
 
-    ili_call_result cr = ili_call_input(g_native_read_xtf_structures, req);
+    ili_call_result cr = ili_call_struct(g_native_read_xtf_structures, &req);
     if (cr.status != 0 || !cr.payload) {
         ili_result_error(cr, info, "XTF structures read failed");
         return;
@@ -1367,11 +1421,14 @@ static void xtf_assoc_bind(duckdb_bind_info info) {
     if (!g_initialized && !init_native_library()) {
         duckdb_bind_set_error(info, g_error_buf);
     } else if (g_native_read_xtf_association_schema && bd->association_name) {
-        char req[4096];
-        int slen = snprintf(req, sizeof(req),
-            "{\"association\":\"%s\",\"modeldir\":\"%s\"}", bd->association_name, bd->modeldir ? bd->modeldir : "");
-        if (slen < 0 || slen >= (int)sizeof(req)) req[sizeof(req)-1] = '\0';
-        ili_call_result cr_schema = ili_call_input(g_native_read_xtf_association_schema, req);
+        ili_request req;
+        memset(&req, 0, sizeof(req));
+        req.struct_size = sizeof(req);
+        req.association = bd->association_name;
+        req.modeldir = bd->modeldir;
+        req.max_messages = -1;
+
+        ili_call_result cr_schema = ili_call_struct(g_native_read_xtf_association_schema, &req);
         if (cr_schema.payload) {
             bd->col_count = 0;
             for (char *p = cr_schema.payload; *p; p++) if (*p == '\t') bd->col_count++;
@@ -1412,13 +1469,15 @@ static void xtf_assoc_init(duckdb_init_info info) {
         duckdb_init_set_error(info, "Missing input or association"); return;
     }
 
-    char req[8192];
-    int slen = snprintf(req, sizeof(req),
-        "{\"input\":\"%s\",\"association\":\"%s\",\"modeldir\":\"%s\"}",
-        bd->input, bd->association_name, bd->modeldir ? bd->modeldir : "");
-    if (slen < 0 || slen >= (int)sizeof(req)) req[sizeof(req)-1] = '\0';
+    ili_request req;
+    memset(&req, 0, sizeof(req));
+    req.struct_size = sizeof(req);
+    req.input = bd->input;
+    req.association = bd->association_name;
+    req.modeldir = bd->modeldir;
+    req.max_messages = -1;
 
-    ili_call_result cr = ili_call_input(g_native_read_xtf_association, req);
+    ili_call_result cr = ili_call_struct(g_native_read_xtf_association, &req);
     if (cr.status != 0 || !cr.payload) {
         ili_result_error(cr, info, "XTF association read failed");
         return;
@@ -1501,12 +1560,16 @@ static void import_init_func(duckdb_init_info info) {
         duckdb_init_set_error(info, "Missing input or schema"); return;
     }
 
-    char req[8192];
-    snprintf(req, sizeof(req),
-        "{\"input\":\"%s\",\"schema\":\"%s\",\"modeldir\":\"%s\",\"mapping\":\"relational\"}",
-        bd->model, bd->class, bd->modeldir ? bd->modeldir : "");
+    ili_request req;
+    memset(&req, 0, sizeof(req));
+    req.struct_size = sizeof(req);
+    req.input = bd->model;
+    req.schema = bd->class;
+    req.modeldir = bd->modeldir;
+    req.mapping = "relational";
+    req.max_messages = -1;
 
-    ili_call_result cr = ili_call_input(g_native_import_xtf, req);
+    ili_call_result cr = ili_call_struct(g_native_import_xtf, &req);
     if (cr.status != 0 || !cr.payload) {
         ili_result_error(cr, info, "Native import call failed");
         return;

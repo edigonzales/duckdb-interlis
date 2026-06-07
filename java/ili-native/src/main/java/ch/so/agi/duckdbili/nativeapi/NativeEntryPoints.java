@@ -1,13 +1,14 @@
 package ch.so.agi.duckdbili.nativeapi;
 
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 
 import org.graalvm.nativeimage.IsolateThread;
+import org.graalvm.nativeimage.UnmanagedMemory;
 import org.graalvm.nativeimage.c.function.CEntryPoint;
 import org.graalvm.nativeimage.c.type.CCharPointer;
 import org.graalvm.nativeimage.c.type.CCharPointerPointer;
 import org.graalvm.nativeimage.c.type.CTypeConversion;
-import org.graalvm.nativeimage.UnmanagedMemory;
 import org.graalvm.word.WordFactory;
 
 import ch.so.agi.duckdbili.core.CoreVersion;
@@ -114,13 +115,12 @@ public class NativeEntryPoints {
     @CEntryPoint(name = "ili_native_validate")
     public static int nativeValidate(
             IsolateThread thread,
-            CCharPointer requestJson,
+            IliRequest request,
             CCharPointerPointer outPayload) {
 
-        String request = CTypeConversion.toJavaString(requestJson);
-        String input = extractJsonField(request, "input");
-        String modelDir = extractJsonField(request, "modeldir");
-        int maxMessages = extractJsonInt(request, "maxMessages", -1);
+        String input = getField(request.input());
+        String modelDir = getField(request.modeldir());
+        int maxMessages = request.max_messages();
 
         if (input == null || input.isBlank()) {
             NativeError err = NativeError.invalidArgument("validate", "Missing required field", "input");
@@ -171,13 +171,12 @@ public class NativeEntryPoints {
     @CEntryPoint(name = "ili_native_validate_tsv")
     public static int nativeValidateTsv(
             IsolateThread thread,
-            CCharPointer requestJson,
+            IliRequest request,
             CCharPointerPointer outPayload) {
 
-        String request = CTypeConversion.toJavaString(requestJson);
-        String input = extractJsonField(request, "input");
-        String modelDir = extractJsonField(request, "modeldir");
-        int maxMessages = extractJsonInt(request, "maxMessages", -1);
+        String input = getField(request.input());
+        String modelDir = getField(request.modeldir());
+        int maxMessages = request.max_messages();
 
         if (input == null || input.isBlank()) {
             NativeError err = NativeError.invalidArgument("validate_tsv", "Missing required field", "input");
@@ -226,14 +225,13 @@ public class NativeEntryPoints {
     @CEntryPoint(name = "ili_native_model_info")
     public static int nativeModelInfo(
             IsolateThread thread,
-            CCharPointer requestJson,
+            IliRequest request,
             CCharPointerPointer outPayload) {
 
-        String request = CTypeConversion.toJavaString(requestJson);
-        String cmd = extractJsonField(request, "cmd");
-        String modelDir = extractJsonField(request, "modeldir");
-        String modelName = extractJsonField(request, "model");
-        String className = extractJsonField(request, "class");
+        String cmd = getField(request.cmd());
+        String modelDir = getField(request.modeldir());
+        String modelName = getField(request.model());
+        String className = getField(request.class_name());
 
         try {
             String result = switch (cmd != null ? cmd : "") {
@@ -268,13 +266,12 @@ public class NativeEntryPoints {
     @CEntryPoint(name = "ili_native_read_xtf")
     public static int nativeReadXtf(
             IsolateThread thread,
-            CCharPointer requestJson,
+            IliRequest request,
             CCharPointerPointer outPayload) {
 
-        String request = CTypeConversion.toJavaString(requestJson);
-        String input = extractJsonField(request, "input");
-        String modelDir = extractJsonField(request, "modeldir");
-        String modelNames = extractJsonField(request, "models");
+        String input = getField(request.input());
+        String modelDir = getField(request.modeldir());
+        String modelNames = getField(request.models());
 
         if (input == null || input.isBlank()) {
             NativeError err = NativeError.invalidArgument("read_xtf", "Missing required field", "input");
@@ -298,14 +295,13 @@ public class NativeEntryPoints {
     @CEntryPoint(name = "ili_native_read_xtf_class")
     public static int nativeReadXtfClass(
             IsolateThread thread,
-            CCharPointer requestJson,
+            IliRequest request,
             CCharPointerPointer outPayload) {
 
-        String request = CTypeConversion.toJavaString(requestJson);
-        String input = extractJsonField(request, "input");
-        String className = extractJsonField(request, "class");
-        String modelDir = extractJsonField(request, "modeldir");
-        String nested = extractJsonField(request, "nested");
+        String input = getField(request.input());
+        String className = getField(request.class_name());
+        String modelDir = getField(request.modeldir());
+        String nested = getField(request.nested());
 
         if (input == null || className == null) {
             String missing = input == null ? "input" : "class";
@@ -329,13 +325,12 @@ public class NativeEntryPoints {
     @CEntryPoint(name = "ili_native_read_xtf_class_schema")
     public static int nativeReadXtfClassSchema(
             IsolateThread thread,
-            CCharPointer requestJson,
+            IliRequest request,
             CCharPointerPointer outPayload) {
 
-        String request = CTypeConversion.toJavaString(requestJson);
-        String className = extractJsonField(request, "class");
-        String modelDir = extractJsonField(request, "modeldir");
-        String nested = extractJsonField(request, "nested");
+        String className = getField(request.class_name());
+        String modelDir = getField(request.modeldir());
+        String nested = getField(request.nested());
 
         if (className == null) {
             NativeError err = NativeError.invalidArgument("read_xtf_class_schema", "Missing required field", "class");
@@ -358,12 +353,11 @@ public class NativeEntryPoints {
     @CEntryPoint(name = "ili_native_read_xtf_structures")
     public static int nativeReadXtfStructures(
             IsolateThread thread,
-            CCharPointer requestJson,
+            IliRequest request,
             CCharPointerPointer outPayload) {
 
-        String request = CTypeConversion.toJavaString(requestJson);
-        String className = extractJsonField(request, "class");
-        String modelDir = extractJsonField(request, "modeldir");
+        String className = getField(request.class_name());
+        String modelDir = getField(request.modeldir());
 
         if (className == null) {
             NativeError err = NativeError.invalidArgument("read_xtf_structures", "Missing required field", "class");
@@ -386,13 +380,12 @@ public class NativeEntryPoints {
     @CEntryPoint(name = "ili_native_read_xtf_association")
     public static int nativeReadXtfAssociation(
             IsolateThread thread,
-            CCharPointer requestJson,
+            IliRequest request,
             CCharPointerPointer outPayload) {
 
-        String request = CTypeConversion.toJavaString(requestJson);
-        String input = extractJsonField(request, "input");
-        String associationName = extractJsonField(request, "association");
-        String modelDir = extractJsonField(request, "modeldir");
+        String input = getField(request.input());
+        String associationName = getField(request.association());
+        String modelDir = getField(request.modeldir());
 
         if (input == null || associationName == null) {
             String missing = input == null ? "input" : "association";
@@ -416,12 +409,11 @@ public class NativeEntryPoints {
     @CEntryPoint(name = "ili_native_read_xtf_association_schema")
     public static int nativeReadXtfAssociationSchema(
             IsolateThread thread,
-            CCharPointer requestJson,
+            IliRequest request,
             CCharPointerPointer outPayload) {
 
-        String request = CTypeConversion.toJavaString(requestJson);
-        String associationName = extractJsonField(request, "association");
-        String modelDir = extractJsonField(request, "modeldir");
+        String associationName = getField(request.association());
+        String modelDir = getField(request.modeldir());
 
         if (associationName == null) {
             NativeError err = NativeError.invalidArgument("read_xtf_association_schema",
@@ -449,14 +441,13 @@ public class NativeEntryPoints {
     @CEntryPoint(name = "ili_native_import_xtf")
     public static int nativeImportXtf(
             IsolateThread thread,
-            CCharPointer requestJson,
+            IliRequest request,
             CCharPointerPointer outPayload) {
 
-        String request = CTypeConversion.toJavaString(requestJson);
-        String input = extractJsonField(request, "input");
-        String modelDir = extractJsonField(request, "modeldir");
-        String schema = extractJsonField(request, "schema");
-        String mapping = extractJsonField(request, "mapping");
+        String input = getField(request.input());
+        String modelDir = getField(request.modeldir());
+        String schema = getField(request.schema());
+        String mapping = getField(request.mapping());
 
         if (input == null || input.isBlank()) {
             NativeError err = NativeError.invalidArgument("import_xtf", "Missing required field", "input");
@@ -488,6 +479,13 @@ public class NativeEntryPoints {
     // Helpers
     // -----------------------------------------------------------------------
 
+    private static String getField(CCharPointer ptr) {
+        if (ptr.isNull()) {
+            return null;
+        }
+        return CTypeConversion.toJavaString(ptr);
+    }
+
     private static String escapeTsv(String s) {
         if (s == null) return "";
         return s.replace("\\", "\\\\")
@@ -501,37 +499,11 @@ public class NativeEntryPoints {
         return "\"" + escapeJson(s) + "\"";
     }
 
-    private static String extractJsonField(String json, String field) {
-        String key = "\"" + field + "\"";
-        int keyIdx = json.indexOf(key);
-        if (keyIdx < 0) return null;
-        int colonIdx = json.indexOf(":", keyIdx + key.length());
-        if (colonIdx < 0) return null;
-        int start = colonIdx + 1;
-        while (start < json.length() && (json.charAt(start) == ' ' || json.charAt(start) == '\t')) start++;
-        if (start >= json.length()) return null;
-        if (json.charAt(start) == '"') {
-            int end = json.indexOf('"', start + 1);
-            if (end < 0) return null;
-            return json.substring(start + 1, end);
-        }
-        int end = start;
-        while (end < json.length() && json.charAt(end) != ',' && json.charAt(end) != '}' && json.charAt(end) != ']') end++;
-        return json.substring(start, end).trim();
-    }
-
-    private static int extractJsonInt(String json, String field, int defaultValue) {
-        String val = extractJsonField(json, field);
-        if (val == null || val.isBlank()) return defaultValue;
-        try { return Integer.parseInt(val); }
-        catch (NumberFormatException e) { return defaultValue; }
-    }
-
     private static CCharPointer allocCString(String s) {
         if (s == null) {
             return WordFactory.nullPointer();
         }
-        byte[] bytes = s.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        byte[] bytes = s.getBytes(StandardCharsets.UTF_8);
         CCharPointer ptr = UnmanagedMemory.malloc(bytes.length + 1);
         for (int i = 0; i < bytes.length; i++) {
             ptr.write(i, bytes[i]);
