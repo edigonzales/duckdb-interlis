@@ -1,6 +1,7 @@
 package ch.so.agi.duckdbili.core.validation;
 
 import ch.ehi.basics.settings.Settings;
+import ch.so.agi.duckdbili.core.logging.IliLogger;
 import org.interlis2.validator.Validator;
 
 import java.io.IOException;
@@ -52,7 +53,12 @@ public class IliValidatorService {
             }
 
             Validator validator = new Validator();
-            validator.validate(new String[]{xtfFile.toAbsolutePath().toString()}, settings);
+            IliLogger.suppress();
+            try {
+                validator.validate(new String[]{xtfFile.toAbsolutePath().toString()}, settings);
+            } finally {
+                IliLogger.restore();
+            }
 
             return parseCsv(csvLog, xtfFile);
 

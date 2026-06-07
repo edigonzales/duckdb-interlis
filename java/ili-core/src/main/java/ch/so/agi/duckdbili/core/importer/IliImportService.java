@@ -5,6 +5,7 @@ import ch.interlis.ili2c.Main;
 import ch.interlis.ili2c.config.Configuration;
 import ch.interlis.ili2c.metamodel.*;
 import ch.interlis.ilirepository.IliManager;
+import ch.so.agi.duckdbili.core.logging.IliLogger;
 
 import java.io.File;
 import java.nio.file.*;
@@ -291,7 +292,12 @@ public class IliImportService {
             Main.setDefaultIli2cPathMap(settings);
             settings.setIlidirs(modelDir);
 
-            return Main.runCompiler(cfg, settings, null);
+            IliLogger.suppress();
+            try {
+                return Main.runCompiler(cfg, settings, null);
+            } finally {
+                IliLogger.restore();
+            }
         } catch (Exception e) {
             return null;
         }

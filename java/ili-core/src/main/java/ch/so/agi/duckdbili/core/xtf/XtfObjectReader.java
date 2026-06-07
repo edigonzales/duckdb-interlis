@@ -12,6 +12,7 @@ import ch.interlis.iox_j.jts.Iox2jtsext;
 import ch.interlis.iom_j.xtf.Xtf24Reader;
 import ch.interlis.iox_j.IoxIliReader;
 import ch.interlis.iox_j.utility.ReaderFactory;
+import ch.so.agi.duckdbili.core.logging.IliLogger;
 
 import java.io.File;
 import java.nio.file.*;
@@ -205,7 +206,9 @@ public class XtfObjectReader {
                 }
             }
         } catch (Exception ex) {
-            System.err.println("XTF read: " + ex.getMessage());
+            if (IliLogger.isDebugEnabled()) {
+                System.err.println("XTF read: " + ex.getMessage());
+            }
         } finally {
             if (reader != null) { try { reader.close(); } catch (Exception ignored) {} }
         }
@@ -261,7 +264,12 @@ public class XtfObjectReader {
             Main.setDefaultIli2cPathMap(settings);
             settings.setIlidirs(modelDir);
 
-            return Main.runCompiler(cfg, settings, null);
+            IliLogger.suppress();
+            try {
+                return Main.runCompiler(cfg, settings, null);
+            } finally {
+                IliLogger.restore();
+            }
         } catch (Exception e) {
             return null;
         }
@@ -688,7 +696,9 @@ public class XtfObjectReader {
                 }
             }
         } catch (Exception ex) {
-            System.err.println("XTF association read: " + ex.getMessage());
+            if (IliLogger.isDebugEnabled()) {
+                System.err.println("XTF association read: " + ex.getMessage());
+            }
         } finally {
             if (reader != null) { try { reader.close(); } catch (Exception ignored) {} }
         }

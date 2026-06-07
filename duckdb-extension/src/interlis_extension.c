@@ -182,7 +182,9 @@ static const char *resolve_native_lib_path(void) {
         // Not in cache → extract embedded blob
         make_dir_recursive(cache_dir);
         if (extract_native_lib(cache_path)) {
+#ifdef DEBUG
             fprintf(stderr, "ILI: extracted native library to %s\n", cache_path);
+#endif
             return cache_path;
         }
     }
@@ -650,8 +652,6 @@ static void ili_validate_init(duckdb_init_info info) {
     char request[8192];
     snprintf(request, sizeof(request),
         "{\"input\":\"%s\",\"modeldir\":\"%s\"}", bd->input, bd->modeldir);
-
-    fprintf(stderr, "Calling validate_tsv...\n");
 
     char *tsv_result = native_call_with_input_str(g_native_validate_tsv, request);
     if (!tsv_result) {

@@ -1092,9 +1092,15 @@ Nice-to-have:
 
 ### 10.2 Logging
 
-- Java-Seite soll kontrolliert loggen, aber DuckDB nicht mit stdout/stderr fluten.
-- Debugging über Parameter `debug := true` oder Environment Variable `DUCKDB_ILI_DEBUG=1`.
-- Validatormeldungen sind Daten, nicht Logs.
+- Java-seitiges Logging wird mit `ch.so.agi.duckdbili.core.logging.IliLogger` gesteuert.
+- Standardmässig wird sämtlicher EhiLogger-Output (ili2c-Compiler, ilivalidator) unterdrückt:
+  - Der `StdListener` wird aus dem `EhiLogger`-Singleton entfernt.
+  - `System.err` wird temporär auf `/dev/null` umgeleitet, um direkte Konsolenausgaben zu verhindern.
+- Mit Environment-Variable `DUCKDB_ILI_DEBUG=1` werden alle Diagnose-Ausgaben auf stderr belassen.
+- Die Unterdrückung erfolgt pro Aufruf (try/finally) mit `IliLogger.suppress()` / `IliLogger.restore()`.
+- Nested calls werden unterstützt: erst der äusserste `restore()`-Aufruf stellt den ursprünglichen Zustand wieder her.
+- Betroffene Services: `IliValidatorService`, `IliModelService`, `XtfObjectReader`, `IliImportService`.
+- Validatormeldungen sind Daten, nicht Logs. Sie werden strukturiert via CSV-Log an DuckDB zurückgegeben.
 
 ### 10.3 Performance
 
