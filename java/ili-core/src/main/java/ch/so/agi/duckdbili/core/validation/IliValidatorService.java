@@ -4,6 +4,7 @@ import ch.ehi.basics.settings.Settings;
 import ch.so.agi.duckdbili.core.logging.IliLogger;
 import org.interlis2.validator.Validator;
 
+import java.io.BufferedReader;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -18,10 +19,14 @@ public class IliValidatorService {
             : "https://models.interlis.ch";
 
     public ValidationResult validate(Path xtfFile, String modelDir) {
-        return validate(xtfFile, modelDir, -1);
+        return validate(xtfFile, modelDir, -1, ValidationProfile.FULL);
     }
 
     public ValidationResult validate(Path xtfFile, String modelDir, int maxMessages) {
+        return validate(xtfFile, modelDir, maxMessages, ValidationProfile.FULL);
+    }
+
+    public ValidationResult validate(Path xtfFile, String modelDir, int maxMessages, ValidationProfile profile) {
         if (!Files.isRegularFile(xtfFile)) {
             return new ValidationResult(List.of(
                 new ValidationMessage.Builder()
@@ -33,14 +38,16 @@ public class IliValidatorService {
 
         String effectiveModelDir = resolveModelDir(modelDir, xtfFile);
 
+        Path tempDir = null;
         Path csvLog = null;
         try {
-            csvLog = Files.createTempFile("ilival-", ".csv");
+            tempDir = Files.createTempDirectory("ilival-");
+            csvLog = tempDir.resolve("log.csv");
         } catch (IOException e) {
             return new ValidationResult(List.of(
                 new ValidationMessage.Builder()
                     .severity("ERROR")
-                    .message("Failed to create temp file: " + e.getMessage())
+                    .message("Failed to create temp directory: " + e.getMessage())
                     .build()));
         }
 
@@ -49,13 +56,20 @@ public class IliValidatorService {
             settings.setValue(Validator.SETTING_ILIDIRS, effectiveModelDir);
             settings.setValue(Validator.SETTING_CSVLOG, csvLog.toAbsolutePath().toString());
             settings.setValue(Validator.SETTING_FORCE_TYPE_VALIDATION, Validator.TRUE);
-            settings.setValue(Validator.SETTING_MULTIPLICITY_VALIDATION, Validator.TRUE);
-            settings.setValue(Validator.SETTING_ALL_OBJECTS_ACCESSIBLE, Validator.TRUE);
-            settings.setValue(Validator.SETTING_DISABLE_AREA_VALIDATION, Validator.TRUE);
-            settings.setValue(Validator.SETTING_DISABLE_CONSTRAINT_VALIDATION, Validator.TRUE);
+            settings.setValue(Validator.SETTING_ALL_OBJECTS_ACCESSIBLE,
+                    profile.isAllObjectsAccessible() ? Validator.TRUE : Validator.FALSE);
 
-            if (maxMessages > 0) {
-                settings.setValue("org.interlis2.validator.maxMessages", String.valueOf(maxMessages));
+            if (profile.isMultiplicityValidationEnabled()) {
+                settings.setValue(Validator.SETTING_MULTIPLICITY_VALIDATION, Validator.TRUE);
+            } else {
+                settings.setValue(Validator.SETTING_MULTIPLICITY_VALIDATION, Validator.FALSE);
+            }
+
+            if (!profile.isConstraintValidationEnabled()) {
+                settings.setValue(Validator.SETTING_DISABLE_CONSTRAINT_VALIDATION, Validator.TRUE);
+            }
+            if (!profile.isAreaValidationEnabled()) {
+                settings.setValue(Validator.SETTING_DISABLE_AREA_VALIDATION, Validator.TRUE);
             }
 
             Validator validator = new Validator();
@@ -66,7 +80,7 @@ public class IliValidatorService {
                 IliLogger.restore();
             }
 
-            return parseCsv(csvLog, xtfFile);
+            return parseCsv(csvLog, xtfFile, maxMessages);
 
         } catch (Exception e) {
             return new ValidationResult(List.of(
@@ -77,45 +91,58 @@ public class IliValidatorService {
                     .raw(e.toString())
                     .build()));
         } finally {
-            try { Files.deleteIfExists(csvLog); } catch (IOException ignored) {}
+            deleteRecursive(tempDir);
         }
     }
 
-    private ValidationResult parseCsv(Path csvLog, Path xtfFile) {
+    private static void deleteRecursive(Path path) {
+        if (path == null) return;
+        try {
+            try (var stream = Files.walk(path)) {
+                stream.sorted(java.util.Comparator.reverseOrder())
+                      .forEach(p -> {
+                          try { Files.deleteIfExists(p); } catch (IOException ignored) {}
+                      });
+            }
+        } catch (IOException ignored) {}
+    }
+
+    private ValidationResult parseCsv(Path csvLog, Path xtfFile, int maxMessages) {
         List<ValidationMessage> messages = new ArrayList<>();
 
         if (!Files.isRegularFile(csvLog)) {
             return new ValidationResult(messages);
         }
 
-        try {
-            List<String> lines = Files.readAllLines(csvLog, StandardCharsets.UTF_8);
-            if (lines.isEmpty()) return new ValidationResult(messages);
-
+        try (BufferedReader reader = Files.newBufferedReader(csvLog, StandardCharsets.UTF_8)) {
+            String line;
             boolean first = true;
             int rowIdx = 0;
-            for (String line : lines) {
+
+            while ((line = reader.readLine()) != null) {
                 rowIdx++;
-                if (line.startsWith("\uFEFF")) line = line.substring(1);
+                if (line.isEmpty()) continue;
+                if (line.charAt(0) == '\uFEFF') line = line.substring(1);
                 if (first) { first = false; continue; }
 
-                String[] fields = line.split(",", -1);
-                if (fields.length < 2) continue;
+                if (maxMessages > 0 && messages.size() >= maxMessages) break;
 
-                String message = fields[0];
-                String type = fields[1];
-                String tid = fields.length > 3 ? fields[3] : "";
-                String iliQName = fields.length > 6 ? fields[6] : "";
-                String dataSource = fields.length > 7 ? fields[7] : "";
-                String lineStr = fields.length > 8 ? fields[8] : "";
+                List<String> fields = parseCsvLine(line);
+                if (fields.size() < 2) continue;
 
-                // Keep all non-empty messages; correct severity based on Type field
+                String message = fields.get(0);
+                String type = fields.get(1);
+                String iliQName = fields.size() > 2 ? fields.get(2) : "";
+                String tid = fields.size() > 3 ? fields.get(3) : "";
+                String dataSource = fields.size() > 7 ? fields.get(7) : "";
+                String lineStr = fields.size() > 8 ? fields.get(8) : "";
+
                 String severity = type.equalsIgnoreCase("Error") ? "ERROR"
                         : type.equalsIgnoreCase("Warning") ? "WARNING" : "INFO";
 
-                Integer csvLine = null;
+                Integer csvLineNo = null;
                 if (!lineStr.isBlank()) {
-                    try { csvLine = Integer.parseInt(lineStr.trim()); }
+                    try { csvLineNo = Integer.parseInt(lineStr.trim()); }
                     catch (NumberFormatException ignored) {}
                 }
 
@@ -130,9 +157,10 @@ public class IliValidatorService {
 
                 messages.add(new ValidationMessage.Builder()
                         .severity(severity)
+                        .code("")
                         .message(message)
                         .fileName(dataSource.isBlank() ? xtfFile.toString() : dataSource)
-                        .line(csvLine)
+                        .line(csvLineNo)
                         .xtfTid(tid.isBlank() ? null : tid)
                         .model(model)
                         .topic(topic)
@@ -146,6 +174,45 @@ public class IliValidatorService {
         }
 
         return new ValidationResult(messages);
+    }
+
+    static List<String> parseCsvLine(String line) {
+        List<String> fields = new ArrayList<>();
+        StringBuilder field = new StringBuilder();
+        boolean inQuotes = false;
+        int len = line.length();
+
+        for (int i = 0; i < len; i++) {
+            char c = line.charAt(i);
+
+            if (inQuotes) {
+                if (c == '"') {
+                    if (i + 1 < len && line.charAt(i + 1) == '"') {
+                        field.append('"');
+                        i++;
+                    } else {
+                        inQuotes = false;
+                    }
+                } else {
+                    field.append(c);
+                }
+            } else {
+                if (c == '"') {
+                    if (field.length() == 0) {
+                        inQuotes = true;
+                    } else {
+                        field.append(c);
+                    }
+                } else if (c == ',') {
+                    fields.add(field.toString());
+                    field.setLength(0);
+                } else {
+                    field.append(c);
+                }
+            }
+        }
+        fields.add(field.toString());
+        return fields;
     }
 
     private static String resolveModelDir(String modelDir, Path xtfFile) {

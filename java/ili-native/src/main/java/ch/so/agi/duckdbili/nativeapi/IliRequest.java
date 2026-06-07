@@ -81,4 +81,10 @@ public interface IliRequest extends PointerBase {
 
     @CField("max_messages")
     void max_messages(int value);
+
+    @CField("profile")
+    CCharPointer profile();
+
+    @CField("profile")
+    void profile(CCharPointer value);
 }

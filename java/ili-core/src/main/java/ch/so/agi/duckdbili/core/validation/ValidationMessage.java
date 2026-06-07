@@ -5,6 +5,7 @@ import java.util.List;
 
 public class ValidationMessage {
     private final String severity;
+    private final String code;
     private final String message;
     private final String fileName;
     private final Integer line;
@@ -19,6 +20,7 @@ public class ValidationMessage {
 
     private ValidationMessage(Builder builder) {
         this.severity = builder.severity;
+        this.code = builder.code;
         this.message = builder.message;
         this.fileName = builder.fileName;
         this.line = builder.line;
@@ -33,6 +35,7 @@ public class ValidationMessage {
     }
 
     public String getSeverity() { return severity; }
+    public String getCode() { return code; }
     public String getMessage() { return message; }
     public String getFileName() { return fileName; }
     public Integer getLine() { return line; }
@@ -47,6 +50,7 @@ public class ValidationMessage {
 
     public static class Builder {
         private String severity;
+        private String code;
         private String message;
         private String fileName;
         private Integer line;
@@ -60,6 +64,7 @@ public class ValidationMessage {
         private String raw;
 
         public Builder severity(String v) { severity = v; return this; }
+        public Builder code(String v) { code = v; return this; }
         public Builder message(String v) { message = v; return this; }
         public Builder fileName(String v) { fileName = v; return this; }
         public Builder line(Integer v) { line = v; return this; }

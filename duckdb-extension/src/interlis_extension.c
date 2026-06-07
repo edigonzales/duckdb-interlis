@@ -623,11 +623,8 @@ static void ili_validate_summary_json_fn(duckdb_function_info info, duckdb_data_
             return;
         }
 
-        // Extract C strings from DuckDB VARCHAR (may not be null-terminated)
         duckdb_string_t path_str = path_data[row];
-        duckdb_string_t modeldir_str = modeldir_data[row];
         idx_t path_len = duckdb_string_t_length(path_str);
-        bool modeldir_valid = duckdb_validity_row_is_valid(modeldir_validity, row);
 
         char *path_z = malloc(path_len + 1);
         if (!path_z) {
@@ -639,7 +636,8 @@ static void ili_validate_summary_json_fn(duckdb_function_info info, duckdb_data_
         path_z[path_len] = '\0';
 
         char *modeldir_z = NULL;
-        if (modeldir_valid) {
+        if (duckdb_validity_row_is_valid(modeldir_validity, row)) {
+            duckdb_string_t modeldir_str = modeldir_data[row];
             idx_t modeldir_len = duckdb_string_t_length(modeldir_str);
             modeldir_z = malloc(modeldir_len + 1);
             if (modeldir_z) {
@@ -654,6 +652,7 @@ static void ili_validate_summary_json_fn(duckdb_function_info info, duckdb_data_
         req.input = path_z;
         req.modeldir = modeldir_z;
         req.max_messages = -1;
+        req.profile = NULL;
 
         int status = -1;
         char *result = ili_call_struct_str(g_native_validate, &req, &status);
@@ -707,14 +706,14 @@ static void register_functions(duckdb_connection connection) {
         duckdb_scalar_function fn = duckdb_create_scalar_function();
         duckdb_scalar_function_set_name(fn, "ili_validate_summary_json");
 
-        duckdb_logical_type param_type = duckdb_create_logical_type(DUCKDB_TYPE_VARCHAR);
-        duckdb_scalar_function_add_parameter(fn, param_type);
-        duckdb_scalar_function_add_parameter(fn, param_type);
+        duckdb_logical_type varchar_type = duckdb_create_logical_type(DUCKDB_TYPE_VARCHAR);
+        duckdb_scalar_function_add_parameter(fn, varchar_type);       // path
+        duckdb_scalar_function_add_parameter(fn, varchar_type);       // modeldir
 
         duckdb_logical_type rt = duckdb_create_logical_type(DUCKDB_TYPE_VARCHAR);
         duckdb_scalar_function_set_return_type(fn, rt);
 
-        duckdb_destroy_logical_type(&param_type);
+        duckdb_destroy_logical_type(&varchar_type);
         duckdb_destroy_logical_type(&rt);
 
         duckdb_scalar_function_set_function(fn, ili_validate_summary_json_fn);
@@ -732,6 +731,8 @@ static void register_functions(duckdb_connection connection) {
 typedef struct {
     char *input;
     char *modeldir;
+    char *profile;
+    int max_messages;
 } ili_validate_bind_data;
 
 typedef struct {
@@ -764,6 +765,7 @@ static void bind_data_destroy(void *data) {
     if (bd) {
         free(bd->input);
         free(bd->modeldir);
+        free(bd->profile);
         free(bd);
     }
 }
@@ -852,14 +854,27 @@ static void ili_validate_bind(duckdb_bind_info info) {
     duckdb_value modeldir_val = duckdb_bind_get_named_parameter(info, "modeldir");
     char *modeldir_str = modeldir_val ? duckdb_get_varchar(modeldir_val) : NULL;
 
+    duckdb_value profile_val = duckdb_bind_get_named_parameter(info, "profile");
+    char *profile_str = profile_val ? duckdb_get_varchar(profile_val) : NULL;
+
+    duckdb_value max_messages_val = duckdb_bind_get_named_parameter(info, "max_messages");
+    int max_messages = -1;
+    if (max_messages_val) {
+        max_messages = duckdb_get_int32(max_messages_val);
+    }
+
     // Store in bind data
     ili_validate_bind_data *bd = malloc(sizeof(ili_validate_bind_data));
     bd->input = input_str ? strdup(input_str) : NULL;
     bd->modeldir = modeldir_str ? strdup(modeldir_str) : NULL;
+    bd->profile = profile_str ? strdup(profile_str) : NULL;
+    bd->max_messages = max_messages;
     duckdb_bind_set_bind_data(info, bd, bind_data_destroy);
 
     if (input_val) duckdb_destroy_value(&input_val);
     if (modeldir_val) duckdb_destroy_value(&modeldir_val);
+    if (profile_val) duckdb_destroy_value(&profile_val);
+    if (max_messages_val) duckdb_destroy_value(&max_messages_val);
 }
 
 static void ili_validate_init(duckdb_init_info info) {
@@ -880,7 +895,8 @@ static void ili_validate_init(duckdb_init_info info) {
     req.struct_size = sizeof(req);
     req.input = bd->input;
     req.modeldir = bd->modeldir;
-    req.max_messages = -1;
+    req.max_messages = bd->max_messages;
+    req.profile = bd->profile;
 
     int status = -1;
     char *result = ili_call_struct_str(g_native_validate_tsv, &req, &status);
@@ -993,8 +1009,11 @@ static void register_table_functions(duckdb_connection connection) {
     duckdb_table_function_set_name(fn, "ili_validate");
 
     duckdb_logical_type varchar_type = duckdb_create_logical_type(DUCKDB_TYPE_VARCHAR);
+    duckdb_logical_type int_type = duckdb_create_logical_type(DUCKDB_TYPE_INTEGER);
     duckdb_table_function_add_parameter(fn, varchar_type);
     duckdb_table_function_add_named_parameter(fn, "modeldir", varchar_type);
+    duckdb_table_function_add_named_parameter(fn, "profile", varchar_type);
+    duckdb_table_function_add_named_parameter(fn, "max_messages", int_type);
 
     duckdb_table_function_set_bind(fn, ili_validate_bind);
     duckdb_table_function_set_init(fn, ili_validate_init);
@@ -1003,6 +1022,7 @@ static void register_table_functions(duckdb_connection connection) {
     duckdb_register_table_function(connection, fn);
     duckdb_destroy_table_function(&fn);
     duckdb_destroy_logical_type(&varchar_type);
+    duckdb_destroy_logical_type(&int_type);
 }
 
 // ---------------------------------------------------------------------------

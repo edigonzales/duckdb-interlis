@@ -35,21 +35,31 @@ SELECT '--- REGRESSION-3: Special characters in paths ---' AS test;
 -- Documented limitation: paths containing " or \ may cause errors.
 
 -- ============================================================================
--- Phase 6: Validator
+-- Phase 6: Validator (FIXED)
 -- ============================================================================
 
--- REGRESSION-4: No validation profile parameter
--- Currently: CONSTRAINT + AREA disabled, no way to enable via SQL
--- After Phase 6: profile parameter available
-SELECT '--- REGRESSION-4: No validation profile ---' AS test;
-SELECT severity, message
+-- REGRESSION-4: Validation profile parameter now available
+SELECT '--- REGRESSION-4: Validation with profiles ---' AS test;
+SELECT severity, code, message
 FROM ili_validate('testdata/synthetic/simple/valid.xtf',
-    modeldir := 'testdata/synthetic/simple');
+    modeldir := 'testdata/synthetic/simple',
+    profile := 'full');
 
--- REGRESSION-5: Validation messages with commas
--- Currently: CSV parsing with split(",") breaks on embedded commas
--- After Phase 6: proper CSV parser handles comma-containing messages
--- Note: requires test data with comma in validation message
+-- REGRESSION-4b: Fast profile
+SELECT severity, code, message
+FROM ili_validate('testdata/synthetic/simple/valid.xtf',
+    modeldir := 'testdata/synthetic/simple',
+    profile := 'fast');
+
+-- REGRESSION-4c: max_messages parameter
+SELECT severity, message
+FROM ili_validate('testdata/synthetic/simple/invalid.xtf',
+    modeldir := 'testdata/synthetic/simple',
+    max_messages := 3);
+
+-- REGRESSION-5: CSV parser now handles comma-containing messages
+-- The code column is now populated (was always empty before)
+-- Verified by the Java CSV parser unit tests (parseCsvLine)
 
 -- ============================================================================
 -- Phase 7: XTF Reader

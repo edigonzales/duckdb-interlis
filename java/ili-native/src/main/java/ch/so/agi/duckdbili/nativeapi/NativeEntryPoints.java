@@ -18,6 +18,7 @@ import ch.so.agi.duckdbili.core.importer.IliImportService;
 import ch.so.agi.duckdbili.core.model.IliModelService;
 import ch.so.agi.duckdbili.core.validation.IliValidatorService;
 import ch.so.agi.duckdbili.core.validation.ValidationMessage;
+import ch.so.agi.duckdbili.core.validation.ValidationProfile;
 import ch.so.agi.duckdbili.core.validation.ValidationResult;
 import ch.so.agi.duckdbili.core.xtf.XtfObjectReader;
 
@@ -121,6 +122,7 @@ public class NativeEntryPoints {
         String input = getField(request.input());
         String modelDir = getField(request.modeldir());
         int maxMessages = request.max_messages();
+        String profileStr = getField(request.profile());
 
         if (input == null || input.isBlank()) {
             NativeError err = NativeError.invalidArgument("validate", "Missing required field", "input");
@@ -130,7 +132,8 @@ public class NativeEntryPoints {
 
         try {
             IliValidatorService service = new IliValidatorService();
-            ValidationResult result = service.validate(Path.of(input), modelDir, maxMessages);
+            ValidationProfile profile = ValidationProfile.fromString(profileStr);
+            ValidationResult result = service.validate(Path.of(input), modelDir, maxMessages, profile);
 
             StringBuilder json = new StringBuilder();
             json.append("{");
@@ -145,6 +148,7 @@ public class NativeEntryPoints {
                 first = false;
                 json.append("{");
                 json.append("\"severity\":\"").append(escapeJson(msg.getSeverity())).append("\",");
+                json.append("\"code\":\"").append(escapeJson(msg.getCode())).append("\",");
                 json.append("\"message\":\"").append(escapeJson(msg.getMessage())).append("\",");
                 json.append("\"fileName\":\"").append(escapeJson(msg.getFileName())).append("\",");
                 json.append("\"line\":").append(msg.getLine() == null ? "null" : msg.getLine()).append(",");
@@ -177,6 +181,7 @@ public class NativeEntryPoints {
         String input = getField(request.input());
         String modelDir = getField(request.modeldir());
         int maxMessages = request.max_messages();
+        String profileStr = getField(request.profile());
 
         if (input == null || input.isBlank()) {
             NativeError err = NativeError.invalidArgument("validate_tsv", "Missing required field", "input");
@@ -186,7 +191,8 @@ public class NativeEntryPoints {
 
         try {
             IliValidatorService service = new IliValidatorService();
-            ValidationResult result = service.validate(Path.of(input), modelDir, maxMessages);
+            ValidationProfile profile = ValidationProfile.fromString(profileStr);
+            ValidationResult result = service.validate(Path.of(input), modelDir, maxMessages, profile);
 
             StringBuilder tsv = new StringBuilder();
             tsv.append(result.getErrorCount()).append('\t');
@@ -195,7 +201,7 @@ public class NativeEntryPoints {
 
             for (ValidationMessage msg : result.getMessages()) {
                 tsv.append(escapeTsv(msg.getSeverity())).append('\t');
-                tsv.append(escapeTsv("")).append('\t');
+                tsv.append(escapeTsv(msg.getCode())).append('\t');
                 tsv.append(escapeTsv(msg.getMessage())).append('\t');
                 tsv.append(escapeTsv(msg.getFileName())).append('\t');
                 tsv.append(msg.getLine() == null ? "" : String.valueOf(msg.getLine())).append('\t');

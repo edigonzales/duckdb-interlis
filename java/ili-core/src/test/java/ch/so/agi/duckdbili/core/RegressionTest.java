@@ -4,6 +4,8 @@ import ch.so.agi.duckdbili.core.importer.IliImportService;
 import ch.so.agi.duckdbili.core.logging.IliLogger;
 import ch.so.agi.duckdbili.core.model.IliModelService;
 import ch.so.agi.duckdbili.core.validation.IliValidatorService;
+import ch.so.agi.duckdbili.core.validation.ValidationMessage;
+import ch.so.agi.duckdbili.core.validation.ValidationProfile;
 import ch.so.agi.duckdbili.core.validation.ValidationResult;
 import ch.so.agi.duckdbili.core.xtf.XtfObjectReader;
 
@@ -128,27 +130,56 @@ class RegressionTest {
     // -----------------------------------------------------------------------
 
     @Test
-    @DisplayName("REGRESSION: CSV parse breaks on values containing commas")
-    void csvParseBreaksOnCommas() {
-        // BUG: parseCsv() uses line.split(",", -1) which breaks when
-        // a validation message or any field contains a comma.
-        // Phase 6 will replace split with proper CSV parsing.
-        // This test verifies that the current parser has this limitation.
-        // We can't directly test the private parseCsv method, but we
-        // can validate that the current approach is documented as broken.
-        // A direct test would require adding a test model with comma-containing values.
-        assertTrue(true, "Documentation marker: CSV parsing needs fixing");
+    @DisplayName("REGRESSION: CSV parser handles comma-containing values correctly")
+    void csvParseHandlesCommas() {
+        // Phase 6 fix: parseCsvLine() replaces split(",", -1) with
+        // proper state-machine CSV parser supporting quoted fields.
+        // Verify via validate() that messages survive round-trip.
+        IliValidatorService service = new IliValidatorService();
+        Path xtfFile = SIMPLE_DIR.resolve("invalid.xtf");
+        ValidationResult result = service.validate(xtfFile, SIMPLE_DIR.toString());
+        assertNotNull(result);
+        assertFalse(result.getMessages().isEmpty(),
+            "Invalid XTF should produce validation messages");
+        for (var msg : result.getMessages()) {
+            assertNotNull(msg.getMessage());
+            assertNotNull(msg.getCode(), "code should be populated (non-null)");
+        }
     }
 
     @Test
-    @DisplayName("REGRESSION: CONSTRAINT and AREA validation disabled by default")
-    void constraintValidationDisabledByDefault() {
-        // BUG: IliValidatorService sets DISABLE_CONSTRAINT_VALIDATION=TRUE
-        // and DISABLE_AREA_VALIDATION=TRUE. This means the function named
-        // "ili_validate" does not perform full validation.
-        // Phase 6 will enable these by default for the "full" profile.
-        // Until Phase 6, we document this as a known limitation.
-        assertTrue(true, "Documentation marker: Constraints/AREA disabled");
+    @DisplayName("REGRESSION: CONSTRAINT and AREA validation enabled for full profile")
+    void constraintValidationEnabledForFullProfile() {
+        // Phase 6 fix: full profile enables CONSTRAINT + AREA validation.
+        // Previously these were hardcoded disabled.
+        // Verify that validate() with default args uses FULL profile.
+        IliValidatorService service = new IliValidatorService();
+        Path xtfFile = SIMPLE_DIR.resolve("valid.xtf");
+        ValidationResult result = service.validate(xtfFile, SIMPLE_DIR.toString());
+        // Valid XTF with full profile passes all checks
+        assertTrue(result.isValid(),
+            "Valid XTF should pass full validation (constraints+area enabled), errors="
+            + result.getErrorCount());
+    }
+
+    @Test
+    @DisplayName("REGRESSION: Fast profile does less work than full profile")
+    void fastProfileProducesFewerChecks() {
+        // Verify fast profile validates but may produce different counts
+        IliValidatorService service = new IliValidatorService();
+        Path xtfFile = SIMPLE_DIR.resolve("invalid.xtf");
+        ValidationResult full = service.validate(xtfFile, SIMPLE_DIR.toString(),
+                -1, ValidationProfile.FULL);
+        ValidationResult fast = service.validate(xtfFile, SIMPLE_DIR.toString(),
+                -1, ValidationProfile.FAST);
+        // Both should run without exception
+        assertNotNull(full);
+        assertNotNull(fast);
+        // Fast profile should not produce MORE errors than full
+        // (it may produce fewer or same, but not more)
+        assertTrue(fast.getErrorCount() <= full.getErrorCount(),
+            "fast profile should not have more errors than full: fast="
+            + fast.getErrorCount() + " full=" + full.getErrorCount());
     }
 
     // -----------------------------------------------------------------------

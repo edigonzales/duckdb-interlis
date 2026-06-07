@@ -16,10 +16,10 @@ extern "C" {
  *
  * Fields map to specific operations:
  *
- *   Operation            | input | modeldir | cmd | class_name | models | model | association | schema | nested | mapping | max_messages
- *   ---------------------+-------+----------+-----+------------+--------+-------+-------------+--------+--------+---------+-------------
- *   validate             |   X   |    X     |     |            |        |       |             |        |        |         |     X
- *   validate_tsv         |   X   |    X     |     |            |        |       |             |        |        |         |     X
+ *   Operation            | input | modeldir | cmd | class_name | models | model | association | schema | nested | mapping | max_messages | profile
+ *   ---------------------+-------+----------+-----+------------+--------+-------+-------------+--------+--------+---------+--------------+--------
+ *   validate             |   X   |    X     |     |            |        |       |             |        |        |         |     X     |    X
+ *   validate_tsv         |   X   |    X     |     |            |        |       |             |        |        |         |     X     |    X
  *   model_info           |       |    X     |  X  |     X      |        |   X   |             |        |        |         |
  *   read_xtf             |   X   |    X     |     |            |   X    |       |             |        |        |         |
  *   read_xtf_class       |   X   |    X     |     |     X      |        |       |             |        |   X    |         |
@@ -45,6 +45,7 @@ typedef struct ili_request {
     const char *nested;
     const char *mapping;
     int32_t max_messages;
+    const char *profile;
 } ili_request;
 
 #ifdef __cplusplus

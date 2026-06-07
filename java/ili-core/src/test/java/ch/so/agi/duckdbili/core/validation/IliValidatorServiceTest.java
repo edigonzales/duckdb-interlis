@@ -98,4 +98,133 @@ class IliValidatorServiceTest {
         assertEquals(warnings, result.getWarningCount());
         assertEquals(infos, result.getInfoCount());
     }
+
+    // -----------------------------------------------------------------------
+    // CSV parser tests
+    // -----------------------------------------------------------------------
+
+    @Test
+    void csvParserSimpleLine() {
+        var fields = IliValidatorService.parseCsvLine("a,b,c");
+        assertEquals(3, fields.size());
+        assertEquals("a", fields.get(0));
+        assertEquals("b", fields.get(1));
+        assertEquals("c", fields.get(2));
+    }
+
+    @Test
+    void csvParserQuotedFieldComma() {
+        var fields = IliValidatorService.parseCsvLine("\"a,b\",c,d");
+        assertEquals(3, fields.size());
+        assertEquals("a,b", fields.get(0));
+        assertEquals("c", fields.get(1));
+        assertEquals("d", fields.get(2));
+    }
+
+    @Test
+    void csvParserEscapedQuotes() {
+        var fields = IliValidatorService.parseCsvLine("\"a\"\"b\"\"\",c");
+        assertEquals(2, fields.size());
+        assertEquals("a\"b\"", fields.get(0));
+        assertEquals("c", fields.get(1));
+    }
+
+    @Test
+    void csvParserEmptyFields() {
+        var fields = IliValidatorService.parseCsvLine("a,,c");
+        assertEquals(3, fields.size());
+        assertEquals("a", fields.get(0));
+        assertEquals("", fields.get(1));
+        assertEquals("c", fields.get(2));
+    }
+
+    @Test
+    void csvParserQuotedEmptyField() {
+        var fields = IliValidatorService.parseCsvLine("a,\"\",c");
+        assertEquals(3, fields.size());
+        assertEquals("a", fields.get(0));
+        assertEquals("", fields.get(1));
+        assertEquals("c", fields.get(2));
+    }
+
+    @Test
+    void csvParserSingleQuoteInMiddle() {
+        var fields = IliValidatorService.parseCsvLine("value 1\"5,c");
+        assertEquals(2, fields.size());
+        assertEquals("value 1\"5", fields.get(0));
+        assertEquals("c", fields.get(1));
+    }
+
+    // -----------------------------------------------------------------------
+    // Validation profile tests
+    // -----------------------------------------------------------------------
+
+    @Test
+    void defaultProfileIsFull() {
+        assertEquals(ValidationProfile.FULL, ValidationProfile.fromString(null));
+        assertEquals(ValidationProfile.FULL, ValidationProfile.fromString(""));
+        assertEquals(ValidationProfile.FULL, ValidationProfile.fromString("  "));
+    }
+
+    @Test
+    void profileFromString() {
+        assertEquals(ValidationProfile.FULL, ValidationProfile.fromString("full"));
+        assertEquals(ValidationProfile.STRUCTURAL, ValidationProfile.fromString("structural"));
+        assertEquals(ValidationProfile.FAST, ValidationProfile.fromString("fast"));
+        assertEquals(ValidationProfile.FULL, ValidationProfile.fromString("unknown"));
+    }
+
+    @Test
+    void profileCaseInsensitive() {
+        assertEquals(ValidationProfile.FULL, ValidationProfile.fromString("FULL"));
+        assertEquals(ValidationProfile.FAST, ValidationProfile.fromString("Fast"));
+        assertEquals(ValidationProfile.STRUCTURAL, ValidationProfile.fromString("STRUCTURAL"));
+    }
+
+    @Test
+    void fullProfileEnablesConstraints() {
+        assertTrue(ValidationProfile.FULL.isConstraintValidationEnabled());
+        assertTrue(ValidationProfile.FULL.isAreaValidationEnabled());
+        assertTrue(ValidationProfile.FULL.isAllObjectsAccessible());
+        assertTrue(ValidationProfile.FULL.isMultiplicityValidationEnabled());
+    }
+
+    @Test
+    void fastProfileMinimalChecks() {
+        assertFalse(ValidationProfile.FAST.isConstraintValidationEnabled());
+        assertFalse(ValidationProfile.FAST.isAreaValidationEnabled());
+        assertFalse(ValidationProfile.FAST.isAllObjectsAccessible());
+        assertFalse(ValidationProfile.FAST.isMultiplicityValidationEnabled());
+    }
+
+    @Test
+    void structuralProfileDisablesAreaOnly() {
+        assertTrue(ValidationProfile.STRUCTURAL.isConstraintValidationEnabled());
+        assertFalse(ValidationProfile.STRUCTURAL.isAreaValidationEnabled());
+        assertTrue(ValidationProfile.STRUCTURAL.isAllObjectsAccessible());
+        assertTrue(ValidationProfile.STRUCTURAL.isMultiplicityValidationEnabled());
+    }
+
+    @Test
+    void validateWithFastProfileSucceeds() {
+        Path xtfFile = TESTDATA.resolve("valid.xtf");
+        String modelDir = TESTDATA.toAbsolutePath().toString();
+        var service = new IliValidatorService();
+        ValidationResult result = service.validate(xtfFile, modelDir, -1, ValidationProfile.FAST);
+        assertNotNull(result);
+        assertTrue(result.isValid());
+    }
+
+    @Test
+    void maxMessagesLimitsOutput() {
+        Path xtfFile = TESTDATA.resolve("invalid.xtf");
+        String modelDir = TESTDATA.toAbsolutePath().toString();
+        var service = new IliValidatorService();
+        ValidationResult result = service.validate(xtfFile, modelDir, 1, ValidationProfile.FULL);
+        // With maxMessages=1, at most 1 message should be returned
+        // (ilivalidator may return 0 or 1 depending on early abort behavior)
+        assertNotNull(result);
+        assertTrue(result.getMessages().size() <= 1,
+            "maxMessages=1 should limit to at most 1 message, got " + result.getMessages().size());
+    }
 }
