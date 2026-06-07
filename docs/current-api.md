@@ -475,18 +475,20 @@ The Java side parses JSON with `String.indexOf` and `String.substring`. It does 
 - Whitespace variations
 - Boolean/number/null values (everything is treated as string)
 
-### Memory Ownership
+### Memory Ownership (Phase 4)
 
-| Allocation | Allocator | Required Deallocator | Current Status |
-|------------|-----------|---------------------|----------------|
-| Native result strings | `UnmanagedMemory.malloc()` (GraalVM) | `ili_free_string()` | **BROKEN** for import path (C `free()` used) |
-| Native error payloads on `rc != 0` | `UnmanagedMemory.malloc()` (GraalVM) | `ili_free_string()` | **LEAKED** (pointer discarded) |
+| Allocation | Allocator | Required Deallocator | Status |
+|------------|-----------|---------------------|--------|
+| Native result strings | `UnmanagedMemory.malloc()` (GraalVM) | `g_native_free()` inside consolidated helper | **FIXED** Phase 4 |
 | C-side `strdup` strings | `malloc()` (C) | `free()` (C) | OK |
 | DuckDB string vectors | DuckDB internal | DuckDB manages | OK |
 
-### Thread Safety
+### Thread Safety (Phase 4)
 
-The entire native library initialisation and all Java service singletons are **not thread-safe**. Parallel queries will cause undefined behaviour. See `docs/error-semantics.md` for details.
+- **Initialization** is threadsafe: Mutex-protected `ensure_native_ready()` ensures exactly-one init with persistent error storage. Failed initialization is never retried.
+- **Java call serialization**: All Java calls are serialized by a global mutex (`g_java_lock`). INTERLIS library thread-safety is not guaranteed, so correctness is prioritized over parallelism.
+- **Multiple DuckDB queries** can load the extension concurrently, but Java processing occurs sequentially.
+- **Limitation**: Parallel query throughput is limited by the Java serialization lock. This will be optimized in a later phase once INTERLIS library thread-safety is analysed.
 
 ### Version Information
 

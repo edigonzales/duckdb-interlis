@@ -1,6 +1,7 @@
 #include "duckdb_extension.h"
 #include "graal_isolate_dynamic.h"
 #include "ili_request.h"
+#include "ili_sync.h"
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -83,28 +84,35 @@ static graal_tear_down_isolate_fn_t g_tear_down = NULL;
 
 // Native API functions
 typedef int (*native_version_fn)(graal_isolatethread_t*, char**);
-typedef int (*native_validate_fn)(graal_isolatethread_t*, ili_request*, char**);
-typedef int (*native_validate_tsv_fn)(graal_isolatethread_t*, ili_request*, char**);
-typedef int (*native_model_info_fn)(graal_isolatethread_t*, ili_request*, char**);
-typedef int (*native_read_xtf_fn)(graal_isolatethread_t*, ili_request*, char**);
+typedef int (*native_struct_fn)(graal_isolatethread_t*, ili_request*, char**);
 typedef void (*native_free_fn)(graal_isolatethread_t*, char*);
 
 static native_version_fn g_native_version = NULL;
-static native_validate_fn g_native_validate = NULL;
-static native_validate_tsv_fn g_native_validate_tsv = NULL;
-static native_model_info_fn g_native_model_info = NULL;
-static native_read_xtf_fn g_native_read_xtf = NULL;
-static native_read_xtf_fn g_native_read_xtf_class = NULL;
-static native_read_xtf_fn g_native_read_xtf_class_schema = NULL;
-static native_read_xtf_fn g_native_read_xtf_structures = NULL;
-static native_read_xtf_fn g_native_read_xtf_association = NULL;
-static native_read_xtf_fn g_native_read_xtf_association_schema = NULL;
-static native_read_xtf_fn g_native_import_xtf = NULL;
+static native_struct_fn g_native_validate = NULL;
+static native_struct_fn g_native_validate_tsv = NULL;
+static native_struct_fn g_native_model_info = NULL;
+static native_struct_fn g_native_read_xtf = NULL;
+static native_struct_fn g_native_read_xtf_class = NULL;
+static native_struct_fn g_native_read_xtf_class_schema = NULL;
+static native_struct_fn g_native_read_xtf_structures = NULL;
+static native_struct_fn g_native_read_xtf_association = NULL;
+static native_struct_fn g_native_read_xtf_association_schema = NULL;
+static native_struct_fn g_native_import_xtf = NULL;
 static native_free_fn g_native_free = NULL;
 
-static bool g_initialized = false;
-static char g_error_buf[512];
-static duckdb_connection g_connection = NULL;
+// --- Thread-safe initialization state ---
+static bool g_init_done = false;
+static char *g_init_error = NULL;
+
+// Serialization lock: all Java calls are serialized for safety
+// (INTERLIS libraries thread-safety is not guaranteed)
+#ifdef _WIN32
+static ili_mutex_t g_init_lock;
+static ili_mutex_t g_java_lock;
+#else
+static ili_mutex_t g_init_lock = ILI_MUTEX_INITIALIZER;
+static ili_mutex_t g_java_lock = ILI_MUTEX_INITIALIZER;
+#endif
 
 // ---------------------------------------------------------------------------
 // Helper: recursive mkdir
@@ -182,7 +190,7 @@ static const char *resolve_native_lib_path(void) {
 
         if (file_exists(cache_path)) return cache_path;
 
-        // Not in cache → extract embedded blob
+        // Not in cache -> extract embedded blob
         make_dir_recursive(cache_dir);
         if (extract_native_lib(cache_path)) {
 #ifdef DEBUG
@@ -207,21 +215,21 @@ static const char *resolve_native_lib_path(void) {
 }
 
 // ---------------------------------------------------------------------------
-// Initialization
+// Thread-safe native library initialization (called exactly once)
 // ---------------------------------------------------------------------------
-static bool init_native_library(void) {
-    if (g_initialized) return true;
-
+static bool init_native_library_locked(void) {
     const char *lib_path = resolve_native_lib_path();
     if (!lib_path) {
-        snprintf(g_error_buf, sizeof(g_error_buf),
+        g_init_error = strdup(
             "Native library not found. Set DUCKDB_ILI_NATIVE_LIB or run scripts/build-native.sh");
         return false;
     }
 
     g_native_handle = dlopen(lib_path, RTLD_LAZY);
     if (!g_native_handle) {
-        snprintf(g_error_buf, sizeof(g_error_buf),
+        size_t len = strlen(lib_path) + 256;
+        g_init_error = malloc(len);
+        snprintf(g_init_error, len,
             "Failed to load native library '%s': %s", lib_path, dlerror());
         return false;
     }
@@ -233,7 +241,9 @@ static bool init_native_library(void) {
     g_tear_down = (graal_tear_down_isolate_fn_t)dlsym(g_native_handle, "graal_tear_down_isolate");
 
     if (!g_create_isolate || !g_attach_thread || !g_detach_thread || !g_tear_down) {
-        snprintf(g_error_buf, sizeof(g_error_buf),
+        size_t len = strlen(lib_path) + 128;
+        g_init_error = malloc(len);
+        snprintf(g_init_error, len,
             "Failed to resolve GraalVM lifecycle symbols in '%s'", lib_path);
         dlclose(g_native_handle);
         g_native_handle = NULL;
@@ -242,21 +252,23 @@ static bool init_native_library(void) {
 
     // Resolve API functions
     g_native_version = (native_version_fn)dlsym(g_native_handle, "ili_native_version");
-    g_native_validate = (native_validate_fn)dlsym(g_native_handle, "ili_native_validate");
-    g_native_validate_tsv = (native_validate_tsv_fn)dlsym(g_native_handle, "ili_native_validate_tsv");
-    g_native_model_info = (native_model_info_fn)dlsym(g_native_handle, "ili_native_model_info");
-    g_native_read_xtf = (native_read_xtf_fn)dlsym(g_native_handle, "ili_native_read_xtf");
-    g_native_read_xtf_class = (native_read_xtf_fn)dlsym(g_native_handle, "ili_native_read_xtf_class");
-    g_native_read_xtf_class_schema = (native_read_xtf_fn)dlsym(g_native_handle, "ili_native_read_xtf_class_schema");
-    g_native_read_xtf_structures = (native_read_xtf_fn)dlsym(g_native_handle, "ili_native_read_xtf_structures");
-    g_native_read_xtf_association = (native_read_xtf_fn)dlsym(g_native_handle, "ili_native_read_xtf_association");
-    g_native_read_xtf_association_schema = (native_read_xtf_fn)dlsym(g_native_handle, "ili_native_read_xtf_association_schema");
-    g_native_import_xtf = (native_read_xtf_fn)dlsym(g_native_handle, "ili_native_import_xtf");
+    g_native_validate = (native_struct_fn)dlsym(g_native_handle, "ili_native_validate");
+    g_native_validate_tsv = (native_struct_fn)dlsym(g_native_handle, "ili_native_validate_tsv");
+    g_native_model_info = (native_struct_fn)dlsym(g_native_handle, "ili_native_model_info");
+    g_native_read_xtf = (native_struct_fn)dlsym(g_native_handle, "ili_native_read_xtf");
+    g_native_read_xtf_class = (native_struct_fn)dlsym(g_native_handle, "ili_native_read_xtf_class");
+    g_native_read_xtf_class_schema = (native_struct_fn)dlsym(g_native_handle, "ili_native_read_xtf_class_schema");
+    g_native_read_xtf_structures = (native_struct_fn)dlsym(g_native_handle, "ili_native_read_xtf_structures");
+    g_native_read_xtf_association = (native_struct_fn)dlsym(g_native_handle, "ili_native_read_xtf_association");
+    g_native_read_xtf_association_schema = (native_struct_fn)dlsym(g_native_handle, "ili_native_read_xtf_association_schema");
+    g_native_import_xtf = (native_struct_fn)dlsym(g_native_handle, "ili_native_import_xtf");
     g_native_free = (native_free_fn)dlsym(g_native_handle, "ili_free_string");
 
     if (!g_native_version || !g_native_validate || !g_native_validate_tsv || !g_native_model_info
         || !g_native_read_xtf || !g_native_read_xtf_class || !g_native_read_xtf_class_schema || !g_native_free) {
-        snprintf(g_error_buf, sizeof(g_error_buf),
+        size_t len = strlen(lib_path) + 128;
+        g_init_error = malloc(len);
+        snprintf(g_init_error, len,
             "Failed to resolve ILI API symbols in '%s'", lib_path);
         dlclose(g_native_handle);
         g_native_handle = NULL;
@@ -267,7 +279,9 @@ static bool init_native_library(void) {
     graal_isolatethread_t *init_thread = NULL;
     int rc = g_create_isolate(NULL, &g_isolate, &init_thread);
     if (rc != 0 || !g_isolate) {
-        snprintf(g_error_buf, sizeof(g_error_buf),
+        size_t len = 128;
+        g_init_error = malloc(len);
+        snprintf(g_init_error, len,
             "Failed to create GraalVM isolate (code=%d)", rc);
         dlclose(g_native_handle);
         g_native_handle = NULL;
@@ -276,13 +290,51 @@ static bool init_native_library(void) {
 
     // Detach the init thread since DuckDB will attach its own threads
     g_detach_thread(init_thread);
-
-    g_initialized = true;
     return true;
 }
 
+// Thread-safe initialization. Returns true if native library is ready.
+// Stores persistent error in g_init_error on failure; does NOT retry.
+static bool ensure_native_ready(void) {
+    ili_mutex_lock(&g_init_lock);
+
+    if (g_init_done) {
+        ili_mutex_unlock(&g_init_lock);
+        return true;
+    }
+    if (g_init_error) {
+        // Already attempted and failed - don't retry
+        ili_mutex_unlock(&g_init_lock);
+        return false;
+    }
+
+    if (init_native_library_locked()) {
+        g_init_done = true;
+        ili_mutex_unlock(&g_init_lock);
+        return true;
+    }
+
+    // g_init_error was set by init_native_library_locked()
+    ili_mutex_unlock(&g_init_lock);
+    return false;
+}
+
+// Returns the initialization error message, or a default.
+static const char *get_init_error(void) {
+    return g_init_error ? g_init_error : "Native library initialization failed";
+}
+
+// ---------------------------------------------------------------------------
+// Shutdown (for manual use in tests; not called automatically by DuckDB)
+// NOTE: DuckDB does not provide a reliable extension-unload lifecycle.
+// Cleanup (isolate teardown, dlclose) happens at process exit via OS.
+// ---------------------------------------------------------------------------
 static void shutdown_native_library(void) {
-    if (!g_initialized) return;
+    ili_mutex_lock(&g_init_lock);
+    if (!g_init_done) {
+        ili_mutex_unlock(&g_init_lock);
+        return;
+    }
 
     graal_isolatethread_t *thread = NULL;
     if (g_attach_thread(g_isolate, &thread) == 0 && thread) {
@@ -293,96 +345,136 @@ static void shutdown_native_library(void) {
         g_native_handle = NULL;
     }
     g_isolate = NULL;
-    g_initialized = false;
+    g_native_version = NULL;
+    g_native_validate = NULL;
+    g_native_validate_tsv = NULL;
+    g_native_model_info = NULL;
+    g_native_read_xtf = NULL;
+    g_native_read_xtf_class = NULL;
+    g_native_read_xtf_class_schema = NULL;
+    g_native_read_xtf_structures = NULL;
+    g_native_read_xtf_association = NULL;
+    g_native_read_xtf_association_schema = NULL;
+    g_native_import_xtf = NULL;
+    g_native_free = NULL;
+    g_create_isolate = NULL;
+    g_attach_thread = NULL;
+    g_detach_thread = NULL;
+    g_tear_down = NULL;
+    free(g_init_error);
+    g_init_error = NULL;
+    g_init_done = false;
+    ili_mutex_unlock(&g_init_lock);
 }
 
 // ---------------------------------------------------------------------------
-// Native call result: carries both status code and payload.
-// The payload is always allocated by Java (UnmanagedMemory.malloc()).
-// Caller must free payload via ili_free_result() regardless of status.
+// Consolidated Native Call Helpers
+//
+// These helpers combine: lock -> attach -> call -> copy -> free -> detach -> unlock
+// in a single cycle. All Java calls are serialized by g_java_lock.
+// Results are returned as C-allocated (strdup) strings; caller must free().
+// GraalVM-allocated strings are freed inside the same attach/detach window.
 // ---------------------------------------------------------------------------
-typedef struct {
-    int status;      // 0 = ILI_STATUS_OK, 1+ = error code from Java
-    char *payload;   // GraalVM-allocated string, NULL only on catastrophic failure
-} ili_call_result;
 
-// Low-level: call a no-input native fn, return result struct
-static ili_call_result call_native_no_input(graal_isolatethread_t *thread,
-        int (*fn)(graal_isolatethread_t *, char **)) {
-    ili_call_result r = {-1, NULL};
-    r.status = fn(thread, &r.payload);
-    return r;
-}
+// No-input call (e.g. ili_native_version)
+// Returns C-allocated copy of result, or NULL. Sets *out_status.
+static char *ili_call_str(int (*fn)(graal_isolatethread_t *, char **), int *out_status) {
+    *out_status = -1;
+    if (!g_isolate || !fn) return NULL;
 
-// Low-level: call a with-input native fn, return result struct
-static ili_call_result call_native_with_input(graal_isolatethread_t *thread,
-        int (*fn)(graal_isolatethread_t *, char *, char **), const char *input) {
-    ili_call_result r = {-1, NULL};
-    r.status = fn(thread, (char *)input, &r.payload);
-    return r;
-}
-
-// High-level: attach thread, call no-input fn, detach thread
-static ili_call_result ili_call(int (*fn)(graal_isolatethread_t *, char **)) {
-    ili_call_result r = {-1, NULL};
-    if (!g_initialized || !g_isolate) return r;
+    ili_mutex_lock(&g_java_lock);
 
     graal_isolatethread_t *thread = NULL;
-    if (g_attach_thread(g_isolate, &thread) != 0 || !thread) return r;
+    if (g_attach_thread(g_isolate, &thread) != 0 || !thread) {
+        ili_mutex_unlock(&g_java_lock);
+        return NULL;
+    }
 
-    r = call_native_no_input(thread, fn);
+    char *native_str = NULL;
+    int rc = fn(thread, &native_str);
+    *out_status = rc;
+
+    char *result = NULL;
+    if (rc == 0 && native_str) {
+        result = strdup(native_str);  // C-owned copy
+    } else if (native_str) {
+        result = strdup(native_str);  // Error payload: C-owned copy
+    }
+
+    if (native_str) g_native_free(thread, native_str);
     g_detach_thread(thread);
-    return r;
+    ili_mutex_unlock(&g_java_lock);
+    return result;
 }
 
-// High-level: attach thread, call with-input fn, detach thread
-static ili_call_result ili_call_input(
-        int (*fn)(graal_isolatethread_t *, char *, char **), const char *input) {
-    ili_call_result r = {-1, NULL};
-    if (!g_initialized || !g_isolate) return r;
+// With-string-input call (e.g. ili_native_echo)
+// Returns C-allocated copy of result, or NULL. Sets *out_status.
+static char *ili_call_input_str(
+        int (*fn)(graal_isolatethread_t *, char *, char **),
+        const char *input, int *out_status) {
+    *out_status = -1;
+    if (!g_isolate || !fn) return NULL;
+
+    ili_mutex_lock(&g_java_lock);
 
     graal_isolatethread_t *thread = NULL;
-    if (g_attach_thread(g_isolate, &thread) != 0 || !thread) return r;
+    if (g_attach_thread(g_isolate, &thread) != 0 || !thread) {
+        ili_mutex_unlock(&g_java_lock);
+        return NULL;
+    }
 
-    r = call_native_with_input(thread, fn, input);
+    char *native_str = NULL;
+    int rc = fn(thread, (char *)input, &native_str);
+    *out_status = rc;
+
+    char *result = NULL;
+    if (rc == 0 && native_str) {
+        result = strdup(native_str);
+    } else if (native_str) {
+        result = strdup(native_str);
+    }
+
+    if (native_str) g_native_free(thread, native_str);
     g_detach_thread(thread);
-    return r;
+    ili_mutex_unlock(&g_java_lock);
+    return result;
 }
 
-// Low-level: call a with-ili_request native fn, return result struct
-static ili_call_result call_native_with_struct(graal_isolatethread_t *thread,
-        int (*fn)(graal_isolatethread_t *, ili_request *, char **),
-        const ili_request *req) {
-    ili_call_result r = {-1, NULL};
-    r.status = fn(thread, (ili_request *)req, &r.payload);
-    return r;
-}
+// With-ili_request call (most API functions)
+// Returns C-allocated copy of result, or NULL. Sets *out_status.
+static char *ili_call_struct_str(
+        native_struct_fn fn, const ili_request *req, int *out_status) {
+    *out_status = -1;
+    if (!g_isolate || !fn) return NULL;
 
-// High-level: attach thread, call with-ili_request fn, detach thread
-static ili_call_result ili_call_struct(
-        int (*fn)(graal_isolatethread_t *, ili_request *, char **),
-        const ili_request *req) {
-    ili_call_result r = {-1, NULL};
-    if (!g_initialized || !g_isolate) return r;
+    ili_mutex_lock(&g_java_lock);
 
     graal_isolatethread_t *thread = NULL;
-    if (g_attach_thread(g_isolate, &thread) != 0 || !thread) return r;
+    if (g_attach_thread(g_isolate, &thread) != 0 || !thread) {
+        ili_mutex_unlock(&g_java_lock);
+        return NULL;
+    }
 
-    r = call_native_with_struct(thread, fn, req);
+    char *native_str = NULL;
+    int rc = fn(thread, (ili_request *)req, &native_str);
+    *out_status = rc;
+
+    char *result = NULL;
+    if (rc == 0 && native_str) {
+        result = strdup(native_str);
+    } else if (native_str) {
+        result = strdup(native_str);
+    }
+
+    if (native_str) g_native_free(thread, native_str);
     g_detach_thread(thread);
-    return r;
+    ili_mutex_unlock(&g_java_lock);
+    return result;
 }
 
-// Free a GraalVM-allocated string. Must be called with the isolate alive.
-static void ili_free_result(char *str) {
-    if (!str || !g_isolate || !g_native_free) return;
-
-    graal_isolatethread_t *thread = NULL;
-    if (g_attach_thread(g_isolate, &thread) != 0 || !thread) return;
-    g_native_free(thread, str);
-    g_detach_thread(thread);
-}
-
+// ---------------------------------------------------------------------------
+// Error extraction
+// ---------------------------------------------------------------------------
 static char *extract_error_message(const char *json_payload) {
     if (!json_payload || json_payload[0] != '{') return NULL;
 
@@ -448,12 +540,12 @@ static char *extract_error_message(const char *json_payload) {
     return result;
 }
 
-static bool ili_result_error(ili_call_result cr, duckdb_init_info info, const char *fallback) {
-    char *msg = extract_error_message(cr.payload);
-    duckdb_init_set_error(info, msg ? msg : (cr.payload ? cr.payload : fallback));
+// Report a failed native call to DuckDB. Payload is C-allocated (must free()).
+static void ili_report_error(duckdb_init_info info, int status, char *payload, const char *fallback) {
+    char *msg = extract_error_message(payload);
+    duckdb_init_set_error(info, msg ? msg : (payload ? payload : fallback));
     free(msg);
-    if (cr.payload) ili_free_result(cr.payload);
-    return false;
+    free(payload);
 }
 
 // ---------------------------------------------------------------------------
@@ -479,25 +571,26 @@ static void ili_native_version_fn_cb(duckdb_function_info info, duckdb_data_chun
     uint64_t *validity = duckdb_vector_get_validity(output);
 
     for (idx_t row = 0; row < size; row++) {
-        if (!g_initialized && !init_native_library()) {
+        if (!ensure_native_ready()) {
             duckdb_validity_set_row_invalid(validity, row);
-            duckdb_scalar_function_set_error(info, g_error_buf);
+            duckdb_scalar_function_set_error(info, get_init_error());
             return;
         }
 
-        ili_call_result cr = ili_call(g_native_version);
-        if (cr.status == 0 && cr.payload) {
+        int status = -1;
+        char *result = ili_call_str(g_native_version, &status);
+        if (status == 0 && result) {
             duckdb_validity_set_row_valid(validity, row);
-            duckdb_vector_assign_string_element(output, row, cr.payload);
+            duckdb_vector_assign_string_element(output, row, result);
         } else {
             duckdb_validity_set_row_invalid(validity, row);
-            char *msg = extract_error_message(cr.payload);
+            char *msg = extract_error_message(result);
             duckdb_scalar_function_set_error(info,
-                msg ? msg : (cr.payload ? cr.payload : "ili_native_version failed"));
+                msg ? msg : (result ? result : "ili_native_version failed"));
             free(msg);
         }
-        if (cr.payload) ili_free_result(cr.payload);
-        if (cr.status != 0 || !cr.payload) return;
+        free(result);
+        if (status != 0 || !result) return;
     }
 }
 
@@ -524,9 +617,9 @@ static void ili_validate_summary_json_fn(duckdb_function_info info, duckdb_data_
             return;
         }
 
-        if (!g_initialized && !init_native_library()) {
+        if (!ensure_native_ready()) {
             duckdb_validity_set_row_invalid(validity, row);
-            duckdb_scalar_function_set_error(info, g_error_buf);
+            duckdb_scalar_function_set_error(info, get_init_error());
             return;
         }
 
@@ -562,26 +655,27 @@ static void ili_validate_summary_json_fn(duckdb_function_info info, duckdb_data_
         req.modeldir = modeldir_z;
         req.max_messages = -1;
 
-        ili_call_result cr = ili_call_struct(g_native_validate, &req);
+        int status = -1;
+        char *result = ili_call_struct_str(g_native_validate, &req, &status);
         free(path_z);
         free(modeldir_z);
-        if (cr.status == 0 && cr.payload) {
+        if (status == 0 && result) {
             duckdb_validity_set_row_valid(validity, row);
-            duckdb_vector_assign_string_element(output, row, cr.payload);
+            duckdb_vector_assign_string_element(output, row, result);
         } else {
             duckdb_validity_set_row_invalid(validity, row);
-            char *msg = extract_error_message(cr.payload);
+            char *msg = extract_error_message(result);
             duckdb_scalar_function_set_error(info,
-                msg ? msg : (cr.payload ? cr.payload : "Validation call failed"));
+                msg ? msg : (result ? result : "Validation call failed"));
             free(msg);
         }
-        if (cr.payload) ili_free_result(cr.payload);
-        if (cr.status != 0 || !cr.payload) return;
+        free(result);
+        if (status != 0 || !result) return;
     }
 }
 
 // ---------------------------------------------------------------------------
-// Registration
+// Registration of scalar functions
 // ---------------------------------------------------------------------------
 static void register_functions(duckdb_connection connection) {
     // ili_extension_version() -> VARCHAR
@@ -769,8 +863,8 @@ static void ili_validate_bind(duckdb_bind_info info) {
 }
 
 static void ili_validate_init(duckdb_init_info info) {
-    if (!g_initialized && !init_native_library()) {
-        duckdb_init_set_error(info, g_error_buf);
+    if (!ensure_native_ready()) {
+        duckdb_init_set_error(info, get_init_error());
         return;
     }
 
@@ -788,9 +882,10 @@ static void ili_validate_init(duckdb_init_info info) {
     req.modeldir = bd->modeldir;
     req.max_messages = -1;
 
-    ili_call_result cr = ili_call_struct(g_native_validate_tsv, &req);
-    if (cr.status != 0 || !cr.payload) {
-        ili_result_error(cr, info, "Validation call failed");
+    int status = -1;
+    char *result = ili_call_struct_str(g_native_validate_tsv, &req, &status);
+    if (status != 0 || !result) {
+        ili_report_error(info, status, result, "Validation call failed");
         return;
     }
 
@@ -799,7 +894,7 @@ static void ili_validate_init(duckdb_init_info info) {
     memset(id, 0, sizeof(*id));
 
     // Parse header line: errorCount\twarningCount\tinfoCount\n
-    const char *p = cr.payload;
+    const char *p = result;
     id->error_count = parse_tsv_int(&p);
     id->warning_count = parse_tsv_int(&p);
     id->info_count = parse_tsv_int(&p);
@@ -836,7 +931,7 @@ static void ili_validate_init(duckdb_init_info info) {
         if (*p == '\n') p++;
     }
 
-    ili_free_result(cr.payload);
+    free(result);
     duckdb_init_set_init_data(info, id, init_data_destroy);
 }
 
@@ -967,12 +1062,14 @@ static void mi_bind(duckdb_bind_info info, const char *cmd, int ncols,
 }
 
 static void mi_init(duckdb_init_info info) {
-    if (!g_initialized && !init_native_library()) {
-        duckdb_init_set_error(info, g_error_buf); return;
+    if (!ensure_native_ready()) {
+        duckdb_init_set_error(info, get_init_error());
+        return;
     }
     mi_bind_data *bd = (mi_bind_data *)duckdb_init_get_bind_data(info);
     if (!bd) {
-        duckdb_init_set_error(info, "Missing bind data"); return;
+        duckdb_init_set_error(info, "Missing bind data");
+        return;
     }
 
     ili_request req;
@@ -984,9 +1081,10 @@ static void mi_init(duckdb_init_info info) {
     req.class_name = bd->class;
     req.max_messages = -1;
 
-    ili_call_result cr = ili_call_struct(g_native_model_info, &req);
-    if (cr.status != 0 || !cr.payload) {
-        ili_result_error(cr, info, "Model info call failed");
+    int status = -1;
+    char *result = ili_call_struct_str(g_native_model_info, &req, &status);
+    if (status != 0 || !result) {
+        ili_report_error(info, status, result, "Model info call failed");
         return;
     }
 
@@ -994,11 +1092,11 @@ static void mi_init(duckdb_init_info info) {
     memset(id, 0, sizeof(*id));
 
     // Count rows
-    const char *p = cr.payload;
+    const char *p = result;
     while (*p) { id->row_count++; while (*p && *p != '\n') p++; if (*p == '\n') p++; }
 
     id->rows = malloc(id->row_count * sizeof(char*));
-    p = cr.payload;
+    p = result;
     for (idx_t i = 0; i < id->row_count; i++) {
         const char *start = p; size_t len = 0;
         while (*p && *p != '\n') { p++; len++; }
@@ -1007,7 +1105,7 @@ static void mi_init(duckdb_init_info info) {
         id->rows[i][len] = '\0';
         if (*p == '\n') p++;
     }
-    ili_free_result(cr.payload);
+    free(result);
     duckdb_init_set_init_data(info, id, mi_init_destroy);
 }
 
@@ -1115,12 +1213,14 @@ static void xtf_objects_bind(duckdb_bind_info info) {
 }
 
 static void xtf_objects_init(duckdb_init_info info) {
-    if (!g_initialized && !init_native_library()) {
-        duckdb_init_set_error(info, g_error_buf); return;
+    if (!ensure_native_ready()) {
+        duckdb_init_set_error(info, get_init_error());
+        return;
     }
     mi_bind_data *bd = (mi_bind_data *)duckdb_init_get_bind_data(info);
     if (!bd || !bd->model) {
-        duckdb_init_set_error(info, "Missing input path"); return;
+        duckdb_init_set_error(info, "Missing input path");
+        return;
     }
 
     ili_request req;
@@ -1131,19 +1231,20 @@ static void xtf_objects_init(duckdb_init_info info) {
     req.models = bd->class;
     req.max_messages = -1;
 
-    ili_call_result cr = ili_call_struct(g_native_read_xtf, &req);
-    if (cr.status != 0 || !cr.payload) {
-        ili_result_error(cr, info, "XTF read call failed");
+    int status = -1;
+    char *result = ili_call_struct_str(g_native_read_xtf, &req, &status);
+    if (status != 0 || !result) {
+        ili_report_error(info, status, result, "XTF read call failed");
         return;
     }
 
     mi_init_data *id = malloc(sizeof(mi_init_data));
     memset(id, 0, sizeof(*id));
 
-    const char *p = cr.payload;
+    const char *p = result;
     while (*p) { id->row_count++; while (*p && *p != '\n') p++; if (*p == '\n') p++; }
     id->rows = malloc(id->row_count * sizeof(char*));
-    p = cr.payload;
+    p = result;
     for (idx_t i = 0; i < id->row_count; i++) {
         const char *start = p; size_t len = 0;
         while (*p && *p != '\n') { p++; len++; }
@@ -1152,7 +1253,7 @@ static void xtf_objects_init(duckdb_init_info info) {
         id->rows[i][len] = '\0';
         if (*p == '\n') p++;
     }
-    ili_free_result(cr.payload);
+    free(result);
     duckdb_init_set_init_data(info, id, mi_init_destroy);
 }
 
@@ -1195,8 +1296,8 @@ static void xtf_class_bind(duckdb_bind_info info) {
     bd->nested = nested ? strdup(nested) : NULL;
 
     // Call native to get column schema
-    if (!g_initialized && !init_native_library()) {
-        duckdb_bind_set_error(info, g_error_buf);
+    if (!ensure_native_ready()) {
+        duckdb_bind_set_error(info, get_init_error());
     } else if (g_native_read_xtf_class_schema && bd->class_name) {
         ili_request req;
         memset(&req, 0, sizeof(req));
@@ -1206,15 +1307,16 @@ static void xtf_class_bind(duckdb_bind_info info) {
         req.nested = bd->nested ? bd->nested : "json";
         req.max_messages = -1;
 
-        ili_call_result cr_schema = ili_call_struct(g_native_read_xtf_class_schema, &req);
-        if (cr_schema.payload) {
+        int status = -1;
+        char *schema_result = ili_call_struct_str(g_native_read_xtf_class_schema, &req, &status);
+        if (status == 0 && schema_result) {
             // Count columns
             bd->col_count = 0;
-            for (char *p = cr_schema.payload; *p; p++) if (*p == '\t') bd->col_count++;
+            for (char *p = schema_result; *p; p++) if (*p == '\t') bd->col_count++;
             bd->col_count++; // last column
 
             bd->col_names = malloc(bd->col_count * sizeof(char*));
-            char *h = cr_schema.payload;
+            char *h = schema_result;
             for (int i = 0; i < bd->col_count; i++) {
                 char *tab = strchr(h, '\t');
                 idx_t len = tab ? (idx_t)(tab - h) : strlen(h);
@@ -1224,7 +1326,7 @@ static void xtf_class_bind(duckdb_bind_info info) {
                 h = tab ? tab + 1 : h + len;
             }
         }
-        ili_free_result(cr_schema.payload);
+        free(schema_result);
     }
 
     duckdb_logical_type vt = duckdb_create_logical_type(DUCKDB_TYPE_VARCHAR);
@@ -1242,12 +1344,14 @@ static void xtf_class_bind(duckdb_bind_info info) {
 }
 
 static void xtf_class_init(duckdb_init_info info) {
-    if (!g_initialized && !init_native_library()) {
-        duckdb_init_set_error(info, g_error_buf); return;
+    if (!ensure_native_ready()) {
+        duckdb_init_set_error(info, get_init_error());
+        return;
     }
     xtf_class_bind_data *bd = (xtf_class_bind_data *)duckdb_init_get_bind_data(info);
     if (!bd || !bd->input || !bd->class_name) {
-        duckdb_init_set_error(info, "Missing input or class"); return;
+        duckdb_init_set_error(info, "Missing input or class");
+        return;
     }
 
     ili_request req;
@@ -1259,9 +1363,10 @@ static void xtf_class_init(duckdb_init_info info) {
     req.nested = bd->nested ? bd->nested : "json";
     req.max_messages = -1;
 
-    ili_call_result cr = ili_call_struct(g_native_read_xtf_class, &req);
-    if (cr.status != 0 || !cr.payload) {
-        ili_result_error(cr, info, "XTF class read failed");
+    int status = -1;
+    char *result = ili_call_struct_str(g_native_read_xtf_class, &req, &status);
+    if (status != 0 || !result) {
+        ili_report_error(info, status, result, "XTF class read failed");
         return;
     }
 
@@ -1269,7 +1374,7 @@ static void xtf_class_init(duckdb_init_info info) {
     memset(id, 0, sizeof(*id));
 
     // Skip header line
-    const char *p = cr.payload;
+    const char *p = result;
     while (*p && *p != '\n') p++;
     if (*p == '\n') p++;
 
@@ -1277,7 +1382,7 @@ static void xtf_class_init(duckdb_init_info info) {
     const char *tmp = p;
     while (*tmp) { id->row_count++; while (*tmp && *tmp != '\n') tmp++; if (*tmp == '\n') tmp++; }
 
-    if (id->row_count == 0) { free(id); ili_free_result(cr.payload); return; }
+    if (id->row_count == 0) { free(id); free(result); return; }
 
     id->rows = malloc(id->row_count * sizeof(char*));
     for (idx_t i = 0; i < id->row_count; i++) {
@@ -1288,7 +1393,7 @@ static void xtf_class_init(duckdb_init_info info) {
         id->rows[i][len] = '\0';
         if (*p == '\n') p++;
     }
-    ili_free_result(cr.payload);
+    free(result);
     duckdb_init_set_init_data(info, id, mi_init_destroy);
 }
 
@@ -1337,12 +1442,14 @@ static void xtf_structures_bind(duckdb_bind_info info) {
 }
 
 static void xtf_structures_init(duckdb_init_info info) {
-    if (!g_initialized && !init_native_library()) {
-        duckdb_init_set_error(info, g_error_buf); return;
+    if (!ensure_native_ready()) {
+        duckdb_init_set_error(info, get_init_error());
+        return;
     }
     xtf_structures_bind_data *bd = (xtf_structures_bind_data *)duckdb_init_get_bind_data(info);
     if (!bd || !bd->class_name) {
-        duckdb_init_set_error(info, "Missing class"); return;
+        duckdb_init_set_error(info, "Missing class");
+        return;
     }
 
     ili_request req;
@@ -1352,23 +1459,24 @@ static void xtf_structures_init(duckdb_init_info info) {
     req.modeldir = bd->modeldir;
     req.max_messages = -1;
 
-    ili_call_result cr = ili_call_struct(g_native_read_xtf_structures, &req);
-    if (cr.status != 0 || !cr.payload) {
-        ili_result_error(cr, info, "XTF structures read failed");
+    int status = -1;
+    char *result = ili_call_struct_str(g_native_read_xtf_structures, &req, &status);
+    if (status != 0 || !result) {
+        ili_report_error(info, status, result, "XTF structures read failed");
         return;
     }
 
     mi_init_data *id = malloc(sizeof(mi_init_data));
     memset(id, 0, sizeof(*id));
 
-    const char *p = cr.payload;
+    const char *p = result;
     while (*p && *p != '\n') p++;
     if (*p == '\n') p++;
 
     const char *tmp = p;
     while (*tmp) { id->row_count++; while (*tmp && *tmp != '\n') tmp++; if (*tmp == '\n') tmp++; }
 
-    if (id->row_count == 0) { free(id); ili_free_result(cr.payload); return; }
+    if (id->row_count == 0) { free(id); free(result); return; }
 
     id->rows = malloc(id->row_count * sizeof(char*));
     for (idx_t i = 0; i < id->row_count; i++) {
@@ -1379,7 +1487,7 @@ static void xtf_structures_init(duckdb_init_info info) {
         id->rows[i][len] = '\0';
         if (*p == '\n') p++;
     }
-    ili_free_result(cr.payload);
+    free(result);
     duckdb_init_set_init_data(info, id, mi_init_destroy);
 }
 
@@ -1418,8 +1526,8 @@ static void xtf_assoc_bind(duckdb_bind_info info) {
     bd->association_name = assoc ? strdup(assoc) : NULL;
     bd->modeldir = modeldir ? strdup(modeldir) : NULL;
 
-    if (!g_initialized && !init_native_library()) {
-        duckdb_bind_set_error(info, g_error_buf);
+    if (!ensure_native_ready()) {
+        duckdb_bind_set_error(info, get_init_error());
     } else if (g_native_read_xtf_association_schema && bd->association_name) {
         ili_request req;
         memset(&req, 0, sizeof(req));
@@ -1428,13 +1536,14 @@ static void xtf_assoc_bind(duckdb_bind_info info) {
         req.modeldir = bd->modeldir;
         req.max_messages = -1;
 
-        ili_call_result cr_schema = ili_call_struct(g_native_read_xtf_association_schema, &req);
-        if (cr_schema.payload) {
+        int status = -1;
+        char *schema_result = ili_call_struct_str(g_native_read_xtf_association_schema, &req, &status);
+        if (status == 0 && schema_result) {
             bd->col_count = 0;
-            for (char *p = cr_schema.payload; *p; p++) if (*p == '\t') bd->col_count++;
+            for (char *p = schema_result; *p; p++) if (*p == '\t') bd->col_count++;
             bd->col_count++;
             bd->col_names = malloc(bd->col_count * sizeof(char*));
-            char *h = cr_schema.payload;
+            char *h = schema_result;
             for (int i = 0; i < bd->col_count; i++) {
                 char *tab = strchr(h, '\t');
                 idx_t len = tab ? (idx_t)(tab - h) : strlen(h);
@@ -1444,7 +1553,7 @@ static void xtf_assoc_bind(duckdb_bind_info info) {
                 h = tab ? tab + 1 : h + len;
             }
         }
-        ili_free_result(cr_schema.payload);
+        free(schema_result);
     }
 
     duckdb_logical_type vt = duckdb_create_logical_type(DUCKDB_TYPE_VARCHAR);
@@ -1461,12 +1570,14 @@ static void xtf_assoc_bind(duckdb_bind_info info) {
 }
 
 static void xtf_assoc_init(duckdb_init_info info) {
-    if (!g_initialized && !init_native_library()) {
-        duckdb_init_set_error(info, g_error_buf); return;
+    if (!ensure_native_ready()) {
+        duckdb_init_set_error(info, get_init_error());
+        return;
     }
     xtf_assoc_bind_data *bd = (xtf_assoc_bind_data *)duckdb_init_get_bind_data(info);
     if (!bd || !bd->input || !bd->association_name) {
-        duckdb_init_set_error(info, "Missing input or association"); return;
+        duckdb_init_set_error(info, "Missing input or association");
+        return;
     }
 
     ili_request req;
@@ -1477,23 +1588,24 @@ static void xtf_assoc_init(duckdb_init_info info) {
     req.modeldir = bd->modeldir;
     req.max_messages = -1;
 
-    ili_call_result cr = ili_call_struct(g_native_read_xtf_association, &req);
-    if (cr.status != 0 || !cr.payload) {
-        ili_result_error(cr, info, "XTF association read failed");
+    int status = -1;
+    char *result = ili_call_struct_str(g_native_read_xtf_association, &req, &status);
+    if (status != 0 || !result) {
+        ili_report_error(info, status, result, "XTF association read failed");
         return;
     }
 
     mi_init_data *id = malloc(sizeof(mi_init_data));
     memset(id, 0, sizeof(*id));
 
-    const char *p = cr.payload;
+    const char *p = result;
     while (*p && *p != '\n') p++;
     if (*p == '\n') p++;
 
     const char *tmp = p;
     while (*tmp) { id->row_count++; while (*tmp && *tmp != '\n') tmp++; if (*tmp == '\n') tmp++; }
 
-    if (id->row_count == 0) { free(id); ili_free_result(cr.payload); return; }
+    if (id->row_count == 0) { free(id); free(result); return; }
 
     id->rows = malloc(id->row_count * sizeof(char*));
     for (idx_t i = 0; i < id->row_count; i++) {
@@ -1504,7 +1616,7 @@ static void xtf_assoc_init(duckdb_init_info info) {
         id->rows[i][len] = '\0';
         if (*p == '\n') p++;
     }
-    ili_free_result(cr.payload);
+    free(result);
     duckdb_init_set_init_data(info, id, mi_init_destroy);
 }
 
@@ -1552,12 +1664,14 @@ static void import_bind(duckdb_bind_info info) {
 }
 
 static void import_init_func(duckdb_init_info info) {
-    if (!g_initialized && !init_native_library()) {
-        duckdb_init_set_error(info, g_error_buf); return;
+    if (!ensure_native_ready()) {
+        duckdb_init_set_error(info, get_init_error());
+        return;
     }
     mi_bind_data *bd = (mi_bind_data *)duckdb_init_get_bind_data(info);
     if (!bd || !bd->model || !bd->class) {
-        duckdb_init_set_error(info, "Missing input or schema"); return;
+        duckdb_init_set_error(info, "Missing input or schema");
+        return;
     }
 
     ili_request req;
@@ -1569,15 +1683,15 @@ static void import_init_func(duckdb_init_info info) {
     req.mapping = "relational";
     req.max_messages = -1;
 
-    ili_call_result cr = ili_call_struct(g_native_import_xtf, &req);
-    if (cr.status != 0 || !cr.payload) {
-        ili_result_error(cr, info, "Native import call failed");
+    int status = -1;
+    char *result = ili_call_struct_str(g_native_import_xtf, &req, &status);
+    if (status != 0 || !result) {
+        ili_report_error(info, status, result, "Native import call failed");
         return;
     }
 
     import_init_data *id = malloc(sizeof(import_init_data));
-    id->sql_script = strdup(cr.payload);   // Copy to C heap so import_init_destroy can use free()
-    ili_free_result(cr.payload);           // Free GraalVM-allocated original
+    id->sql_script = result;  // Already C-allocated by ili_call_struct_str (strdup)
     id->cursor = id->sql_script;
     duckdb_init_set_init_data(info, id, import_init_destroy);
 }
@@ -1616,7 +1730,10 @@ static void import_function(duckdb_function_info tfinfo, duckdb_data_chunk outpu
 // Extension entry point
 // ---------------------------------------------------------------------------
 DUCKDB_EXTENSION_ENTRYPOINT(duckdb_connection connection, duckdb_extension_info info, struct duckdb_extension_access *access) {
-    g_connection = connection;
+#ifdef _WIN32
+    ili_mutex_init(&g_init_lock);
+    ili_mutex_init(&g_java_lock);
+#endif
 
     register_functions(connection);
     register_table_functions(connection);

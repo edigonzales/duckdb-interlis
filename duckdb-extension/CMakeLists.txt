@@ -93,12 +93,12 @@ target_compile_definitions(${EXTENSION_NAME} PRIVATE
 
 # Link system libraries
 if(APPLE)
-    # macOS: dlopen/dlsym are in libSystem, no extra linking needed
+    # macOS: dlopen/dlsym are in libSystem, pthread included, no extra linking needed
 elseif(WIN32)
-    # Windows: LoadLibrary/GetProcAddress are in kernel32 (linked implicitly)
+    # Windows: LoadLibrary/GetProcAddress and CRITICAL_SECTION in kernel32 (linked implicitly)
 else()
-    # Linux: need -ldl for dlopen/dlsym
-    target_link_libraries(${EXTENSION_NAME} PRIVATE dl)
+    # Linux: need -ldl for dlopen/dlsym and -lpthread for mutex
+    target_link_libraries(${EXTENSION_NAME} PRIVATE dl pthread)
 endif()
 
 set_target_properties(${EXTENSION_NAME} PROPERTIES

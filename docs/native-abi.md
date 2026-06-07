@@ -62,38 +62,63 @@ The embedded native library is extracted by:
 4 GraalVM lifecycle symbols + 12 API symbols are resolved with `dlsym`.  
 4 of the 12 API symbols are **not validated** in the null-check (structures, both association variants, import).
 
-## 3. GraalVM Isolate Lifecycle
+## 3. GraalVM Isolate Lifecycle (Phase 4)
+
+### Initialization (Thread-Safe)
 
 ```
-init_native_library():
-    dlopen()
-    dlsym() × 16
-    graal_create_isolate(NULL, &g_isolate, &init_thread)
-    graal_detach_thread(init_thread)
-
-native_call_with_input_str():
-    graal_attach_thread(g_isolate, &thread)
-    fn(thread, input, &result)
-    graal_detach_thread(thread)
-
-native_free_str():
-    graal_attach_thread(g_isolate, &thread)
-    g_native_free(thread, str)
-    graal_detach_thread(thread)
-
-shutdown_native_library():  ← NEVER CALLED
-    graal_attach_thread(g_isolate, &thread)
-    graal_tear_down_isolate(thread)
-    dlclose(g_native_handle)
+ensure_native_ready():
+    ili_mutex_lock(&g_init_lock)
+    if (g_init_done) → unlock, return true
+    if (g_init_error) → unlock, return false (don't retry)
+    
+    init_native_library_locked():
+        dlopen()
+        dlsym() × 16
+        graal_create_isolate(NULL, &g_isolate, &init_thread)
+        graal_detach_thread(init_thread)
+    
+    success → g_init_done = true
+    failure → g_init_error = strdup(error_msg)  (persistent, never retried)
+    ili_mutex_unlock(&g_init_lock)
 ```
 
-**Issues:**
-- Attach/detach happens **per call** — no thread pooling or reuse.
-- Free requires a separate attach/detach cycle — 4 total per native call.
-- `shutdown_native_library` is implemented but never invoked (DuckDB has no reliable extension unload hook).
-- Initialization is **not thread-safe** — no mutex around `g_initialized` check.
+Initialization is protected by `g_init_lock` (pthread_mutex_t / CRITICAL_SECTION).  
+Failed initialization is stored persistently in `g_init_error` and **never retried** on subsequent calls — avoiding leaked isolates or repeated failures.
 
-## 4. Global State
+### Per-Call Lifecycle (Consolidated)
+
+Each native call now uses a single attach/detach cycle:
+
+```
+ili_call_struct_str():
+    ili_mutex_lock(&g_java_lock)          ← serialize Java access
+    graal_attach_thread(g_isolate, &thread)
+    fn(thread, req, &native_payload)
+    result = strdup(native_payload)        ← copy to C heap
+    g_native_free(thread, native_payload)  ← free GraalVM memory while attached
+    graal_detach_thread(thread)
+    ili_mutex_unlock(&g_java_lock)
+    return result                          ← C-owned, caller uses free()
+```
+
+**Key improvements:**
+- Attach/call/copy/free/detach in **one cycle** (was 2 cycles / 4 attach-detach pairs).
+- Results are `strdup`'d to C heap — no more GraalVM-owned pointer dangling after detach.
+- All Java calls are serialized by `g_java_lock` — safe for INTERLIS libraries with unknown thread-safety.
+
+### Shutdown
+
+`shutdown_native_library()` exists for manual use in tests.  
+DuckDB does not provide a reliable extension-unload lifecycle, so **cleanup relies on process exit** (OS reclaims isolate, dlclose, memory). This is documented as a known limitation.
+
+### Conservative Parallelism
+
+All Java calls are serialized through a single global mutex (`g_java_lock`).  
+Reason: thread-safety of INTERLIS libraries (ili2c, ilivalidator, EhiLogger) is not guaranteed.  
+Correctness is prioritized over parallelism. This restriction is documented.
+
+## 4. Global State (Phase 4)
 
 ```c
 static void *g_native_handle = NULL;           // dlopen handle
@@ -103,16 +128,21 @@ static graal_attach_thread_fn_t g_attach_thread = NULL;
 static graal_detach_thread_fn_t g_detach_thread = NULL;
 static graal_tear_down_isolate_fn_t g_tear_down = NULL;
 static native_version_fn g_native_version = NULL;
-// ... 10 more function pointers ...
-static bool g_initialized = false;
-static char g_error_buf[512];                  // ← shared, not thread-safe
-static duckdb_connection g_connection = NULL;
+static native_struct_fn g_native_validate = NULL;
+// ... 11 more function pointers ...
+static bool g_init_done = false;
+static char *g_init_error = NULL;              // ← dynamically allocated, set once
+static ili_mutex_t g_init_lock;                // ← protects initialization
+static ili_mutex_t g_java_lock;                // ← serializes Java calls
 ```
 
-**Issues:**
-- `g_error_buf` is a 512-byte static buffer — concurrent init or error paths will corrupt messages.
-- No atomic/barrier between setting `g_initialized = true` and function pointers being populated.
-- `g_connection` is stored but never read.
+### Thread-Safety Properties
+
+- `g_init_done` and `g_init_error` are set **under `g_init_lock`** and read with lock on slow path.
+- Failed init is stored once in `g_init_error` (dynamically allocated); retries are impossible.
+- Function pointers are set during locked init and never modified afterwards.
+- `g_java_lock` ensures only one thread enters Java code at a time.
+- `g_init_error` replaced the former `g_error_buf[512]` — no more fixed-size static buffer.
 
 ## 5. Entry Points (12 Functions)
 
@@ -304,84 +334,60 @@ void ili_free_string(graal_isolatethread_t* thread, char* str);
 - **Implementation:** Calls `UnmanagedMemory.free(str)` in GraalVM.
 - **Requirements:** Must be called with an attached thread. String must have been allocated by a native entry point.
 
-## 6. Memory Ownership Rules
-
-### Rule (Current, Partially Broken)
+## 6. Memory Ownership Rules (Phase 4)
 
 | Resource | Allocator | Owner After Call | Free Mechanism |
 |----------|-----------|-----------------|----------------|
 | Input strings (`char*` passed to entry points) | Caller (C) | Caller | Caller manages (stack/strdup) |
-| Output strings (`char**` returned by entry points) | `UnmanagedMemory.malloc()` | Caller (C) | `ili_free_string()` |
-| C-side copies (`strdup`) | C `malloc()` | C extension | C `free()` |
+| Native result strings | `UnmanagedMemory.malloc()` | Consolidated helper | `g_native_free()` inside same attach/detach cycle |
+| Returned C copies | C `strdup()` (→ `malloc`) | Caller (C) | `free()` |
+| Init error messages | C `malloc()` / `strdup` | Extension (persistent) | `free()` in `shutdown_native_library()` |
 
-### Violations
+**No violations** — all Allocator mismatches fixed in Phases 1+4.
 
-| Location | Violation |
-|----------|-----------|
-| `call_native_with_input()`, `call_native_str()` | Error payload is **not freed** when `rc != 0` |
-| `import_init_destroy()` | C `free()` called on GraalVM `UnmanagedMemory.malloc()` pointer |
-| All `*_init` error paths | Error payload **lost** when `result == NULL` check discards pointer |
+## 7. C-Side Call Helpers (Phase 4)
 
-## 7. C-Side Call Helpers
+### Consolidated Helpers
 
-### `call_native_str`
+All native calls now go through three consolidated helpers that combine lock, attach, call, copy, free, and detach in a single cycle:
 
 ```c
-static char *call_native_str(graal_isolatethread_t *thread,
-                              int (*fn)(graal_isolatethread_t *, char **)) {
-    char *result = NULL;
-    int rc = fn(thread, &result);
-    if (rc != 0 || !result) {
-        return NULL;  // BUG: leaks result if rc != 0 and result != NULL
-    }
-    return result;
-}
+// No-input call (e.g., ili_native_version)
+// Returns C-allocated copy, caller must free(). Sets *out_status.
+static char *ili_call_str(
+    int (*fn)(graal_isolatethread_t *, char **),
+    int *out_status);
+
+// With-input call (e.g., ili_native_echo)
+static char *ili_call_input_str(
+    int (*fn)(graal_isolatethread_t *, char *, char **),
+    const char *input, int *out_status);
+
+// With-ili_request call (most API functions)
+static char *ili_call_struct_str(
+    native_struct_fn fn, const ili_request *req,
+    int *out_status);
 ```
 
-### `call_native_with_input`
+**Flow per helper:**
+1. `ili_mutex_lock(&g_java_lock)` — serialize Java access
+2. `graal_attach_thread` — attach to GraalVM isolate
+3. Call native function
+4. `strdup` the GraalVM-allocated result → C heap
+5. `g_native_free(thread, native_str)` — free GraalVM memory (still attached)
+6. `graal_detach_thread` — detach
+7. `ili_mutex_unlock(&g_java_lock)`
+8. Return C-allocated string (NULL on failure), set `*out_status`
 
-```c
-static char *call_native_with_input(graal_isolatethread_t *thread,
-                                     int (*fn)(graal_isolatethread_t *, char *, char **),
-                                     const char *input) {
-    char *result = NULL;
-    int rc = fn(thread, (char *)input, &result);
-    if (rc != 0 || !result) {
-        return NULL;  // BUG: same as above
-    }
-    return result;
-}
-```
+### Memory Ownership
 
-### `native_call_str`
+| Resource | Allocator | Freed By | When |
+|----------|-----------|----------|------|
+| Native result string | GraalVM `UnmanagedMemory.malloc()` | `g_native_free()` inside helper | Same attach/detach cycle |
+| Returned C copy | C `strdup()` (→ `malloc`) | Caller via `free()` | After processing |
+| Init error message | C `strdup()` / `malloc` | Never (persistent) or in `shutdown_native_library()` | — |
 
-```c
-static char *native_call_str(int (*fn)(graal_isolatethread_t *, char **)) {
-    // attach → call → detach
-    // returns result or NULL
-    // caller must native_free_str()
-}
-```
-
-### `native_call_with_input_str`
-
-```c
-static char *native_call_with_input_str(
-        int (*fn)(graal_isolatethread_t *, char *, char **), const char *input) {
-    // attach → call → detach
-    // returns result or NULL
-    // caller must native_free_str()
-}
-```
-
-### `native_free_str`
-
-```c
-static void native_free_str(char *str) {
-    // attach → free → detach
-    // does nothing if str is NULL or isolate not initialized
-}
-```
+**No more `ili_free_result()` — all freeing happens inside the consolidated helpers.**
 
 ## 8. TSV Format
 

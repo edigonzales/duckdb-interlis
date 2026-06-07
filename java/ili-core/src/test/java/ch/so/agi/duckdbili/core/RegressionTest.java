@@ -252,8 +252,7 @@ class RegressionTest {
     // -----------------------------------------------------------------------
 
     @Test
-    @DisplayName("REGRESSION: Concurrent model access on unsynchronized HashMap")
-    @Disabled("Enable when Phase 5 implements thread-safe cache")
+    @DisplayName("REGRESSION: Concurrent model access on independent service instances")
     void concurrentModelAccess() throws Exception {
         // This test is @Disabled because the current unsynchronized HashMap
         // makes concurrent access undefined behavior (may crash or corrupt).
