@@ -120,10 +120,6 @@ public class NativeEntryPoints {
             outPayload.write(allocCString("{\"valid\":false,\"error\":\"Missing 'input' field\"}"));
             return 1;
         }
-        if (modelDir == null || modelDir.isBlank()) {
-            outPayload.write(allocCString("{\"valid\":false,\"error\":\"Missing 'modeldir' field\"}"));
-            return 1;
-        }
 
         try {
             IliValidatorService service = new IliValidatorService();
@@ -178,10 +174,6 @@ public class NativeEntryPoints {
 
         if (input == null || input.isBlank()) {
             outPayload.write(allocCString("-1\t0\t0\nMissing 'input' field"));
-            return 1;
-        }
-        if (modelDir == null || modelDir.isBlank()) {
-            outPayload.write(allocCString("-1\t0\t0\nMissing 'modeldir' field"));
             return 1;
         }
 
@@ -313,11 +305,6 @@ public class NativeEntryPoints {
         String modelDir = extractJsonField(request, "modeldir");
         String modelName = extractJsonField(request, "model");
         String className = extractJsonField(request, "class");
-
-        if (modelDir == null || modelDir.isBlank()) {
-            outPayload.write(allocCString("ERROR: Missing 'modeldir' field"));
-            return 1;
-        }
 
         String result;
         try {
@@ -497,9 +484,8 @@ public class NativeEntryPoints {
         String schema = extractJsonField(request, "schema");
         String mapping = extractJsonField(request, "mapping");
 
-        if (input == null || input.isBlank() || schema == null || schema.isBlank()
-                || modelDir == null || modelDir.isBlank()) {
-            outPayload.write(allocCString("ERROR: Missing required fields (input, schema, modeldir)"));
+        if (input == null || input.isBlank() || schema == null || schema.isBlank()) {
+            outPayload.write(allocCString("ERROR: Missing required fields (input, schema)"));
             return 1;
         }
 

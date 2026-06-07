@@ -13,6 +13,10 @@ import java.util.List;
 
 public class IliValidatorService {
 
+    private static final String DEFAULT_MODELDIR = System.getenv("ILI_DEFAULT_MODELDIR") != null
+            ? System.getenv("ILI_DEFAULT_MODELDIR")
+            : "https://models.interlis.ch";
+
     public ValidationResult validate(Path xtfFile, String modelDir) {
         return validate(xtfFile, modelDir, -1);
     }
@@ -27,6 +31,8 @@ public class IliValidatorService {
                     .build()));
         }
 
+        String effectiveModelDir = resolveModelDir(modelDir, xtfFile);
+
         Path csvLog = null;
         try {
             csvLog = Files.createTempFile("ilival-", ".csv");
@@ -40,7 +46,7 @@ public class IliValidatorService {
 
         try {
             Settings settings = new Settings();
-            settings.setValue(Validator.SETTING_ILIDIRS, modelDir);
+            settings.setValue(Validator.SETTING_ILIDIRS, effectiveModelDir);
             settings.setValue(Validator.SETTING_CSVLOG, csvLog.toAbsolutePath().toString());
             settings.setValue(Validator.SETTING_FORCE_TYPE_VALIDATION, Validator.TRUE);
             settings.setValue(Validator.SETTING_MULTIPLICITY_VALIDATION, Validator.TRUE);
@@ -140,5 +146,13 @@ public class IliValidatorService {
         }
 
         return new ValidationResult(messages);
+    }
+
+    private static String resolveModelDir(String modelDir, Path xtfFile) {
+        if (modelDir != null && !modelDir.isBlank()) return modelDir;
+        String xtfDir = "";
+        try { xtfDir = xtfFile.getParent().toString(); } catch (Exception ignored) {}
+        if (!xtfDir.isBlank()) return xtfDir + ";" + DEFAULT_MODELDIR;
+        return DEFAULT_MODELDIR;
     }
 }

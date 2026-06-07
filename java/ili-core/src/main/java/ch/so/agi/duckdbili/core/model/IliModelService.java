@@ -13,18 +13,23 @@ import java.util.*;
 
 public class IliModelService {
 
+    private static final String DEFAULT_MODELDIR = System.getenv("ILI_DEFAULT_MODELDIR") != null
+            ? System.getenv("ILI_DEFAULT_MODELDIR")
+            : "https://models.interlis.ch";
+
     private final Map<String, TransferDescription> cache = new HashMap<>();
 
     private TransferDescription compileIli(String modelDir) {
-        String key = modelDir;
+        String effectiveDir = (modelDir != null && !modelDir.isBlank()) ? modelDir : DEFAULT_MODELDIR;
+        String key = effectiveDir;
         if (cache.containsKey(key)) return cache.get(key);
         try {
             IliManager manager = new IliManager();
-            manager.setRepositories(new String[]{modelDir});
+            manager.setRepositories(new String[]{effectiveDir});
 
             ArrayList<String> entries = new ArrayList<>();
             try {
-                Path dir = Path.of(modelDir);
+                Path dir = Path.of(effectiveDir);
                 if (Files.isDirectory(dir)) {
                     try (DirectoryStream<Path> stream = Files.newDirectoryStream(dir, "*.ili")) {
                         for (Path f : stream)
@@ -38,7 +43,7 @@ public class IliModelService {
 
             Ili2cSettings settings = new Ili2cSettings();
             Main.setDefaultIli2cPathMap(settings);
-            settings.setIlidirs(modelDir);
+            settings.setIlidirs(effectiveDir);
 
             IliLogger.suppress();
             try {

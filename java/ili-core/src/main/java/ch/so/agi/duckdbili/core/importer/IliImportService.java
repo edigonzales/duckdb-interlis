@@ -18,7 +18,7 @@ public class IliImportService {
             : "https://models.interlis.ch";
 
     public String generateImportSql(String xtfPath, String modelDir, String schema, String mapping) {
-        TransferDescription td = compileModel(modelDir, null);
+        TransferDescription td = compileModel(resolveModelDir(modelDir, xtfPath), null);
         if (td == null) return "ERROR: Failed to compile model";
 
         StringBuilder sql = new StringBuilder();
@@ -351,5 +351,13 @@ public class IliImportService {
             }
         }
         return domain;
+    }
+
+    private static String resolveModelDir(String modelDir, String xtfPath) {
+        if (modelDir != null && !modelDir.isBlank()) return modelDir;
+        String xtfDir = "";
+        try { xtfDir = new File(xtfPath).getAbsoluteFile().getParent(); } catch (Exception ignored) {}
+        if (xtfDir != null && !xtfDir.isBlank()) return xtfDir + ";" + DEFAULT_MODELDIR;
+        return DEFAULT_MODELDIR;
     }
 }

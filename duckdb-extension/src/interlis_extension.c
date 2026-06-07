@@ -409,10 +409,9 @@ static void ili_validate_summary_json_fn(duckdb_function_info info, duckdb_data_
     duckdb_string_t *modeldir_data = (duckdb_string_t *)duckdb_vector_get_data(modeldir_vec);
 
     for (idx_t row = 0; row < size; row++) {
-        if (!duckdb_validity_row_is_valid(path_validity, row) ||
-            !duckdb_validity_row_is_valid(modeldir_validity, row)) {
+        if (!duckdb_validity_row_is_valid(path_validity, row)) {
             duckdb_validity_set_row_invalid(validity, row);
-            duckdb_scalar_function_set_error(info, "Path and modeldir must not be NULL");
+            duckdb_scalar_function_set_error(info, "Path must not be NULL");
             return;
         }
 
@@ -426,14 +425,21 @@ static void ili_validate_summary_json_fn(duckdb_function_info info, duckdb_data_
         duckdb_string_t path_str = path_data[row];
         duckdb_string_t modeldir_str = modeldir_data[row];
         idx_t path_len = duckdb_string_t_length(path_str);
-        idx_t modeldir_len = duckdb_string_t_length(modeldir_str);
+        bool modeldir_valid = duckdb_validity_row_is_valid(modeldir_validity, row);
 
         // Build JSON request with length-limited strings
         char request[8192];
-        snprintf(request, sizeof(request),
-            "{\"input\":\"%.*s\",\"modeldir\":\"%.*s\"}",
-            (int)path_len, duckdb_string_t_data(&path_str),
-            (int)modeldir_len, duckdb_string_t_data(&modeldir_str));
+        if (modeldir_valid) {
+            idx_t modeldir_len = duckdb_string_t_length(modeldir_str);
+            snprintf(request, sizeof(request),
+                "{\"input\":\"%.*s\",\"modeldir\":\"%.*s\"}",
+                (int)path_len, duckdb_string_t_data(&path_str),
+                (int)modeldir_len, duckdb_string_t_data(&modeldir_str));
+        } else {
+            snprintf(request, sizeof(request),
+                "{\"input\":\"%.*s\",\"modeldir\":\"\"}",
+                (int)path_len, duckdb_string_t_data(&path_str));
+        }
 
         char *result = native_call_with_input_str(g_native_validate, request);
         if (result) {
@@ -643,15 +649,16 @@ static void ili_validate_init(duckdb_init_info info) {
     }
 
     ili_validate_bind_data *bd = (ili_validate_bind_data *)duckdb_init_get_bind_data(info);
-    if (!bd || !bd->input || !bd->modeldir) {
-        duckdb_init_set_error(info, "Missing input path or modeldir");
+    if (!bd || !bd->input) {
+        duckdb_init_set_error(info, "Missing input path");
         return;
     }
 
     // Build JSON request and call native validation
     char request[8192];
     snprintf(request, sizeof(request),
-        "{\"input\":\"%s\",\"modeldir\":\"%s\"}", bd->input, bd->modeldir);
+        "{\"input\":\"%s\",\"modeldir\":\"%s\"}", bd->input,
+        bd->modeldir ? bd->modeldir : "");
 
     char *tsv_result = native_call_with_input_str(g_native_validate_tsv, request);
     if (!tsv_result) {
@@ -813,7 +820,7 @@ static void mi_bind(duckdb_bind_info info, const char *cmd, int ncols,
         duckdb_bind_add_result_column(info, colnames[i], vt);
 
     duckdb_value dv = duckdb_bind_get_parameter(info, 0);
-    char *modeldir = dv ? duckdb_get_varchar(dv) : NULL;
+    char *modeldir = (dv && !duckdb_is_null_value(dv)) ? duckdb_get_varchar(dv) : NULL;
 
     dv = duckdb_bind_get_named_parameter(info, "model");
     char *model = dv ? duckdb_get_varchar(dv) : NULL;
@@ -836,13 +843,13 @@ static void mi_init(duckdb_init_info info) {
         duckdb_init_set_error(info, g_error_buf); return;
     }
     mi_bind_data *bd = (mi_bind_data *)duckdb_init_get_bind_data(info);
-    if (!bd || !bd->modeldir) {
-        duckdb_init_set_error(info, "Missing modeldir"); return;
+    if (!bd) {
+        duckdb_init_set_error(info, "Missing bind data"); return;
     }
 
     char req[8192];
     snprintf(req, sizeof(req), "{\"cmd\":\"%s\",\"modeldir\":\"%s\"%s%s%s%s}",
-        bd->cmd, bd->modeldir,
+        bd->cmd, bd->modeldir ? bd->modeldir : "",
         bd->model ? ",\"model\":\"" : "", bd->model ? bd->model : "",
         bd->class ? ",\"class\":\"" : "", bd->class ? bd->class : "");
 
@@ -1051,11 +1058,11 @@ static void xtf_class_bind(duckdb_bind_info info) {
     // Call native to get column schema
     if (!g_initialized && !init_native_library()) {
         duckdb_bind_set_error(info, g_error_buf);
-    } else if (g_native_read_xtf_class_schema && bd->class_name && bd->modeldir) {
+    } else if (g_native_read_xtf_class_schema && bd->class_name) {
         char req[4096];
         int slen = snprintf(req, sizeof(req),
             "{\"class\":\"%s\",\"modeldir\":\"%s\",\"nested\":\"%s\"}",
-            bd->class_name, bd->modeldir,
+            bd->class_name, bd->modeldir ? bd->modeldir : "",
             bd->nested ? bd->nested : "json");
         if (slen < 0 || slen >= (int)sizeof(req)) req[sizeof(req)-1] = '\0';
         char *header = native_call_with_input_str(g_native_read_xtf_class_schema, req);
@@ -1098,14 +1105,14 @@ static void xtf_class_init(duckdb_init_info info) {
         duckdb_init_set_error(info, g_error_buf); return;
     }
     xtf_class_bind_data *bd = (xtf_class_bind_data *)duckdb_init_get_bind_data(info);
-    if (!bd || !bd->input || !bd->class_name || !bd->modeldir) {
-        duckdb_init_set_error(info, "Missing input, class, or modeldir"); return;
+    if (!bd || !bd->input || !bd->class_name) {
+        duckdb_init_set_error(info, "Missing input or class"); return;
     }
 
     char req[8192];
     int slen = snprintf(req, sizeof(req),
         "{\"input\":\"%s\",\"class\":\"%s\",\"modeldir\":\"%s\",\"nested\":\"%s\"}",
-        bd->input, bd->class_name, bd->modeldir,
+        bd->input, bd->class_name, bd->modeldir ? bd->modeldir : "",
         bd->nested ? bd->nested : "json");
     if (slen < 0 || slen >= (int)sizeof(req)) req[sizeof(req)-1] = '\0';
 
@@ -1188,13 +1195,13 @@ static void xtf_structures_init(duckdb_init_info info) {
         duckdb_init_set_error(info, g_error_buf); return;
     }
     xtf_structures_bind_data *bd = (xtf_structures_bind_data *)duckdb_init_get_bind_data(info);
-    if (!bd || !bd->class_name || !bd->modeldir) {
-        duckdb_init_set_error(info, "Missing class or modeldir"); return;
+    if (!bd || !bd->class_name) {
+        duckdb_init_set_error(info, "Missing class"); return;
     }
 
     char req[4096];
     int slen = snprintf(req, sizeof(req),
-        "{\"class\":\"%s\",\"modeldir\":\"%s\"}", bd->class_name, bd->modeldir);
+        "{\"class\":\"%s\",\"modeldir\":\"%s\"}", bd->class_name, bd->modeldir ? bd->modeldir : "");
     if (slen < 0 || slen >= (int)sizeof(req)) req[sizeof(req)-1] = '\0';
 
     char *result = native_call_with_input_str(g_native_read_xtf_structures, req);
@@ -1262,10 +1269,10 @@ static void xtf_assoc_bind(duckdb_bind_info info) {
 
     if (!g_initialized && !init_native_library()) {
         duckdb_bind_set_error(info, g_error_buf);
-    } else if (g_native_read_xtf_association_schema && bd->association_name && bd->modeldir) {
+    } else if (g_native_read_xtf_association_schema && bd->association_name) {
         char req[4096];
         int slen = snprintf(req, sizeof(req),
-            "{\"association\":\"%s\",\"modeldir\":\"%s\"}", bd->association_name, bd->modeldir);
+            "{\"association\":\"%s\",\"modeldir\":\"%s\"}", bd->association_name, bd->modeldir ? bd->modeldir : "");
         if (slen < 0 || slen >= (int)sizeof(req)) req[sizeof(req)-1] = '\0';
         char *header = native_call_with_input_str(g_native_read_xtf_association_schema, req);
         if (header) {
@@ -1304,14 +1311,14 @@ static void xtf_assoc_init(duckdb_init_info info) {
         duckdb_init_set_error(info, g_error_buf); return;
     }
     xtf_assoc_bind_data *bd = (xtf_assoc_bind_data *)duckdb_init_get_bind_data(info);
-    if (!bd || !bd->input || !bd->association_name || !bd->modeldir) {
-        duckdb_init_set_error(info, "Missing input, association, or modeldir"); return;
+    if (!bd || !bd->input || !bd->association_name) {
+        duckdb_init_set_error(info, "Missing input or association"); return;
     }
 
     char req[8192];
     int slen = snprintf(req, sizeof(req),
         "{\"input\":\"%s\",\"association\":\"%s\",\"modeldir\":\"%s\"}",
-        bd->input, bd->association_name, bd->modeldir);
+        bd->input, bd->association_name, bd->modeldir ? bd->modeldir : "");
     if (slen < 0 || slen >= (int)sizeof(req)) req[sizeof(req)-1] = '\0';
 
     char *result = native_call_with_input_str(g_native_read_xtf_association, req);
@@ -1390,14 +1397,14 @@ static void import_init_func(duckdb_init_info info) {
         duckdb_init_set_error(info, g_error_buf); return;
     }
     mi_bind_data *bd = (mi_bind_data *)duckdb_init_get_bind_data(info);
-    if (!bd || !bd->model || !bd->class || !bd->modeldir) {
-        duckdb_init_set_error(info, "Missing input, schema, or modeldir"); return;
+    if (!bd || !bd->model || !bd->class) {
+        duckdb_init_set_error(info, "Missing input or schema"); return;
     }
 
     char req[8192];
     snprintf(req, sizeof(req),
         "{\"input\":\"%s\",\"schema\":\"%s\",\"modeldir\":\"%s\",\"mapping\":\"relational\"}",
-        bd->model, bd->class, bd->modeldir);
+        bd->model, bd->class, bd->modeldir ? bd->modeldir : "");
 
     char *sql_result = native_call_with_input_str(g_native_import_xtf, req);
     if (!sql_result) {

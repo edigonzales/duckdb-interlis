@@ -81,15 +81,14 @@ ili_validate_summary_json(path VARCHAR, modeldir VARCHAR) → VARCHAR
 | # | Name | Kind | Type | Erforderlich | Beschreibung |
 |---|---|---|---|---|---|
 | 1 | `path` | positional | VARCHAR | Ja | Pfad zur XTF-Datei |
-| 2 | `modeldir` | positional | VARCHAR | Ja | Verzeichnis mit ILI-Modelldateien oder semikolon-getrennte URLs zu Modell-Repositories |
+| 2 | `modeldir` | positional | VARCHAR | Nein | Verzeichnis mit ILI-Modelldateien oder semikolon-getrennte URLs zu Modell-Repositories. Default: Verzeichnis der XTF-Datei + `https://models.interlis.ch`, überschreibbar via `ILI_DEFAULT_MODELDIR` |
 
 **Examples:**
 
 ```sql
 -- 1. Validate a valid XTF file
 SELECT json_extract(result, '$.valid') AS valid,
-       json_extract(result, '$.errorCount') AS errors,
-       json_extract(result, '$.warningCount') AS warnings
+       json_extract(result, '$.errorCount') AS errors
 FROM (
     SELECT ili_validate_summary_json(
         'testdata/synthetic/simple/valid.xtf',
@@ -146,7 +145,7 @@ ili_validate(path VARCHAR, modeldir => VARCHAR) → TABLE(...)
 | # | Name | Kind | Type | Erforderlich | Beschreibung |
 |---|---|---|---|---|---|
 | 1 | `path` | positional | VARCHAR | Ja | Pfad zur XTF-Datei |
-| 2 | `modeldir` | named | VARCHAR | Ja | Verzeichnis mit ILI-Modelldateien oder semikolon-getrennte URLs |
+| 2 | `modeldir` | named | VARCHAR | Nein | Verzeichnis mit ILI-Modelldateien oder semikolon-getrennte URLs. Default: Verzeichnis der XTF-Datei + `https://models.interlis.ch`, überschreibbar via `ILI_DEFAULT_MODELDIR` |
 
 **Return columns:**
 
@@ -212,7 +211,7 @@ ili_models(modeldir VARCHAR, model => VARCHAR) → TABLE(...)
 
 | # | Name | Kind | Type | Erforderlich | Beschreibung |
 |---|---|---|---|---|---|
-| 1 | `modeldir` | positional | VARCHAR | Ja | Verzeichnis mit ILI-Dateien |
+| 1 | `modeldir` | positional | VARCHAR | Nein | Verzeichnis mit ILI-Dateien. Default: `https://models.interlis.ch`, überschreibbar via `ILI_DEFAULT_MODELDIR` |
 | 2 | `model` | named | VARCHAR | Nein | Optional: nach Modellnamen filtern |
 | 3 | `class` | named | VARCHAR | Nein | Optional: nach Klassennamen filtern |
 
@@ -264,7 +263,7 @@ ili_topics(modeldir VARCHAR, model => VARCHAR) → TABLE(...)
 
 | # | Name | Kind | Type | Erforderlich | Beschreibung |
 |---|---|---|---|---|---|
-| 1 | `modeldir` | positional | VARCHAR | Ja | Verzeichnis mit ILI-Dateien |
+| 1 | `modeldir` | positional | VARCHAR | Nein | Verzeichnis mit ILI-Dateien. Default: `https://models.interlis.ch`, überschreibbar via `ILI_DEFAULT_MODELDIR` |
 | 2 | `model` | named | VARCHAR | Nein | Optional: nach Modellnamen filtern |
 | 3 | `class` | named | VARCHAR | Nein | Optional: nach Klassennamen filtern |
 
@@ -273,23 +272,14 @@ ili_topics(modeldir VARCHAR, model => VARCHAR) → TABLE(...)
 |---|---|
 | `model_name` | VARCHAR |
 | `topic_name` | VARCHAR |
-| `enum_name` | VARCHAR |
-| `element` | VARCHAR |
-| `element_line` | VARCHAR |
+| `kind` | VARCHAR |
 
 **Examples:**
 
 ```sql
--- 1. Alle Enum-Werte
-SELECT model_name, enum_name, element
-FROM ili_enumerations('testdata/synthetic/simple');
-```
-
-```sql
--- 2. Enum-Werte eines Modells
-SELECT enum_name, element
-FROM ili_enumerations('testdata/synthetic/simple',
-    model := 'SO_AGI_Simple_20260605');
+-- 1. Alle Topics ohne Filter
+SELECT model_name, topic_name, kind
+FROM ili_topics('testdata/synthetic/simple');
 ```
 
 ```sql
@@ -300,10 +290,9 @@ FROM ili_topics('testdata/synthetic/simple',
 ```
 
 ```sql
--- 2. Filter topics by model
-SELECT model_name, topic_name
-FROM ili_topics('testdata/synthetic/simple',
-    model := 'SO_AGI_Simple_20260605');
+-- 3. Topics aus einem anderen Modell
+SELECT model_name, topic_name, kind
+FROM ili_topics('testdata/synthetic/structures');
 ```
 
 ---
@@ -322,7 +311,7 @@ ili_classes(modeldir VARCHAR, model => VARCHAR) → TABLE(...)
 
 | # | Name | Kind | Type | Erforderlich | Beschreibung |
 |---|---|---|---|---|---|
-| 1 | `modeldir` | positional | VARCHAR | Ja | Verzeichnis mit ILI-Dateien |
+| 1 | `modeldir` | positional | VARCHAR | Nein | Verzeichnis mit ILI-Dateien. Default: `https://models.interlis.ch`, überschreibbar via `ILI_DEFAULT_MODELDIR` |
 | 2 | `model` | named | VARCHAR | Nein | Optional: nach Modellnamen filtern |
 | 3 | `class` | named | VARCHAR | Nein | Optional: nach Klassennamen filtern |
 
@@ -374,7 +363,7 @@ ili_attributes(modeldir VARCHAR, model => VARCHAR, class => VARCHAR) → TABLE(.
 
 | # | Name | Kind | Type | Erforderlich | Beschreibung |
 |---|---|---|---|---|---|
-| 1 | `modeldir` | positional | VARCHAR | Ja | Verzeichnis mit ILI-Dateien |
+| 1 | `modeldir` | positional | VARCHAR | Nein | Verzeichnis mit ILI-Dateien. Default: `https://models.interlis.ch`, überschreibbar via `ILI_DEFAULT_MODELDIR` |
 | 2 | `model` | named | VARCHAR | Nein | Optional: nach Modellnamen filtern |
 | 3 | `class` | named | VARCHAR | Nein | Optional: nach Klassennamen filtern |
 
@@ -430,7 +419,7 @@ ili_enumerations(modeldir VARCHAR, model => VARCHAR, class => VARCHAR) → TABLE
 
 | # | Name | Kind | Type | Erforderlich | Beschreibung |
 |---|---|---|---|---|---|
-| 1 | `modeldir` | positional | VARCHAR | Ja | Verzeichnis mit ILI-Dateien |
+| 1 | `modeldir` | positional | VARCHAR | Nein | Verzeichnis mit ILI-Dateien. Default: `https://models.interlis.ch`, überschreibbar via `ILI_DEFAULT_MODELDIR` |
 | 2 | `model` | named | VARCHAR | Nein | Optional: nach Modellnamen filtern |
 | 3 | `class` | named | VARCHAR | Nein | Optional: nach Klassennamen filtern |
 
@@ -475,7 +464,7 @@ read_xtf_objects(input VARCHAR, modeldir => VARCHAR, models => VARCHAR) → TABL
 | # | Name | Kind | Type | Erforderlich | Beschreibung |
 |---|---|---|---|---|---|
 | 1 | `input` | positional | VARCHAR | Ja | Pfad zur XTF-Datei |
-| 2 | `modeldir` | named | VARCHAR | Ja | Verzeichnis mit ILI-Modelldateien oder semikolon-getrennte URLs |
+| 2 | `modeldir` | named | VARCHAR | Nein | Verzeichnis mit ILI-Modelldateien oder semikolon-getrennte URLs. Default: Verzeichnis der XTF-Datei + `https://models.interlis.ch`, überschreibbar via `ILI_DEFAULT_MODELDIR` |
 | 3 | `models` | named | VARCHAR | Nein | Optional: nach Modellnamen filtern |
 
 **Return columns:**
@@ -544,7 +533,7 @@ read_xtf_class(input VARCHAR, class => VARCHAR, modeldir => VARCHAR, nested => V
 |---|---|---|---|---|---|
 | 1 | `input` | positional | VARCHAR | Ja | Pfad zur XTF-Datei |
 | 2 | `class` | named | VARCHAR | Ja | Voll qualifizierter Klassenname, z.B. `Model.Topic.Class` |
-| 3 | `modeldir` | named | VARCHAR | Ja | Verzeichnis mit ILI-Modelldateien oder semikolon-getrennte URLs |
+| 3 | `modeldir` | named | VARCHAR | Nein | Verzeichnis mit ILI-Modelldateien oder semikolon-getrennte URLs. Default: Verzeichnis der XTF-Datei + `https://models.interlis.ch`, überschreibbar via `ILI_DEFAULT_MODELDIR` |
 | 4 | `nested` | named | VARCHAR | Nein (Default: `"json"`) | Nesting-Modus: `'json'` (Default) oder `'flat'` |
 
 **Return columns:** Dynamic, plus always:
@@ -623,7 +612,7 @@ read_xtf_structures(class => VARCHAR, modeldir => VARCHAR) → TABLE(...)
 | # | Name | Kind | Type | Erforderlich | Beschreibung |
 |---|---|---|---|---|---|
 | 1 | `class` | named | VARCHAR | Ja | Voll qualifizierter Klassenname |
-| 2 | `modeldir` | named | VARCHAR | Ja | Verzeichnis mit ILI-Modelldateien |
+| 2 | `modeldir` | named | VARCHAR | Nein | Verzeichnis mit ILI-Modelldateien. Default: `https://models.interlis.ch`, überschreibbar via `ILI_DEFAULT_MODELDIR` |
 
 **Return columns:**
 
@@ -674,7 +663,7 @@ read_xtf_association(input VARCHAR, association => VARCHAR, modeldir => VARCHAR)
 |---|---|---|---|---|---|
 | 1 | `input` | positional | VARCHAR | Ja | Pfad zur XTF-Datei |
 | 2 | `association` | named | VARCHAR | Ja | Voll qualifizierter Assoziationsname |
-| 3 | `modeldir` | named | VARCHAR | Ja | Verzeichnis mit ILI-Modelldateien |
+| 3 | `modeldir` | named | VARCHAR | Nein | Verzeichnis mit ILI-Modelldateien. Default: Verzeichnis der XTF-Datei + `https://models.interlis.ch`, überschreibbar via `ILI_DEFAULT_MODELDIR` |
 
 **Return columns:** Dynamic, plus always:
 - `xtf_bid` | VARCHAR
@@ -744,7 +733,7 @@ ili_import_xtf(input VARCHAR, schema => VARCHAR, modeldir => VARCHAR, mapping =>
 |---|---|---|---|---|---|
 | 1 | `input` | positional | VARCHAR | Ja | Pfad zur XTF-Datei |
 | 2 | `schema` | named | VARCHAR | Ja | Name des Ziel-Schemas in DuckDB |
-| 3 | `modeldir` | named | VARCHAR | Ja | Verzeichnis mit ILI-Modelldateien |
+| 3 | `modeldir` | named | VARCHAR | Nein | Verzeichnis mit ILI-Modelldateien. Default: Verzeichnis der XTF-Datei + `https://models.interlis.ch`, überschreibbar via `ILI_DEFAULT_MODELDIR` |
 | 4 | `mapping` | named | VARCHAR | Nein (Default: `"relational"`) | Mapping-Modus |
 
 **Return columns:**
