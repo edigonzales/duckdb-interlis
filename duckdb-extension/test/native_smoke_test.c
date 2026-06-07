@@ -106,6 +106,60 @@ int main(void) {
         }
     }
 
+    // Test 6: Validation error path — non-existent file
+    fprintf(stderr, "\nTest 6: ili_native_validate (non-existent file)\n");
+    if (native_validate) {
+        char *result = NULL;
+        rc = native_validate(thread, "{\"input\":\"/nonexistent/file.xtf\",\"modeldir\":\".\"}", &result);
+        fprintf(stderr, "  rc=%d result=%p\n", rc, (void*)result);
+        // Note: currently returns rc=0 with validation result containing error message.
+        // Phase 2 will change this to rc != 0 for technical errors.
+        if (result) {
+            fprintf(stderr, "  payload='%s'\n", result);
+            fprintf(stderr, "  PASS (payload returned and freed)\n");
+            free_string(thread, result);
+            fprintf(stderr, "  freed error payload\n");
+        } else {
+            fprintf(stderr, "  FAIL (no payload)\n");
+        }
+    }
+
+    // Test 7: Model info error path — non-existent modeldir
+    fprintf(stderr, "\nTest 7: ili_native_model_info (non-existent modeldir)\n");
+    ili_native_model_info_fn_t native_model_info = (ili_native_model_info_fn_t)dlsym(handle, "ili_native_model_info");
+    fprintf(stderr, "  native_model_info=%p\n", (void*)native_model_info);
+    if (native_model_info) {
+        char *result = NULL;
+        rc = native_model_info(thread, "{\"cmd\":\"models\",\"modeldir\":\"/nonexistent/path\"}", &result);
+        fprintf(stderr, "  rc=%d result=%p\n", rc, (void*)result);
+        if (result) {
+            fprintf(stderr, "  payload='%s'\n", result);
+            free_string(thread, result);
+            fprintf(stderr, "  freed payload\n");
+        }
+        fprintf(stderr, "  PASS (no crash, payload freed)\n");
+    }
+
+    // Test 8: Import error path — non-existent file
+    fprintf(stderr, "\nTest 8: ili_native_import_xtf (non-existent file)\n");
+    ili_native_import_xtf_fn_t native_import_xtf = (ili_native_import_xtf_fn_t)dlsym(handle, "ili_native_import_xtf");
+    fprintf(stderr, "  native_import_xtf=%p\n", (void*)native_import_xtf);
+    if (native_import_xtf) {
+        char *result = NULL;
+        rc = native_import_xtf(thread, "{\"input\":\"/nonexistent/file.xtf\",\"schema\":\"test\",\"modeldir\":\".\"}", &result);
+        fprintf(stderr, "  rc=%d result=%p\n", rc, (void*)result);
+        // Note: currently returns rc=0 with \"ERROR: ...\" payload.
+        // Phase 2 will change this to rc != 0 for technical errors.
+        if (result) {
+            fprintf(stderr, "  payload='%s'\n", result);
+            fprintf(stderr, "  PASS (payload returned and freed)\n");
+            free_string(thread, result);
+            fprintf(stderr, "  freed error payload\n");
+        } else {
+            fprintf(stderr, "  FAIL (no payload)\n");
+        }
+    }
+
     if (tear_down) tear_down(thread);
     dlclose(handle);
     printf("\nDone.\n");
