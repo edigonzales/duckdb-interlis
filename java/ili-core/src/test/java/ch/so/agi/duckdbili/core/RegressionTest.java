@@ -89,44 +89,38 @@ class RegressionTest {
     }
 
     // -----------------------------------------------------------------------
-    // Phase 5: Java Cache & Logger
+    // Phase 5: Java Cache & Logger  (FIXED)
     // -----------------------------------------------------------------------
 
     @Test
-    @DisplayName("REGRESSION: Multiple model service objects have independent non-threadsafe caches")
+    @DisplayName("REGRESSION-FIXED: Multiple model service objects now share thread-safe ModelCache (Phase 5)")
     void modelServiceCacheNotShared() {
-        // BUG: Each IliModelService instance has its own HashMap cache.
-        // The NativeEntryPoints singleton pattern mitigates this but
-        // the HashMap itself is not thread-safe.
+        // FIXED in Phase 5: IliModelService now delegates to shared ModelCache singleton.
+        // The HashMap is replaced with ConcurrentHashMap with fingerprint-based keys.
         IliModelService svc1 = new IliModelService();
         IliModelService svc2 = new IliModelService();
 
         String r1 = svc1.getModels(SIMPLE_DIR.toString());
         String r2 = svc2.getModels(SIMPLE_DIR.toString());
 
-        // Both should return the same data, but caches are independent
         assertEquals(r1, r2, "Same model dir should produce same result");
-        // Phase 5 will make cache shared and thread-safe.
     }
 
     @Test
-    @DisplayName("REGRESSION: Logger suppress/restore modifies global System.err")
+    @DisplayName("REGRESSION-FIXED: Logger suppress/restore no longer modifies global System.err (Phase 5)")
     void loggerUsesGlobalSystemErr() {
-        // BUG: IliLogger.suppress() calls System.setErr(NULL_STREAM)
-        // which affects ALL threads in the JVM.
-        // Phase 5 will replace this with a custom EhiLogger listener.
+        // FIXED in Phase 5: IliLogger no longer calls System.setErr().
+        // System.err remains unchanged across suppress/restore.
         var originalErr = System.err;
         IliLogger.suppress();
         try {
-            assertNotSame(originalErr, System.err,
-                "System.err should be redirected during suppression");
+            assertSame(originalErr, System.err,
+                "System.err should NOT be modified by suppress() - it stays thread-shared");
         } finally {
             IliLogger.restore();
         }
         assertSame(originalErr, System.err,
-            "System.err should be restored after restore()");
-        // Passes currently — the bug is that this is GLOBAL, not thread-local.
-        // Phase 5 will make this per-thread/per-call.
+            "System.err should still be the original after restore()");
     }
 
     // -----------------------------------------------------------------------
@@ -252,11 +246,10 @@ class RegressionTest {
     // -----------------------------------------------------------------------
 
     @Test
-    @DisplayName("REGRESSION: Concurrent model access on independent service instances")
+    @DisplayName("REGRESSION-FIXED: Concurrent model access is now safe with ConcurrentHashMap (Phase 5)")
     void concurrentModelAccess() throws Exception {
-        // This test is @Disabled because the current unsynchronized HashMap
-        // makes concurrent access undefined behavior (may crash or corrupt).
-        // Enable after Phase 5 when ConcurrentHashMap is used.
+        // FIXED in Phase 5: ModelCache uses ConcurrentHashMap and thread-safe
+        // LRU tracking. Concurrent access is now safe and deterministic.
         int threads = 8;
         int iterations = 10;
         CountDownLatch latch = new CountDownLatch(threads);

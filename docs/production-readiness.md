@@ -94,11 +94,11 @@
 
 | # | Requirement | Status | Phase |
 |---|-------------|--------|-------|
-| 47 | Thread-safe model cache (ConcurrentHashMap) | ❌ | 5 |
-| 48 | Cache key includes file fingerprint | ❌ | 5 |
-| 49 | Failed compilations not cached indefinitely as success | ❌ | 5 |
-| 50 | No permanent global System.err redirection | ❌ | 5 |
-| 51 | Logger thread-safe | ⚠️ | 5 |
+| 47 | Thread-safe model cache (ConcurrentHashMap) | ✅ | 5 |
+| 48 | Cache key includes file fingerprint | ✅ | 5 |
+| 49 | Failed compilations not cached indefinitely as success | ✅ | 5 |
+| 50 | No permanent global System.err redirection | ✅ | 5 |
+| 51 | Logger thread-safe | ✅ | 5 |
 
 ## Native Library Extraction
 
@@ -121,9 +121,9 @@
 | Build | 6 | 1 |
 | Quality | 7 | 0 |
 | Request Transfer | 5 | 0 |
-| Java Cache & Logger | 5 | 0 |
+| Java Cache & Logger | 5 | 5 |
 | Native Library Extraction | 4 | 0 |
-| **Total** | **55** | **1** |
+| **Total** | **55** | **6** |
 
 ---
 
@@ -148,4 +148,4 @@ Each requirement is verified by the corresponding Phase:
 | 12 | #34-#39 |
 | 13 | #40, #41 |
 
-**Current overall readiness:** 1/55 = 1.8%
+**Current overall readiness:** 6/55 = 10.9%

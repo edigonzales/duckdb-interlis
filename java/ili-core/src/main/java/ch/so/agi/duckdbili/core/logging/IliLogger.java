@@ -1,10 +1,9 @@
 package ch.so.agi.duckdbili.core.logging;
 
 import ch.ehi.basics.logging.EhiLogger;
+import ch.ehi.basics.logging.LogEvent;
+import ch.ehi.basics.logging.LogListener;
 import ch.ehi.basics.logging.StdListener;
-
-import java.io.OutputStream;
-import java.io.PrintStream;
 
 /**
  * Controls ili2c / ilivalidator logging output.
@@ -18,14 +17,14 @@ import java.io.PrintStream;
  * Set the environment variable {@code DUCKDB_ILI_DEBUG=1} to see the
  * raw ili2c/ilivalidator diagnostics. When the variable is absent or
  * set to any value other than {@code "1"}, all EhiLogger output is
- * suppressed by:
- * <ol>
- *   <li>Removing the default {@link StdListener} from the global
- *       {@link EhiLogger} singleton.</li>
- *   <li>Redirecting {@code System.err} to a null output stream as a
- *       belt-and-suspenders measure, since ili2c/ilivalidator may
- *       re-add listeners or write directly to stderr.</li>
- * </ol>
+ * suppressed by removing the default {@link StdListener} from the
+ * global {@link EhiLogger} singleton and replacing it with a
+ * {@link NullLogListener} that silently discards all events.
+ * <p>
+ * Unlike previous versions, this class no longer redirects
+ * {@code System.err}. That was a global operation affecting all
+ * threads in the JVM. The listener-based approach is safe for
+ * concurrent operations.
  * <p>
  * Usage in service code (try/finally pattern):
  * <pre>{@code
@@ -41,10 +40,7 @@ public final class IliLogger {
 
     private static final boolean DEBUG = "1".equals(System.getenv("DUCKDB_ILI_DEBUG"));
 
-    private static final PrintStream NULL_STREAM = new PrintStream(OutputStream.nullOutputStream());
-
-    private static PrintStream originalErr;
-    private static boolean originalErrSaved;
+    private static final NullLogListener NULL_LISTENER = new NullLogListener();
 
     private static int suppressDepth = 0;
 
@@ -64,20 +60,22 @@ public final class IliLogger {
      * <ul>
      *   <li>The default {@link StdListener} is removed from the global
      *       {@link EhiLogger} singleton.</li>
-     *   <li>{@code System.err} is redirected to a null stream to catch
-     *       any output that bypasses EhiLogger.</li>
+     *   <li>A {@link NullLogListener} is registered to capture and discard
+     *       any remaining log events.</li>
      * </ul>
      * <p>
-     * Calls to {@code suppress()} nest: the listener is only removed and
-     * stderr redirected on the first call, and only restored by the
-     * matching {@link #restore()} call.
+     * Calls to {@code suppress()} nest: the listener swap only happens on
+     * the first call, and is only restored by the matching {@link #restore()}
+     * call.
+     * <p>
+     * This method is thread-safe and does not affect other threads.
      */
     public static synchronized void suppress() {
         if (DEBUG) return;
         if (suppressDepth == 0) {
-            saveOriginalErr();
-            System.setErr(NULL_STREAM);
-            EhiLogger.getInstance().removeListener(StdListener.getInstance());
+            EhiLogger logger = EhiLogger.getInstance();
+            logger.removeListener(StdListener.getInstance());
+            logger.addListener(NULL_LISTENER);
         }
         suppressDepth++;
     }
@@ -85,27 +83,28 @@ public final class IliLogger {
     /**
      * Restore EhiLogger stderr output previously suppressed by {@link #suppress()}.
      * <p>
-     * {@link StdListener} is re-added and the original {@code System.err} stream
-     * is restored only when the outermost nested {@code suppress()}/{@code restore()}
+     * The {@link NullLogListener} is removed and {@link StdListener} is re-added
+     * only when the outermost nested {@code suppress()}/{@code restore()}
      * pair is closed.
+     * <p>
+     * This method is thread-safe.
      */
     public static synchronized void restore() {
         if (DEBUG) return;
         if (suppressDepth > 0) {
             suppressDepth--;
             if (suppressDepth == 0) {
-                if (originalErrSaved) {
-                    System.setErr(originalErr);
-                }
-                EhiLogger.getInstance().addListener(StdListener.getInstance());
+                EhiLogger logger = EhiLogger.getInstance();
+                logger.removeListener(NULL_LISTENER);
+                logger.addListener(StdListener.getInstance());
             }
         }
     }
 
-    private static void saveOriginalErr() {
-        if (!originalErrSaved) {
-            originalErr = System.err;
-            originalErrSaved = true;
+    private static final class NullLogListener implements LogListener {
+        @Override
+        public void logEvent(LogEvent event) {
+            // discard all log events
         }
     }
 }

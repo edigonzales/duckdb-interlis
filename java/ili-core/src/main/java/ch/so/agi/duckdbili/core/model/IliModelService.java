@@ -11,18 +11,22 @@ import java.io.IOException;
 import java.nio.file.*;
 import java.util.*;
 
+import static java.util.Collections.emptySet;
+
 public class IliModelService {
 
     private static final String DEFAULT_MODELDIR = System.getenv("ILI_DEFAULT_MODELDIR") != null
             ? System.getenv("ILI_DEFAULT_MODELDIR")
             : "https://models.interlis.ch";
 
-    private final Map<String, TransferDescription> cache = new HashMap<>();
-
     private TransferDescription compileIli(String modelDir) {
         String effectiveDir = (modelDir != null && !modelDir.isBlank()) ? modelDir : DEFAULT_MODELDIR;
-        String key = effectiveDir;
-        if (cache.containsKey(key)) return cache.get(key);
+        String fingerprint = ModelCache.computeFingerprint(effectiveDir);
+        ModelCache.CacheKey key = new ModelCache.CacheKey(effectiveDir, emptySet(), fingerprint);
+        return ModelCache.getInstance().getOrCompile(key, () -> doCompileIli(effectiveDir));
+    }
+
+    private TransferDescription doCompileIli(String effectiveDir) {
         try {
             IliManager manager = new IliManager();
             manager.setRepositories(new String[]{effectiveDir});
@@ -54,7 +58,6 @@ public class IliModelService {
                 if (td == null) {
                     throw new RuntimeException("INTERLIS model compilation returned null for: " + effectiveDir);
                 }
-                cache.put(key, td);
                 return td;
             } finally {
                 IliLogger.restore();

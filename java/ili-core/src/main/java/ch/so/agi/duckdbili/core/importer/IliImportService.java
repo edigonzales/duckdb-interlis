@@ -6,6 +6,7 @@ import ch.interlis.ili2c.config.Configuration;
 import ch.interlis.ili2c.metamodel.*;
 import ch.interlis.ilirepository.IliManager;
 import ch.so.agi.duckdbili.core.logging.IliLogger;
+import ch.so.agi.duckdbili.core.model.ModelCache;
 
 import java.io.File;
 import java.nio.file.*;
@@ -253,12 +254,42 @@ public class IliImportService {
     // -----------------------------------------------------------------------
 
     private TransferDescription compileModel(String modelDir, String modelNames) {
+        String md = normalizeModelDir(modelDir);
+        Set<String> names = parseModelNames(modelNames);
+        String fingerprint = ModelCache.computeFingerprint(md);
+        ModelCache.CacheKey key = new ModelCache.CacheKey(md, names, fingerprint);
+        return ModelCache.getInstance().getOrCompile(key, () -> doCompileModel(md, modelNames));
+    }
+
+    private static String normalizeModelDir(String modelDir) {
+        List<String> repos = new ArrayList<>();
+        if (modelDir != null) {
+            for (String part : modelDir.split(";")) {
+                String trimmed = part.trim();
+                if (!trimmed.isBlank()) repos.add(trimmed);
+            }
+        }
+        if (repos.isEmpty()) repos.add(DEFAULT_MODELDIR);
+        return String.join(";", repos);
+    }
+
+    private static Set<String> parseModelNames(String modelNames) {
+        if (modelNames == null || modelNames.isBlank()) return Set.of();
+        Set<String> names = new TreeSet<>();
+        for (String entry : modelNames.split(";")) {
+            String trimmed = entry.trim();
+            if (!trimmed.isBlank()) names.add(trimmed);
+        }
+        return names;
+    }
+
+    private TransferDescription doCompileModel(String normalizedModelDir, String modelNames) {
         try {
             IliManager manager = new IliManager();
 
             List<String> repoList = new ArrayList<>();
-            if (modelDir != null) {
-                for (String part : modelDir.split(";")) {
+            if (normalizedModelDir != null) {
+                for (String part : normalizedModelDir.split(";")) {
                     String trimmed = part.trim();
                     if (!trimmed.isBlank()) repoList.add(trimmed);
                 }
@@ -273,7 +304,7 @@ public class IliImportService {
                     if (!trimmed.isBlank()) entries.add(trimmed);
                 }
             } else {
-                for (String part : modelDir.split(";")) {
+                for (String part : normalizedModelDir.split(";")) {
                     Path p = null;
                     try { p = Path.of(part.trim()); } catch (Exception ignored) {}
                     if (p != null && Files.isDirectory(p)) {
@@ -286,18 +317,18 @@ public class IliImportService {
 
             Configuration cfg = manager.getConfigWithFiles(entries, null, 0.0);
             if (cfg == null) {
-                throw new RuntimeException("INTERLIS model compilation failed: no valid configuration for modelDir=" + modelDir);
+                throw new RuntimeException("INTERLIS model compilation failed: no valid configuration for modelDir=" + normalizedModelDir);
             }
 
             Ili2cSettings settings = new Ili2cSettings();
             Main.setDefaultIli2cPathMap(settings);
-            settings.setIlidirs(modelDir);
+            settings.setIlidirs(normalizedModelDir);
 
             IliLogger.suppress();
             try {
                 TransferDescription td = Main.runCompiler(cfg, settings, null);
                 if (td == null) {
-                    throw new RuntimeException("INTERLIS model compilation returned null for modelDir=" + modelDir);
+                    throw new RuntimeException("INTERLIS model compilation returned null for modelDir=" + normalizedModelDir);
                 }
                 return td;
             } finally {
@@ -306,7 +337,7 @@ public class IliImportService {
         } catch (RuntimeException e) {
             throw e;
         } catch (Exception e) {
-            throw new RuntimeException("INTERLIS model compilation failed for modelDir=" + modelDir, e);
+            throw new RuntimeException("INTERLIS model compilation failed for modelDir=" + normalizedModelDir, e);
         }
     }
 
