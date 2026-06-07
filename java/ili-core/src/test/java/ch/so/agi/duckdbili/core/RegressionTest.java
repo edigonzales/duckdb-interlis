@@ -49,18 +49,13 @@ class RegressionTest {
     // -----------------------------------------------------------------------
 
     @Test
-    @DisplayName("REGRESSION: Model compilation failure returns empty string, not error")
+    @DisplayName("REGRESSION-FIXED: Model compilation failure now throws RuntimeException (Phase 2)")
     void modelCompileFailureSilentlyReturnsEmpty() {
-        // BUG: compileIli() catches Exception and returns null.
-        // The caller returns "" without any error indication.
-        // Phase 2 will fix: errors should be reported, not returned as empty data.
         IliModelService svc = new IliModelService();
-        String result = svc.getModels("/nonexistent/directory/that/does/not/exist");
-        // Currently: returns "" (empty), indistinguishable from "no models found"
-        // Expected: should throw or return a distinguishable error indicator
-        // Until Phase 2 fixes this, we verify the current broken behavior:
-        assertNotNull(result, "Result should not be null (even if broken)");
-        // This test documents the current behavior. Phase 2 will change this expectation.
+        RuntimeException ex = assertThrows(RuntimeException.class, () ->
+            svc.getModels("/nonexistent/directory/that/does/not/exist"));
+        assertNotNull(ex.getMessage());
+        assertTrue(ex.getMessage().contains("compilation failed"));
     }
 
     @Test
@@ -84,14 +79,13 @@ class RegressionTest {
     // -----------------------------------------------------------------------
 
     @Test
-    @DisplayName("REGRESSION: Model info returns empty string on compilation failure")
+    @DisplayName("REGRESSION-FIXED: Model info throws on compilation failure instead of returning empty (Phase 2)")
     void modelInfoReturnsEmptyOnFailure() {
-        // BUG: compileIli() returns null on exception, getModels() returns "".
-        // Empty TSV means "0 rows" to the C side. The user sees an empty table.
         IliModelService svc = new IliModelService();
-        String result = svc.getModels("/nonexistent/path");
-        // Currently: "" — empty result set indistinguishable from "no models"
-        assertEquals("", result, "Empty string on compilation failure (broken behavior)");
+        RuntimeException ex = assertThrows(RuntimeException.class, () ->
+            svc.getModels("/nonexistent/path"));
+        assertNotNull(ex.getMessage());
+        assertTrue(ex.getMessage().contains("compilation failed"));
     }
 
     // -----------------------------------------------------------------------

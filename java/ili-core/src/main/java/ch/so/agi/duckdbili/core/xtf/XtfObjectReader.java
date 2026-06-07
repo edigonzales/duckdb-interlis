@@ -53,7 +53,7 @@ public class XtfObjectReader {
 
     public String readClassSchema(String className, String modelDir, String nested) {
         TransferDescription td = compileModel(modelDir, extractModelName(className));
-        if (td == null) return "";
+        
 
         String[] parts = className.split("\\.");
         if (parts.length < 3) return "";
@@ -99,7 +99,6 @@ public class XtfObjectReader {
                 : (!xtfDir.isBlank() ? xtfDir + ";" + DEFAULT_MODELDIR : DEFAULT_MODELDIR);
 
         TransferDescription td = compileModel(md, modelNames);
-        if (td == null) return "";
 
         AbstractClassDef classDef = null;
         if (className != null) {
@@ -206,9 +205,7 @@ public class XtfObjectReader {
                 }
             }
         } catch (Exception ex) {
-            if (IliLogger.isDebugEnabled()) {
-                System.err.println("XTF read: " + ex.getMessage());
-            }
+            throw new RuntimeException("XTF read error for " + xtfPath + ": " + ex.getMessage(), ex);
         } finally {
             if (reader != null) { try { reader.close(); } catch (Exception ignored) {} }
         }
@@ -219,7 +216,6 @@ public class XtfObjectReader {
         try {
             IliManager manager = new IliManager();
 
-            // Configure repositories from modelDir
             List<String> repoList = new ArrayList<>();
             if (modelDir != null) {
                 for (String part : modelDir.split(";")) {
@@ -234,7 +230,6 @@ public class XtfObjectReader {
             }
             manager.setRepositories(repoList.toArray(new String[0]));
 
-            // Build entry list: model names, file paths, or scanned .ili files
             ArrayList<String> entries = new ArrayList<>();
             if (modelNames != null && !modelNames.isBlank()) {
                 for (String entry : modelNames.split(";")) {
@@ -258,7 +253,9 @@ public class XtfObjectReader {
             }
 
             Configuration cfg = manager.getConfigWithFiles(entries, null, 0.0);
-            if (cfg == null) return null;
+            if (cfg == null) {
+                throw new RuntimeException("INTERLIS model compilation failed: no valid configuration for modelDir=" + modelDir);
+            }
 
             Ili2cSettings settings = new Ili2cSettings();
             Main.setDefaultIli2cPathMap(settings);
@@ -266,12 +263,18 @@ public class XtfObjectReader {
 
             IliLogger.suppress();
             try {
-                return Main.runCompiler(cfg, settings, null);
+                TransferDescription td = Main.runCompiler(cfg, settings, null);
+                if (td == null) {
+                    throw new RuntimeException("INTERLIS model compilation returned null for modelDir=" + modelDir);
+                }
+                return td;
             } finally {
                 IliLogger.restore();
             }
+        } catch (RuntimeException e) {
+            throw e;
         } catch (Exception e) {
-            return null;
+            throw new RuntimeException("INTERLIS model compilation failed for modelDir=" + modelDir, e);
         }
     }
 
@@ -462,7 +465,7 @@ public class XtfObjectReader {
      */
     public String readStructures(String className, String modelDir) {
         TransferDescription td = compileModel(modelDir, extractModelName(className));
-        if (td == null) return "";
+        
 
         String[] parts = className.split("\\.");
         if (parts.length < 3) return "";
@@ -604,7 +607,7 @@ public class XtfObjectReader {
 
     public String readAssociationSchema(String associationName, String modelDir) {
         TransferDescription td = compileModel(modelDir, extractModelName(associationName));
-        if (td == null) return "";
+        
 
         String[] parts = associationName.split("\\.");
         if (parts.length < 3) return "";
@@ -629,7 +632,7 @@ public class XtfObjectReader {
 
     public String readAssociation(String xtfPath, String associationName, String modelDir) {
         TransferDescription td = compileModel(modelDir, extractModelName(associationName));
-        if (td == null) return "";
+        
 
         String[] parts = associationName.split("\\.");
         if (parts.length < 3) return "";
@@ -657,7 +660,7 @@ public class XtfObjectReader {
         String md = (modelDir != null && !modelDir.isBlank()) ? modelDir
                 : (!xtfDir.isBlank() ? xtfDir + ";" + DEFAULT_MODELDIR : DEFAULT_MODELDIR);
         td = compileModel(md, extractModelName(associationName));
-        if (td == null) return "";
+        
 
         StringBuilder sb = new StringBuilder();
         sb.append("xtf_bid\txtf_tid\txtf_class");
@@ -696,9 +699,7 @@ public class XtfObjectReader {
                 }
             }
         } catch (Exception ex) {
-            if (IliLogger.isDebugEnabled()) {
-                System.err.println("XTF association read: " + ex.getMessage());
-            }
+            throw new RuntimeException("XTF association read error for " + xtfPath + ": " + ex.getMessage(), ex);
         } finally {
             if (reader != null) { try { reader.close(); } catch (Exception ignored) {} }
         }

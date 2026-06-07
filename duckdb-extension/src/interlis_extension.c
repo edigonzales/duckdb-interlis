@@ -356,6 +356,79 @@ static void ili_free_result(char *str) {
     g_detach_thread(thread);
 }
 
+static char *extract_error_message(const char *json_payload) {
+    if (!json_payload || json_payload[0] != '{') return NULL;
+
+    const char *msg_start = strstr(json_payload, "\"message\":\"");
+    if (!msg_start) return NULL;
+
+    msg_start += 11;
+    const char *msg_end = msg_start;
+    while (*msg_end && *msg_end != '"') {
+        if (*msg_end == '\\' && *(msg_end + 1)) msg_end++;
+        msg_end++;
+    }
+
+    size_t len = (size_t)(msg_end - msg_start);
+    if (len == 0) return NULL;
+
+    char *result = malloc(len + 1);
+    if (!result) return NULL;
+
+    char *dst = result;
+    const char *src = msg_start;
+    while (src < msg_end) {
+        if (*src == '\\' && (src + 1) < msg_end) {
+            src++;
+            switch (*src) {
+                case 'n': *dst++ = '\n'; break;
+                case 'r': *dst++ = '\r'; break;
+                case 't': *dst++ = '\t'; break;
+                case '"': *dst++ = '"'; break;
+                case '\\': *dst++ = '\\'; break;
+                default: *dst++ = *src; break;
+            }
+        } else {
+            *dst++ = *src;
+        }
+        src++;
+    }
+    *dst = '\0';
+
+    const char *detail_start = strstr(json_payload, "\"detail\":\"");
+    if (detail_start && !strstr(detail_start, result)) {
+        detail_start += 10;
+        const char *detail_end = detail_start;
+        while (*detail_end && *detail_end != '"') {
+            if (*detail_end == '\\' && *(detail_end + 1)) detail_end++;
+            detail_end++;
+        }
+        size_t detail_len = (size_t)(detail_end - detail_start);
+        if (detail_len > 0 && detail_len < 256) {
+            size_t cur = strlen(result);
+            char *merged = malloc(cur + 3 + detail_len + 1);
+            if (merged) {
+                memcpy(merged, result, cur);
+                memcpy(merged + cur, ": ", 2);
+                memcpy(merged + cur + 2, detail_start, detail_len);
+                merged[cur + 2 + detail_len] = '\0';
+                free(result);
+                result = merged;
+            }
+        }
+    }
+
+    return result;
+}
+
+static bool ili_result_error(ili_call_result cr, duckdb_init_info info, const char *fallback) {
+    char *msg = extract_error_message(cr.payload);
+    duckdb_init_set_error(info, msg ? msg : (cr.payload ? cr.payload : fallback));
+    free(msg);
+    if (cr.payload) ili_free_result(cr.payload);
+    return false;
+}
+
 // ---------------------------------------------------------------------------
 // SQL function: ili_extension_version()
 // ---------------------------------------------------------------------------
@@ -391,8 +464,10 @@ static void ili_native_version_fn_cb(duckdb_function_info info, duckdb_data_chun
             duckdb_vector_assign_string_element(output, row, cr.payload);
         } else {
             duckdb_validity_set_row_invalid(validity, row);
+            char *msg = extract_error_message(cr.payload);
             duckdb_scalar_function_set_error(info,
-                cr.payload ? cr.payload : "ili_native_version failed");
+                msg ? msg : (cr.payload ? cr.payload : "ili_native_version failed"));
+            free(msg);
         }
         if (cr.payload) ili_free_result(cr.payload);
         if (cr.status != 0 || !cr.payload) return;
@@ -454,8 +529,10 @@ static void ili_validate_summary_json_fn(duckdb_function_info info, duckdb_data_
             duckdb_vector_assign_string_element(output, row, cr.payload);
         } else {
             duckdb_validity_set_row_invalid(validity, row);
+            char *msg = extract_error_message(cr.payload);
             duckdb_scalar_function_set_error(info,
-                cr.payload ? cr.payload : "Validation call failed");
+                msg ? msg : (cr.payload ? cr.payload : "Validation call failed"));
+            free(msg);
         }
         if (cr.payload) ili_free_result(cr.payload);
         if (cr.status != 0 || !cr.payload) return;
@@ -670,9 +747,7 @@ static void ili_validate_init(duckdb_init_info info) {
 
     ili_call_result cr = ili_call_input(g_native_validate_tsv, request);
     if (cr.status != 0 || !cr.payload) {
-        duckdb_init_set_error(info,
-            cr.payload ? cr.payload : "Validation call failed");
-        if (cr.payload) ili_free_result(cr.payload);
+        ili_result_error(cr, info, "Validation call failed");
         return;
     }
 
@@ -865,9 +940,7 @@ static void mi_init(duckdb_init_info info) {
 
     ili_call_result cr = ili_call_input(g_native_model_info, req);
     if (cr.status != 0 || !cr.payload) {
-        duckdb_init_set_error(info,
-            cr.payload ? cr.payload : "Model info call failed");
-        if (cr.payload) ili_free_result(cr.payload);
+        ili_result_error(cr, info, "Model info call failed");
         return;
     }
 
@@ -1012,9 +1085,7 @@ static void xtf_objects_init(duckdb_init_info info) {
 
     ili_call_result cr = ili_call_input(g_native_read_xtf, req);
     if (cr.status != 0 || !cr.payload) {
-        duckdb_init_set_error(info,
-            cr.payload ? cr.payload : "XTF read call failed");
-        if (cr.payload) ili_free_result(cr.payload);
+        ili_result_error(cr, info, "XTF read call failed");
         return;
     }
 
@@ -1138,9 +1209,7 @@ static void xtf_class_init(duckdb_init_info info) {
 
     ili_call_result cr = ili_call_input(g_native_read_xtf_class, req);
     if (cr.status != 0 || !cr.payload) {
-        duckdb_init_set_error(info,
-            cr.payload ? cr.payload : "XTF class read failed");
-        if (cr.payload) ili_free_result(cr.payload);
+        ili_result_error(cr, info, "XTF class read failed");
         return;
     }
 
@@ -1231,9 +1300,7 @@ static void xtf_structures_init(duckdb_init_info info) {
 
     ili_call_result cr = ili_call_input(g_native_read_xtf_structures, req);
     if (cr.status != 0 || !cr.payload) {
-        duckdb_init_set_error(info,
-            cr.payload ? cr.payload : "XTF structures read failed");
-        if (cr.payload) ili_free_result(cr.payload);
+        ili_result_error(cr, info, "XTF structures read failed");
         return;
     }
 
@@ -1353,9 +1420,7 @@ static void xtf_assoc_init(duckdb_init_info info) {
 
     ili_call_result cr = ili_call_input(g_native_read_xtf_association, req);
     if (cr.status != 0 || !cr.payload) {
-        duckdb_init_set_error(info,
-            cr.payload ? cr.payload : "XTF association read failed");
-        if (cr.payload) ili_free_result(cr.payload);
+        ili_result_error(cr, info, "XTF association read failed");
         return;
     }
 
@@ -1443,9 +1508,7 @@ static void import_init_func(duckdb_init_info info) {
 
     ili_call_result cr = ili_call_input(g_native_import_xtf, req);
     if (cr.status != 0 || !cr.payload) {
-        duckdb_init_set_error(info,
-            cr.payload ? cr.payload : "Native import call failed");
-        if (cr.payload) ili_free_result(cr.payload);
+        ili_result_error(cr, info, "Native import call failed");
         return;
     }
 

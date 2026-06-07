@@ -35,14 +35,15 @@ int fn(graal_isolatethread_t*, char* input, char** out_payload);
 | `ili_native_read_xtf_association_schema` | TSV header | Returns 1 with empty string |
 | `ili_native_import_xtf` | SQL statements **or** `"ERROR: ..."` string | Returns 1 with `"ERROR: ..."` |
 
-### Severity: HIGH (Phase 2)
+### Severity: FIXED (Phase 2)
 
-Three distinct patterns make error detection on the C side unreliable:
-1. Status 1 + structured JSON (`nativeValidate`)
-2. Status 0 + `"ERROR:"` prefix (`nativeModelInfo`)
-3. Status 1 + `"ERROR:"` prefix (XTF readers, import)
+All entry points now return status 0 = success, status > 0 = error with structured JSON payload.
+The three distinct error patterns have been unified:
+- Status 0 + valid TSV/JSON data (success)
+- Status > 0 + NativeError JSON (technical errors)
+- No more "ERROR:" prefix in success payloads
 
-The C side must use **string prefix heuristics** to distinguish errors from valid data.
+The C side detects errors by status code only — no string prefix heuristics.
 
 ---
 
@@ -169,59 +170,28 @@ In `XtfObjectReader.java:583-585`:
 }
 ```
 
-### Severity: CRITICAL (Phase 2, Phase 7)
+### Severity: FIXED (Phase 2)
+
+All `catch (Exception e) { return null/""/partialResult; }` patterns have been replaced with `throw new RuntimeException(...)`.
+NativeEntryPoints catch blocks translate exceptions to NativeError JSON with proper status codes.
 
 ---
 
-## 5. `"ERROR:"` Prefix as Success
+## 5. `"ERROR:"` Prefix as Success → FIXED (Phase 2)
 
-### Pattern
+All `"ERROR:"` prefix patterns have been replaced with structured NativeError JSON.
+No entry point returns status 0 with error text. The C side detects errors by status code only.
 
-In `NativeEntryPoints.java:317-321` (`nativeModelInfo`):
-
-```java
-} catch (Exception e) {
-    result = "ERROR: " + e.getMessage();
-}
-// ...
-outPayload.write(allocCString(result));
-return 0;  // <--- STATUS 0 (success) with ERROR: string!
-```
-
-The C side receives status `0` and treats the payload as valid model data. The TSV parser will interpret `"ERROR:"` as a single-column row.
-
-### Affected Functions
-
-- `nativeModelInfo` — status 0 with `"ERROR: ..."` string
-- `nativeReadXtf` — status 1 with `"ERROR: ..."` (correct status code but wrong payload format)
-- `nativeReadXtfClass` — status 1 with `"ERROR: ..."`
-- `nativeReadXtfStructures` — status 1 with `"ERROR: ..."`
-- `nativeReadXtfAssociation` — status 1 with `"ERROR: ..."`
-- `nativeImportXtf` — status 1 with `"ERROR: ..."`
-
-### Severity: HIGH (Phase 2)
+### Severity: FIXED (Phase 2)
 
 ---
 
-## 6. Empty Result as Error Concealment
+## 6. Empty Result as Error Concealment → FIXED (Phase 2)
 
-### Pattern
+All `compileIli`/`compileModel` methods now throw `RuntimeException` instead of returning null.
+Empty TSV strings are no longer returned for compilation failures. DuckDB errors contain the actual cause.
 
-In `IliModelService.java:66`:
-
-```java
-TransferDescription td = compileIli(modelDir);
-if (td == null) return "";  // empty string = "no error, no data"
-```
-
-The C side receives an empty TSV string. `mi_init` counts 0 rows and returns an empty result set **without any error**. The user sees an empty table with no indication that model compilation failed.
-
-### Also applies to
-
-- `XtfObjectReader` when model compilation fails
-- `IliImportService` when model compilation fails (returns `"ERROR: Failed to compile model"` as SQL — slightly better but still a data row, not a DuckDB error)
-
-### Severity: HIGH (Phase 2)
+### Severity: FIXED (Phase 2)
 
 ---
 

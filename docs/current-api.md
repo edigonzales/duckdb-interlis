@@ -64,7 +64,7 @@
 
 **NULL behaviour:** Returns NULL if the native library cannot be initialised or the native call fails.
 
-**Error behaviour:** On native library init failure, calls `duckdb_scalar_function_set_error` with `g_error_buf` content and returns NULL. On native call failure, calls `duckdb_scalar_function_set_error` with `"ili_native_version failed"` and returns NULL. The native error payload (Java-allocated error string) is **discarded** (leaked) when `rc != 0`.
+**Error behaviour:** On native library init failure, calls `duckdb_scalar_function_set_error` with `g_error_buf` content and returns NULL. On native call failure, the NativeError JSON payload is extracted and displayed as the DuckDB error message. Phase 2 fix: error payloads are no longer discarded.
 
 **Known limitations:**
 - Error payload from the native library is lost on failure (Phase 1 fix).
@@ -92,7 +92,7 @@
 **Error behaviour:**
 - If `path` is NULL → `duckdb_scalar_function_set_error("Path must not be NULL")`, returns NULL.
 - If native library init fails → `duckdb_scalar_function_set_error(g_error_buf)`, returns NULL.
-- If native call fails → `duckdb_scalar_function_set_error("Validation call failed")`, returns NULL. Native error payload is **discarded** (leaked).
+- If native call fails → DuckDB error with extracted error message from NativeError JSON payload (Phase 2 fix).
 
 **Known limitations:**
 - JSON request is built with manual `snprintf` — paths containing `"`, `\`, or Unicode may produce invalid JSON (Phase 3 fix).
@@ -140,7 +140,7 @@
 **Error behaviour:**
 - Native library init failure → `duckdb_init_set_error(g_error_buf)`, empty result.
 - Missing `path` → `duckdb_init_set_error("Missing input path")`, empty result.
-- Native call failure → `duckdb_init_set_error("Validation call failed")`, empty result. Native error payload **discarded** (leaked).
+- Native call failure → DuckDB error with extracted NativeError message (Phase 2 fix).
 - File not found → returned as an ERROR-level validation message, not as a DuckDB error.
 
 **Known limitations:**
@@ -180,12 +180,11 @@
 
 **Error behaviour:**
 - Native library init failure → `duckdb_init_set_error(g_error_buf)`.
-- Native call failure → `duckdb_init_set_error("Model info call failed")`. Native error payload **discarded** (leaked).
-- Model compilation failure in Java → returns empty result set **without any error**. Exception is silently caught and `null` is returned from `compileIli()`.
-
+- Native call failure → DuckDB error with extracted NativeError message (Phase 2 fix).
+- Model compilation failure → throws RuntimeException, caught by NativeEntryPoints, converted to NativeError with status MODEL_ERROR (Phase 2 fix).
 **Known limitations:**
-- Model compilation failures are **silently swallowed** — empty result set is returned instead of an error (Phase 2 fix).
-- Error string from Java uses `"ERROR:"` prefix even with status 0 success — requiring heuristics on C side (Phase 2 fix).
+- Model compilation failures now throw RuntimeException instead of returning empty result (Phase 2 fixed).
+- Error string from Java now uses NativeError JSON with proper status codes — no more `"ERROR:"` prefixes (Phase 2 fixed).
 - Non-threadsafe `HashMap` cache in Java (Phase 5 fix).
 - Cache key does not include file fingerprint — stale results if model files change on disk (Phase 5 fix).
 
@@ -308,12 +307,12 @@
 **Error behaviour:**
 - Native library init failure → `duckdb_init_set_error(g_error_buf)`.
 - Missing `input` → `duckdb_init_set_error("Missing input path")`.
-- Native call failure → `duckdb_init_set_error("XTF read call failed")`. Native error payload **discarded** (leaked).
-- Java-side XTF read exceptions → **silently caught**. Partial result string (objects read before the error) is returned as success. No error is reported (Phase 7 fix).
-- Model compilation failure → returns empty string without error.
+- Native call failure → DuckDB error with extracted NativeError message (Phase 2 fix).
+- Java-side XTF read exceptions → throw RuntimeException, caught by NativeEntryPoints and converted to NativeError (Phase 2 fix). No more partial results.
+- Model compilation failure → throws RuntimeException, propagated as model error (Phase 2 fix).
 
 **Known limitations:**
-- **Read errors produce partial results silently** — objects read before an exception are returned as if the entire file was read (Phase 7 fix).
+- Read errors now throw RuntimeException — no more partial results returned as success (Phase 2 fixed).
 - `xtf_model` column is **missing** from the result set — the model name is not available at the generic reader level.
 - No `xtf_class_fqn` column — only the short class name is provided.
 - Class short names can collide across topics/models (Phase 7 fix).
@@ -352,8 +351,8 @@ Plus: one column per scalar attribute, `*_wkb` for geometry attributes, `*_json`
 **Error behaviour:**
 - Native library init failure → `duckdb_init_set_error(g_error_buf)`.
 - Missing `input` or `class` → `duckdb_init_set_error("Missing input or class")`.
-- Native call failure → `duckdb_init_set_error("XTF class read failed")`. Native error payload **discarded** (leaked).
-- Java-side read exceptions → **silently caught**, partial result returned (Phase 7 fix).
+- Native call failure → DuckDB error with extracted NativeError message (Phase 2 fix).
+- Java-side read exceptions → throw RuntimeException, no more partial results (Phase 2 fix).
 - Zero rows returned → loaded as empty result set (not an error).
 - Schema call failure in bind phase → fallback columns used (`xtf_bid`, `xtf_tid`, `xtf_class`) **without any warning**.
 
@@ -394,7 +393,7 @@ Plus: one column per scalar attribute, `*_wkb` for geometry attributes, `*_json`
 **Error behaviour:**
 - Native library init failure → `duckdb_init_set_error(g_error_buf)`.
 - Missing `class` → `duckdb_init_set_error("Missing class")`.
-- Native call failure → `duckdb_init_set_error("XTF structures read failed")`. Native error payload **discarded** (leaked).
+- Native call failure → DuckDB error with extracted NativeError message (Phase 2 fix).
 
 **Known limitations:** Same as other model-aware functions. No XTF input needed — only uses the model directory.
 
@@ -446,7 +445,7 @@ Plus: one column per scalar attribute, `*_wkb` for geometry attributes, `*_json`
 **Error behaviour:**
 - Native library init failure → `duckdb_init_set_error(g_error_buf)`.
 - Missing `input` or `schema` → `duckdb_init_set_error("Missing input or schema")`.
-- Native call failure → `duckdb_init_set_error("Native import call failed")`. Native error payload **discarded** (leaked).
+- Native call failure → DuckDB error with extracted NativeError message (Phase 2 fix).
 - Java-side compilation failure → returns `"ERROR: Failed to compile model"` as a **successful** result row (status 0) — not a DuckDB error (Phase 2 fix).
 
 **Known limitations:**

@@ -6,21 +6,22 @@
 -- Phase 1: Memory Ownership
 -- ============================================================================
 
--- REGRESSION-1: Error message details lost on native call failure
--- Currently: generic "Validation call failed" instead of actual error
--- After Phase 1: actual Java error message visible
-SELECT '--- REGRESSION-1: Lost error messages ---' AS test;
+-- REGRESSION-1: Error message details visible through DuckDB error
+-- Phase 2 fix: DuckDB errors now contain the actual Java error message
+-- Expected: DuckDB error with meaningful message (not generic "Validation call failed")
+SELECT '--- REGRESSION-1: Error messages now propagated ---' AS test;
 SELECT ili_validate_summary_json(
     '/nonexistent/file.xtf',
     '/nonexistent/dir'
 );
+-- Expected: DuckDB error containing error details
 
--- REGRESSION-2: Missing input path returns lost error payload
--- Currently: "Validation call failed" (the file-not-found message from Java is lost)
--- After Phase 1: actual "File not found" message visible
-SELECT '--- REGRESSION-2: Lost file-not-found message ---' AS test;
+-- REGRESSION-2: Missing input path produces DuckDB error with details
+-- Phase 2 fix: DuckDB error contains the file-not-found message
+SELECT '--- REGRESSION-2: File-not-found message propagated ---' AS test;
 SELECT severity, message
 FROM ili_validate('/nonexistent/file.xtf', modeldir := '/nonexistent/dir');
+-- Expected: DuckDB error containing error details
 
 -- ============================================================================
 -- Phase 3: Request Transfer
@@ -111,15 +112,16 @@ WHERE sql_statement ILIKE '%BEGIN%' OR sql_statement ILIKE '%COMMIT%';
 -- Phase 2: Error Contract
 -- ============================================================================
 
--- REGRESSION-11: Model info returns empty result on error instead of error
--- Currently: invalid modeldir returns empty result, not error
--- After Phase 2: clear error message
-SELECT '--- REGRESSION-11: Silent empty result on error ---' AS test;
+-- REGRESSION-11: Model info now produces DuckDB error on compilation failure (Phase 2 FIXED)
+-- Expected: DuckDB error, NOT an empty result
+SELECT '--- REGRESSION-11: Error instead of empty result ---' AS test;
 SELECT * FROM ili_models('/nonexistent/directory');
--- Currently: returns 0 rows silently; after Phase 2 should error
+-- Expected: DuckDB error with compilation failure details
 
--- REGRESSION-12: "ERROR:" prefix in result data
--- Currently: some native functions return status 0 with "ERROR:" strings
--- After Phase 2: errors always use error status code, never ERROR: prefix in data
-SELECT '--- REGRESSION-12: ERROR prefix in data ---' AS test;
--- Hard to test without triggering a Java exception; documented limitation.
+-- REGRESSION-12: No ERROR: prefix in result data (Phase 2 FIXED)
+-- Phase 2 fix: errors always use status > 0 with JSON, never ERROR: prefix in data
+-- Verification: valid XTF read should produce clean data with no ERROR: rows
+SELECT '--- REGRESSION-12: No ERROR prefix in data ---' AS test;
+SELECT * FROM read_xtf_objects('testdata/synthetic/simple/valid.xtf',
+    modeldir := 'testdata/synthetic/simple');
+-- Expected: data rows only, no rows containing "ERROR:"

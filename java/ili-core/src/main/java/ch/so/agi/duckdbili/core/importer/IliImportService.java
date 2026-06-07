@@ -19,7 +19,6 @@ public class IliImportService {
 
     public String generateImportSql(String xtfPath, String modelDir, String schema, String mapping) {
         TransferDescription td = compileModel(resolveModelDir(modelDir, xtfPath), null);
-        if (td == null) return "ERROR: Failed to compile model";
 
         StringBuilder sql = new StringBuilder();
         sql.append("CREATE SCHEMA IF NOT EXISTS ").append(quoteIdent(schema)).append(";\n");
@@ -286,7 +285,9 @@ public class IliImportService {
             }
 
             Configuration cfg = manager.getConfigWithFiles(entries, null, 0.0);
-            if (cfg == null) return null;
+            if (cfg == null) {
+                throw new RuntimeException("INTERLIS model compilation failed: no valid configuration for modelDir=" + modelDir);
+            }
 
             Ili2cSettings settings = new Ili2cSettings();
             Main.setDefaultIli2cPathMap(settings);
@@ -294,12 +295,18 @@ public class IliImportService {
 
             IliLogger.suppress();
             try {
-                return Main.runCompiler(cfg, settings, null);
+                TransferDescription td = Main.runCompiler(cfg, settings, null);
+                if (td == null) {
+                    throw new RuntimeException("INTERLIS model compilation returned null for modelDir=" + modelDir);
+                }
+                return td;
             } finally {
                 IliLogger.restore();
             }
+        } catch (RuntimeException e) {
+            throw e;
         } catch (Exception e) {
-            return null;
+            throw new RuntimeException("INTERLIS model compilation failed for modelDir=" + modelDir, e);
         }
     }
 

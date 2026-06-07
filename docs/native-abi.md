@@ -122,6 +122,28 @@ All functions use the same basic pattern:
 int fn_name(graal_isolatethread_t* thread, char* input_json, char** out_payload);
 ```
 
+### 5.0 Unified Error Contract (Phase 2)
+
+Return values follow a strict, consistent contract:
+
+| Return | Meaning | Payload Format |
+|--------|---------|---------------|
+| `0` | Success | Valid result data (JSON, TSV, or SQL) |
+| `1` | INVALID_ARGUMENT | `{"status":"INVALID_ARGUMENT","operation":"...","message":"...","detail":"..."}` |
+| `2` | IO_ERROR | `{"status":"IO_ERROR","operation":"...","message":"...","detail":"...","path":"..."}` |
+| `3` | MODEL_ERROR | `{"status":"MODEL_ERROR","operation":"...","message":"...","detail":"...","path":"..."}` |
+| `4` | PARSE_ERROR | `{"status":"PARSE_ERROR",...}` |
+| `5` | VALIDATION_ERROR | `{"status":"VALIDATION_ERROR",...}` |
+| `6` | UNSUPPORTED | `{"status":"UNSUPPORTED",...}` |
+| `100` | INTERNAL_ERROR | `{"status":"INTERNAL_ERROR","operation":"...","message":"...","exception":"..."}` |
+
+**Rules:**
+- Status 0 means payload is a valid result — never an error
+- Status > 0 means payload is a structured JSON error (NativeError)
+- No `"ERROR:"` or similar prefixes in any payload
+- Error payloads are always allocated by Java (`UnmanagedMemory.malloc()`) and must be freed with `ili_free_string()`
+- Validation messages (XTF has errors) are normal data rows — status 0
+
 ### 5.1 `ili_native_version`
 
 ```c
@@ -156,8 +178,8 @@ int ili_native_validate(graal_isolatethread_t*, char* request_json, char** out_p
 - **Input:** `{"input":"path.xtf","modeldir":"dir"}`
 - **Returns:** 0 on success (valid or invalid XTF), 1 on error.
 - **Success payload:** `{"valid":true/false,"errorCount":N,"warningCount":N,"infoCount":N,"messages":[...]}`
-- **Error payload:** `{"valid":false,"error":"Validation error: ..."}`
-- **Issues:** `"ERROR:"` prefix in payload when Java exception caught. `CONSTRAINT` + `AREA` validation disabled.
+- **Error payload:** `{"status":"INTERNAL_ERROR","operation":"validate","message":"...","exception":"..."}` (status 100)
+- **Issues:** `CONSTRAINT` + `AREA` validation disabled (Phase 6).
 
 ### 5.4 `ili_native_validate_tsv`
 
@@ -169,7 +191,7 @@ int ili_native_validate_tsv(graal_isolatethread_t*, char* request_json, char** o
 - **Input:** `{"input":"path.xtf","modeldir":"dir"}`
 - **Returns:** 0 on success, 1 on error.
 - **Success payload:** TSV with header `errors\twarnings\tinfos\n` + message rows.
-- **Error payload:** `"-1\t0\t0\nError message"` (negative errorCount signals error).
+- **Error payload:** `{"status":"INTERNAL_ERROR","operation":"validate_tsv","message":"...","exception":"..."}` (status 100)
 - **Issues:** `CONSTRAINT` + `AREA` disabled. CSV log parsed with `split(",")`.
 
 ### 5.5 `ili_native_model_info`
@@ -180,10 +202,10 @@ int ili_native_model_info(graal_isolatethread_t*, char* request_json, char** out
 
 - **Purpose:** Model introspection (models, topics, classes, attributes, enumerations).
 - **Input:** `{"cmd":"models"|"topics"|"classes"|"attributes"|"enums","modeldir":"...","model":"...","class":"..."}`
-- **Returns:** **Always 0** (even on error).
+- **Returns:** 0 on success, >0 on error.
 - **Success payload:** TSV data.
-- **Error payload:** **`"ERROR: ..."` string with status 0** — C side must use string prefix heuristics.
-- **Issues:** Java exceptions return `"ERROR: ..."` as payload with status 0. Model compilation failures return empty string (distinguishable from error only by context).
+- **Error payload:** `{"status":"MODEL_ERROR","operation":"model_info","message":"...","detail":"...","path":"..."}` — status 3
+- **Issues:** None (error contract fully implemented in Phase 2).
 
 ### 5.6 `ili_native_read_xtf`
 
@@ -195,8 +217,7 @@ int ili_native_read_xtf(graal_isolatethread_t*, char* request_json, char** out_p
 - **Input:** `{"input":"path.xtf","modeldir":"...","models":"..."}`
 - **Returns:** 0 on success, 1 on error.
 - **Success payload:** TSV data (9 columns).
-- **Error payload:** `"ERROR: ..."` with status 1.
-- **Issues:** Read exceptions are silently caught — partial result returned as success.
+- **Error payload:** `{"status":"INTERNAL_ERROR",...}` (status 100) — partial results are never returned as success.
 
 ### 5.7 `ili_native_read_xtf_class`
 
@@ -208,8 +229,8 @@ int ili_native_read_xtf_class(graal_isolatethread_t*, char* request_json, char**
 - **Input:** `{"input":"path.xtf","class":"Model.Topic.Class","modeldir":"...","nested":"json"}`
 - **Returns:** 0 on success, 1 on error.
 - **Success payload:** TSV with header line + data rows.
-- **Error payload:** `"ERROR: ..."` with status 1.
-- **Issues:** `endsWith` class matching. Null values mapped to empty strings. Read exceptions produce partial results.
+- **Error payload:** `{"status":"IO_ERROR","operation":"read_xtf_class","message":"...","detail":"...","path":"..."}` (status 2)
+- **Issues:** `endsWith` class matching and NULL semantics to be fixed in Phase 7. Read exceptions throw (no more partial results).
 
 ### 5.8 `ili_native_read_xtf_class_schema`
 
@@ -221,7 +242,7 @@ int ili_native_read_xtf_class_schema(graal_isolatethread_t*, char* request_json,
 - **Input:** `{"class":"Model.Topic.Class","modeldir":"...","nested":"json"}`
 - **Returns:** 0 on success, 1 on error.
 - **Success payload:** Tab-separated column names.
-- **Error payload:** Empty string with status 1.
+- **Error payload:** `{"status":"INVALID_ARGUMENT","operation":"read_xtf_class_schema","message":"Missing required field","detail":"class"}` (status 1)
 
 ### 5.9 `ili_native_read_xtf_structures`
 
@@ -233,7 +254,7 @@ int ili_native_read_xtf_structures(graal_isolatethread_t*, char* request_json, c
 - **Input:** `{"class":"Model.Topic.Class","modeldir":"..."}`
 - **Returns:** 0 on success, 1 on error.
 - **Success payload:** TSV with header + data rows.
-- **Error payload:** `"ERROR: ..."` with status 1.
+- **Error payload:** `{"status":"MODEL_ERROR","operation":"read_xtf_structures","message":"...","detail":"...","path":"..."}` (status 3)
 
 ### 5.10 `ili_native_read_xtf_association`
 
@@ -245,8 +266,8 @@ int ili_native_read_xtf_association(graal_isolatethread_t*, char* request_json, 
 - **Input:** `{"input":"path.xtf","association":"Model.Topic.Assoc","modeldir":"..."}`
 - **Returns:** 0 on success, 1 on error.
 - **Success payload:** TSV with header + data rows.
-- **Error payload:** `"ERROR: ..."` with status 1.
-- **Issues:** Same as `read_xtf_class`: `endsWith` matching, null→empty, partial results.
+- **Error payload:** `{"status":"IO_ERROR","operation":"read_xtf_association","message":"...","detail":"...","path":"..."}` (status 2)
+- **Issues:** `endsWith` class matching to be fixed in Phase 7. Read exceptions throw (no partial results).
 
 ### 5.11 `ili_native_read_xtf_association_schema`
 
@@ -258,7 +279,7 @@ int ili_native_read_xtf_association_schema(graal_isolatethread_t*, char* request
 - **Input:** `{"association":"Model.Topic.Assoc","modeldir":"..."}`
 - **Returns:** 0 on success, 1 on error.
 - **Success payload:** Tab-separated column names.
-- **Error payload:** Empty string with status 1.
+- **Error payload:** `{"status":"INVALID_ARGUMENT","operation":"read_xtf_association_schema","message":"Missing required field","detail":"association"}` (status 1)
 
 ### 5.12 `ili_native_import_xtf`
 
@@ -270,8 +291,8 @@ int ili_native_import_xtf(graal_isolatethread_t*, char* request_json, char** out
 - **Input:** `{"input":"path.xtf","schema":"target","modeldir":"...","mapping":"relational"}`
 - **Returns:** 0 on success, 1 on error.
 - **Success payload:** SQL statements (one per line).
-- **Error payload:** `"ERROR: ..."` with status 1.
-- **Issues:** Allocator mismatch on C side (GraalVM `malloc` freed with C `free()`).
+- **Error payload:** `{"status":"MODEL_ERROR","operation":"import_xtf","message":"...","detail":"...","path":"..."}` (status 3)
+- **Issues:** Allocator mismatch fixed in Phase 1 (C-side now uses `strdup` + `ili_free_result`).
 
 ### 5.13 `ili_free_string`
 

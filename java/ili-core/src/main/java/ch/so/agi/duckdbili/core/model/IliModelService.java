@@ -39,7 +39,10 @@ public class IliModelService {
             } catch (IOException ignored) {}
 
             Configuration cfg = manager.getConfigWithFiles(entries, null, 0.0);
-            if (cfg == null) return null;
+            if (cfg == null) {
+                throw new RuntimeException("INTERLIS model compilation failed for: " + effectiveDir
+                        + " — no ILI files found or invalid model directory");
+            }
 
             Ili2cSettings settings = new Ili2cSettings();
             Main.setDefaultIli2cPathMap(settings);
@@ -48,12 +51,19 @@ public class IliModelService {
             IliLogger.suppress();
             try {
                 TransferDescription td = Main.runCompiler(cfg, settings, null);
-                if (td != null) cache.put(key, td);
+                if (td == null) {
+                    throw new RuntimeException("INTERLIS model compilation returned null for: " + effectiveDir);
+                }
+                cache.put(key, td);
                 return td;
             } finally {
                 IliLogger.restore();
             }
-        } catch (Exception e) { return null; }
+        } catch (RuntimeException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new RuntimeException("INTERLIS model compilation failed for: " + effectiveDir, e);
+        }
     }
 
     private static boolean isBaseModel(String name) {
@@ -63,7 +73,6 @@ public class IliModelService {
     public String getModels(String modelDir) {
         StringBuilder sb = new StringBuilder();
         TransferDescription td = compileIli(modelDir);
-        if (td == null) return "";
         for (Iterator<Model> it = td.iterator(); it.hasNext(); ) {
             Model m = it.next();
             if (isBaseModel(m.getName())) continue;
@@ -77,7 +86,6 @@ public class IliModelService {
     public String getTopics(String modelDir, String modelName) {
         StringBuilder sb = new StringBuilder();
         TransferDescription td = compileIli(modelDir);
-        if (td == null) return "";
         for (Iterator<Model> it = td.iterator(); it.hasNext(); ) {
             Model m = it.next();
             if (modelName != null && !modelName.equals(m.getName())) continue;
@@ -94,7 +102,6 @@ public class IliModelService {
     public String getClasses(String modelDir, String modelName) {
         StringBuilder sb = new StringBuilder();
         TransferDescription td = compileIli(modelDir);
-        if (td == null) return "";
         for (Iterator<Model> it = td.iterator(); it.hasNext(); ) {
             Model m = it.next();
             if (isBaseModel(m.getName())) continue;
@@ -123,7 +130,6 @@ public class IliModelService {
     public String getAttributes(String modelDir, String className) {
         StringBuilder sb = new StringBuilder();
         TransferDescription td = compileIli(modelDir);
-        if (td == null) return "";
         for (Iterator<Model> it = td.iterator(); it.hasNext(); ) {
             Model m = it.next();
             if (isBaseModel(m.getName())) continue;
@@ -196,7 +202,6 @@ public class IliModelService {
     public String getEnumerations(String modelDir, String modelName) {
         StringBuilder sb = new StringBuilder();
         TransferDescription td = compileIli(modelDir);
-        if (td == null) return "";
         for (Iterator<Model> it = td.iterator(); it.hasNext(); ) {
             Model m = it.next();
             if (isBaseModel(m.getName())) continue;
