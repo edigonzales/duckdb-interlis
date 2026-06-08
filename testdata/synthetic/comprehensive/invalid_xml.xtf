@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TRANSFER xmlns="http://www.interlis.ch/INTERLIS2.3">
+  <HEADERSECTION VERSION="2.3" SENDER="duckdb-interlis-test">
+    <MODELS>
+      <MODEL NAME="SO_AGI_Comprehensive_20260608" VERSION="2026-06-08" URI="https://models.interlis.ch"/>
+    </MODELS>
+  </HEADERSECTION>
+  <DATASECTION>
+    <SO_AGI_Comprehensive_20260608.TopicA BID="basketA">
+      <SO_AGI_Comprehensive_20260608.TopicA.Gemeinde TID="2">
+        <Name>TestGemeinde</Name>
+        <BFS_Nr>1234</BFS_Nr>
+        <Status>aktiv</Status>
+      <!-- Missing closing tag for Gemeinde -->
+    </SO_AGI_Comprehensive_20260608.TopicA>
+  </DATASECTION>
+</TRANSFER>

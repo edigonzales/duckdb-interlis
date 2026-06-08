@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TRANSFER xmlns="http://www.interlis.ch/INTERLIS2.3">
+  <HEADERSECTION VERSION="2.3" SENDER="duckdb-interlis-test">
+    <MODELS>
+      <MODEL NAME="SO_AGI_Comprehensive_20260608" VERSION="2026-06-08" URI="https://models.interlis.ch"/>
+    </MODELS>
+  </HEADERSECTION>
+  <DATASECTION>
+    <SO_AGI_Comprehensive_20260608.TopicA BID="basketA">
+      <!-- Minimum Eintrag: only mandatory Wert -->
+      <SO_AGI_Comprehensive_20260608.TopicA.Eintrag TID="1">
+        <Wert>Minimum</Wert>
+      </SO_AGI_Comprehensive_20260608.TopicA.Eintrag>
+      <!-- Eintrag with empty Hoehe (implicit 0?) and null Lage -->
+      <SO_AGI_Comprehensive_20260608.TopicA.Eintrag TID="2">
+        <Wert>Ohne Lage</Wert>
+        <Hoehe>0</Hoehe>
+      </SO_AGI_Comprehensive_20260608.TopicA.Eintrag>
+      <!-- Gemeinde without optional Status and Adresse -->
+      <SO_AGI_Comprehensive_20260608.TopicA.Gemeinde TID="3">
+        <Name>MinimaleGemeinde</Name>
+        <BFS_Nr>1</BFS_Nr>
+      </SO_AGI_Comprehensive_20260608.TopicA.Gemeinde>
+      <!-- Parzelle without optional Flaeche geometry -->
+      <SO_AGI_Comprehensive_20260608.TopicA.Parzelle TID="4">
+        <Nummer>OhneFlaeche</Nummer>
+        <Bereich>0</Bereich>
+      </SO_AGI_Comprehensive_20260608.TopicA.Parzelle>
+    </SO_AGI_Comprehensive_20260608.TopicA>
+  </DATASECTION>
+</TRANSFER>

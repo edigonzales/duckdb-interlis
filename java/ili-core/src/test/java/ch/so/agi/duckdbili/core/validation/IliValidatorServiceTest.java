@@ -155,6 +155,26 @@ class IliValidatorServiceTest {
         assertEquals("c", fields.get(1));
     }
 
+    @Test
+    void csvParserUnicode() {
+        var fields = IliValidatorService.parseCsvLine("\"Höhe ü. M.\",äöü,中文,🎉");
+        assertEquals(4, fields.size());
+        assertEquals("Höhe ü. M.", fields.get(0));
+        assertEquals("äöü", fields.get(1));
+        assertEquals("中文", fields.get(2));
+        assertEquals("🎉", fields.get(3));
+    }
+
+    @Test
+    void csvParserTrailingEmptyFields() {
+        var fields = IliValidatorService.parseCsvLine("a,b,c,");
+        assertEquals(4, fields.size());
+        assertEquals("a", fields.get(0));
+        assertEquals("b", fields.get(1));
+        assertEquals("c", fields.get(2));
+        assertEquals("", fields.get(3));
+    }
+
     // -----------------------------------------------------------------------
     // Validation profile tests
     // -----------------------------------------------------------------------

@@ -163,6 +163,13 @@ jobs:
           EXT_PATH="${{ github.workspace }}/duckdb-extension/build/interlis.duckdb_extension"
           ./${{ matrix.duckdb-cli-bin }} -unsigned -cmd "LOAD '$EXT_PATH'" < sql/smoke.sql
 
+      - name: Integration tests (regression + concurrency)
+        shell: bash
+        run: |
+          EXT_PATH="${{ github.workspace }}/duckdb-extension/build/interlis.duckdb_extension"
+          ./${{ matrix.duckdb-cli-bin }} -unsigned -cmd "LOAD '$EXT_PATH'" < sql/regression.sql
+          ./${{ matrix.duckdb-cli-bin }} -unsigned -cmd "LOAD '$EXT_PATH'" < sql/concurrency.sql
+
       - name: Generate checksums
         shell: bash
         run: |
@@ -184,6 +191,100 @@ jobs:
           path: |
             duckdb-extension/build/interlis.duckdb_extension
             duckdb-extension/build/interlis.duckdb_extension.sha256
+
+  sanitizer:
+    name: Sanitizer (ASan + UBSan + LSan)
+    needs: java-tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: graalvm/setup-graalvm@v1
+        with:
+          java-version: '25'
+          distribution: 'graalvm'
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          cache: 'gradle'
+
+      - name: Build GraalVM native shared library
+        run: |
+          ./gradlew :java:ili-native:nativeSharedLibrary
+
+      - name: Copy native library
+        run: |
+          mkdir -p duckdb-extension/build/native/current
+          cp java/ili-native/build/native/libduckdb_ili_native.so duckdb-extension/build/native/current/
+
+      - name: Embed native library
+        run: |
+          python3 scripts/embed_native_lib.py \
+            duckdb-extension/build/native/current/libduckdb_ili_native.so \
+            duckdb-extension/build/embedded_native_lib.c
+
+      - name: Build C extension with sanitizers
+        run: |
+          cmake -S duckdb-extension -B duckdb-extension/build \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_C_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer -g"
+          cmake --build duckdb-extension/build -j
+
+      - name: Compile and run native smoke test with sanitizers
+        run: |
+          cc -fsanitize=address,undefined -g \
+            -o duckdb-extension/test/native_smoke_test \
+            duckdb-extension/test/native_smoke_test.c \
+            -Iduckdb-extension/src/include \
+            -Ijava/ili-native/build/native \
+            -ldl -lpthread
+          ILI_NATIVE_LIB="java/ili-native/build/native/libduckdb_ili_native.so" \
+            duckdb-extension/test/native_smoke_test
+
+  thread-sanitizer:
+    name: ThreadSanitizer
+    needs: java-tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: graalvm/setup-graalvm@v1
+        with:
+          java-version: '25'
+          distribution: 'graalvm'
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          cache: 'gradle'
+
+      - name: Build GraalVM native shared library
+        run: |
+          ./gradlew :java:ili-native:nativeSharedLibrary
+
+      - name: Copy native library
+        run: |
+          mkdir -p duckdb-extension/build/native/current
+          cp java/ili-native/build/native/libduckdb_ili_native.so duckdb-extension/build/native/current/
+
+      - name: Embed native library
+        run: |
+          python3 scripts/embed_native_lib.py \
+            duckdb-extension/build/native/current/libduckdb_ili_native.so \
+            duckdb-extension/build/embedded_native_lib.c
+
+      - name: Build C extension with TSAN
+        run: |
+          cmake -S duckdb-extension -B duckdb-extension/build \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_C_FLAGS="-fsanitize=thread -fno-omit-frame-pointer -g"
+          cmake --build duckdb-extension/build -j
+
+      - name: Compile and run native smoke test with TSAN
+        run: |
+          cc -fsanitize=thread -g \
+            -o duckdb-extension/test/native_smoke_test_tsan \
+            duckdb-extension/test/native_smoke_test.c \
+            -Iduckdb-extension/src/include \
+            -Ijava/ili-native/build/native \
+            -ldl -lpthread
+          ILI_NATIVE_LIB="java/ili-native/build/native/libduckdb_ili_native.so" \
+            duckdb-extension/test/native_smoke_test_tsan
 
   deploy:
     name: Deploy to Repository

@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TRANSFER xmlns="http://www.interlis.ch/INTERLIS2.3">
+  <HEADERSECTION VERSION="2.3" SENDER="duckdb-interlis-test">
+    <MODELS>
+      <MODEL NAME="SO_AGI_Comprehensive_20260608" VERSION="2026-06-08" URI="https://models.interlis.ch"/>
+    </MODELS>
+  </HEADERSECTION>
+  <DATASECTION>
+    <SO_AGI_Comprehensive_20260608.TopicA BID="basketA">
+      <SO_AGI_Comprehensive_20260608.TopicA.Eintrag TID="1">
+        <Wert>Wert mit Umlauten: äöü ÄÖÜ éèê 中文测试 🎉</Wert>
+        <Hoehe>500</Hoehe>
+      </SO_AGI_Comprehensive_20260608.TopicA.Eintrag>
+      <SO_AGI_Comprehensive_20260608.TopicA.Gemeinde TID="2">
+        <Name>München-Gräfelfing</Name>
+        <BFS_Nr>9999</BFS_Nr>
+        <Status>aktiv</Status>
+        <Adresse>
+          <SO_AGI_Comprehensive_Base_20260608.Adresse>
+            <Strasse>Rue de la Gare</Strasse>
+            <Hausnummer>42bis</Hausnummer>
+            <PLZ>8000</PLZ>
+            <Ort>Zürich</Ort>
+          </SO_AGI_Comprehensive_Base_20260608.Adresse>
+        </Adresse>
+      </SO_AGI_Comprehensive_20260608.TopicA.Gemeinde>
+      <SO_AGI_Comprehensive_20260608.TopicA.Parzelle TID="3">
+        <Nummer>PZ-Ü001</Nummer>
+        <Bereich>10000</Bereich>
+      </SO_AGI_Comprehensive_20260608.TopicA.Parzelle>
+    </SO_AGI_Comprehensive_20260608.TopicA>
+  </DATASECTION>
+</TRANSFER>

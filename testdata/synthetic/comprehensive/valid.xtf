@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TRANSFER xmlns="http://www.interlis.ch/INTERLIS2.3">
+  <HEADERSECTION VERSION="2.3" SENDER="duckdb-interlis-test">
+    <MODELS>
+      <MODEL NAME="SO_AGI_Comprehensive_20260608" VERSION="2026-06-08" URI="https://models.interlis.ch"/>
+    </MODELS>
+  </HEADERSECTION>
+  <DATASECTION>
+
+    <SO_AGI_Comprehensive_20260608.TopicA BID="basketA">
+      <SO_AGI_Comprehensive_20260608.TopicA.Eintrag TID="1">
+        <Wert>Eintrag in TopicA</Wert>
+        <Hoehe>500</Hoehe>
+        <Lage>
+          <COORD>
+            <C1>2600000.000</C1>
+            <C2>1200000.000</C2>
+          </COORD>
+        </Lage>
+      </SO_AGI_Comprehensive_20260608.TopicA.Eintrag>
+
+      <SO_AGI_Comprehensive_20260608.TopicA.Gemeinde TID="2">
+        <Name>TestGemeinde</Name>
+        <BFS_Nr>1234</BFS_Nr>
+        <Status>aktiv</Status>
+        <Adresse>
+          <SO_AGI_Comprehensive_Base_20260608.Adresse>
+            <Strasse>Hauptstrasse 42</Strasse>
+            <Hausnummer>42</Hausnummer>
+            <PLZ>8000</PLZ>
+            <Ort>Zürich</Ort>
+          </SO_AGI_Comprehensive_Base_20260608.Adresse>
+        </Adresse>
+      </SO_AGI_Comprehensive_20260608.TopicA.Gemeinde>
+
+      <SO_AGI_Comprehensive_20260608.TopicA.Parzelle TID="3">
+        <Nummer>PZ-001</Nummer>
+        <Flaeche>
+          <SURFACE>
+            <BOUNDARY>
+              <POLYLINE>
+                <COORD><C1>2600000.000</C1><C2>1200000.000</C2></COORD>
+                <COORD><C1>2600100.000</C1><C2>1200000.000</C2></COORD>
+                <COORD><C1>2600100.000</C1><C2>1200100.000</C2></COORD>
+                <COORD><C1>2600000.000</C1><C2>1200100.000</C2></COORD>
+                <COORD><C1>2600000.000</C1><C2>1200000.000</C2></COORD>
+              </POLYLINE>
+            </BOUNDARY>
+          </SURFACE>
+        </Flaeche>
+        <Bereich>10000</Bereich>
+      </SO_AGI_Comprehensive_20260608.TopicA.Parzelle>
+
+      <SO_AGI_Comprehensive_20260608.TopicA.Betrieb TID="4">
+        <Name>TestBetrieb GmbH</Name>
+        <Adresse>
+          <SO_AGI_Comprehensive_Base_20260608.Adresse>
+            <Strasse>Industrieweg 7</Strasse>
+            <Hausnummer>7</Hausnummer>
+            <PLZ>3000</PLZ>
+            <Ort>Bern</Ort>
+          </SO_AGI_Comprehensive_Base_20260608.Adresse>
+        </Adresse>
+        <Kontakte>
+          <SO_AGI_Comprehensive_Base_20260608.Kontakt>
+            <Typ>privat</Typ>
+            <Notiz>Mobile Nummer</Notiz>
+          </SO_AGI_Comprehensive_Base_20260608.Kontakt>
+          <SO_AGI_Comprehensive_Base_20260608.Kontakt>
+            <Typ>geschaeftlich</Typ>
+            <Notiz>Büro</Notiz>
+          </SO_AGI_Comprehensive_Base_20260608.Kontakt>
+        </Kontakte>
+      </SO_AGI_Comprehensive_20260608.TopicA.Betrieb>
+
+      <SO_AGI_Comprehensive_20260608.TopicA.Besitz>
+        <besitzer REF="4"/>
+        <parzelle REF="3"/>
+        <Anteil>100</Anteil>
+      </SO_AGI_Comprehensive_20260608.TopicA.Besitz>
+    </SO_AGI_Comprehensive_20260608.TopicA>
+
+    <SO_AGI_Comprehensive_20260608.TopicB BID="basketB">
+      <SO_AGI_Comprehensive_20260608.TopicB.Notiz TID="10">
+        <Wert>Notiz in TopicB</Wert>
+      </SO_AGI_Comprehensive_20260608.TopicB.Notiz>
+
+      <SO_AGI_Comprehensive_20260608.TopicB.GeometrieObjekt TID="11">
+        <Name>GeoTest</Name>
+        <Punkt>
+          <COORD>
+            <C1>2600500.000</C1>
+            <C2>1200500.000</C2>
+          </COORD>
+        </Punkt>
+        <Linie>
+          <POLYLINE>
+            <COORD><C1>2600500.000</C1><C2>1200500.000</C2></COORD>
+            <COORD><C1>2600600.000</C1><C2>1200600.000</C2></COORD>
+          </POLYLINE>
+        </Linie>
+        <Polygon>
+          <SURFACE>
+            <BOUNDARY>
+              <POLYLINE>
+                <COORD><C1>2600500.000</C1><C2>1200500.000</C2></COORD>
+                <COORD><C1>2600600.000</C1><C2>1200500.000</C2></COORD>
+                <COORD><C1>2600600.000</C1><C2>1200600.000</C2></COORD>
+                <COORD><C1>2600500.000</C1><C2>1200600.000</C2></COORD>
+                <COORD><C1>2600500.000</C1><C2>1200500.000</C2></COORD>
+              </POLYLINE>
+            </BOUNDARY>
+          </SURFACE>
+        </Polygon>
+      </SO_AGI_Comprehensive_20260608.TopicB.GeometrieObjekt>
+    </SO_AGI_Comprehensive_20260608.TopicB>
+
+  </DATASECTION>
+</TRANSFER>

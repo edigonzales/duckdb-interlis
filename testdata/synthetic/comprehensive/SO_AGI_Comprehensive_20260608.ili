@@ -1,0 +1,86 @@
+INTERLIS 2.3;
+
+!!@ technicalContact=mailto:test@example.com
+
+MODEL SO_AGI_Comprehensive_Base_20260608 (de)
+AT "https://models.interlis.ch"
+VERSION "2026-06-08" =
+
+  DOMAIN
+    Koord = COORD 2460000.000 .. 2870000.000, 1045000.000 .. 1310000.000;
+
+  STRUCTURE Adresse =
+    Strasse : MANDATORY TEXT*80;
+    Hausnummer : TEXT*10;
+    PLZ : 1000 .. 9999;
+    Ort : TEXT*60;
+  END Adresse;
+
+  STRUCTURE Kontakt =
+    Typ : (
+      privat,
+      geschaeftlich
+    );
+    Notiz : TEXT*255;
+  END Kontakt;
+
+END SO_AGI_Comprehensive_Base_20260608.
+
+MODEL SO_AGI_Comprehensive_20260608 (de)
+AT "https://models.interlis.ch"
+VERSION "2026-06-08" =
+  IMPORTS SO_AGI_Comprehensive_Base_20260608;
+
+  !!@ AREA = TRUE
+
+  TOPIC TopicA =
+
+    CLASS Eintrag =
+      Wert : MANDATORY TEXT*60;
+      Hoehe : 0 .. 9999;
+      Lage : SO_AGI_Comprehensive_Base_20260608.Koord;
+    END Eintrag;
+
+    CLASS Gemeinde =
+      Name : MANDATORY TEXT*80;
+      BFS_Nr : 0 .. 9999;
+      Status : (aktiv, inaktiv, geplant);
+      Adresse : SO_AGI_Comprehensive_Base_20260608.Adresse;
+    END Gemeinde;
+
+    CLASS Parzelle =
+      Nummer : MANDATORY TEXT*20;
+      Flaeche : SURFACE WITH (STRAIGHTS) VERTEX SO_AGI_Comprehensive_Base_20260608.Koord WITHOUT OVERLAPS > 0.001;
+      Bereich : 0 .. 99999999;
+    END Parzelle;
+
+    CLASS Betrieb =
+      Name : MANDATORY TEXT*80;
+      Adresse : SO_AGI_Comprehensive_Base_20260608.Adresse;
+      Kontakte : BAG OF SO_AGI_Comprehensive_Base_20260608.Kontakt;
+    END Betrieb;
+
+    ASSOCIATION Besitz =
+      besitzer -- {0..*} Betrieb;
+      parzelle -- {0..*} Parzelle;
+      Anteil : 0 .. 100;
+    END Besitz;
+
+  END TopicA;
+
+  TOPIC TopicB =
+
+    CLASS Notiz =
+      Wert : MANDATORY TEXT*60;
+    END Notiz;
+
+    CLASS GeometrieObjekt =
+      Name : MANDATORY TEXT*80;
+      Punkt : SO_AGI_Comprehensive_Base_20260608.Koord;
+      Linie : POLYLINE WITH (STRAIGHTS) VERTEX SO_AGI_Comprehensive_Base_20260608.Koord WITHOUT OVERLAPS > 0.001;
+      Polygon : SURFACE WITH (STRAIGHTS) VERTEX SO_AGI_Comprehensive_Base_20260608.Koord WITHOUT OVERLAPS > 0.001;
+    END GeometrieObjekt;
+
+  END TopicB;
+
+END SO_AGI_Comprehensive_20260608.

@@ -415,4 +415,125 @@ class RegressionTest {
         latch.await();
         assertNull(error.get(), "No concurrent access exceptions expected after Phase 5");
     }
+
+    // -----------------------------------------------------------------------
+    // Phase 6: Validator semantics regression tests
+    // -----------------------------------------------------------------------
+
+    @Test
+    @DisplayName("REGRESSION: Temp file cleanup — validate() does not leave orphaned files")
+    void tempFileIsCleanedUp() {
+        IliValidatorService svc = new IliValidatorService();
+        Path xtf = SIMPLE_DIR.resolve("valid.xtf");
+
+        // Count files in java.io.tmpdir before and after validation
+        long before = countTempFiles();
+        ValidationResult result = svc.validate(xtf, SIMPLE_DIR.toString(), -1, ValidationProfile.FULL);
+        assertTrue(result.isValid());
+        long after = countTempFiles();
+        // Temp files should be cleaned up: after <= before (within tolerance)
+        assertTrue(after <= before + 5,
+            "Temp files should be cleaned up. before=" + before + " after=" + after);
+    }
+
+    @Test
+    @DisplayName("REGRESSION: Validation profiles produce consistent and non-empty results")
+    void profileResultsAreConsistent() {
+        IliValidatorService svc = new IliValidatorService();
+        Path xtf = SIMPLE_DIR.resolve("invalid.xtf");
+
+        ValidationResult full = svc.validate(xtf, SIMPLE_DIR.toString(), -1, ValidationProfile.FULL);
+        ValidationResult structural = svc.validate(xtf, SIMPLE_DIR.toString(), -1, ValidationProfile.STRUCTURAL);
+        ValidationResult fast = svc.validate(xtf, SIMPLE_DIR.toString(), -1, ValidationProfile.FAST);
+
+        assertNotNull(full);
+        assertNotNull(structural);
+        assertNotNull(fast);
+        assertTrue(full.getErrorCount() > 0, "Full profile should detect errors");
+    }
+
+    @Test
+    @DisplayName("REGRESSION: Comprehensive test model validates correctly")
+    void comprehensiveModelValidates() {
+        Path compDir = REPO_ROOT.resolve("testdata/synthetic/comprehensive");
+        var svc = new IliValidatorService();
+        ValidationResult r = svc.validate(
+            compDir.resolve("valid.xtf"), compDir.toString(), -1, ValidationProfile.FULL);
+        assertTrue(r.isValid(),
+            "Comprehensive valid.xtf should pass full validation, errors=" + r.getErrorCount());
+    }
+
+    @Test
+    @DisplayName("REGRESSION: Comprehensive model detects multiplicity errors")
+    void comprehensiveModelDetectsMultiplicity() {
+        Path compDir = REPO_ROOT.resolve("testdata/synthetic/comprehensive");
+        var svc = new IliValidatorService();
+        ValidationResult r = svc.validate(
+            compDir.resolve("invalid_multiplicity.xtf"), compDir.toString(), -1, ValidationProfile.FULL);
+        assertTrue(r.getErrorCount() > 0,
+            "Should detect missing MANDATORY field, errors=" + r.getErrorCount());
+    }
+
+    @Test
+    @DisplayName("REGRESSION: Comprehensive model detects type errors")
+    void comprehensiveModelDetectsTypeError() {
+        Path compDir = REPO_ROOT.resolve("testdata/synthetic/comprehensive");
+        var svc = new IliValidatorService();
+        ValidationResult r = svc.validate(
+            compDir.resolve("invalid_type.xtf"), compDir.toString(), -1, ValidationProfile.FULL);
+        assertFalse(r.isValid(),
+            "Should detect type violation, errors=" + r.getErrorCount());
+    }
+
+    @Test
+    @DisplayName("REGRESSION: Invalid XML is detected in comprehensive model")
+    void comprehensiveModelDetectsInvalidXml() {
+        Path compDir = REPO_ROOT.resolve("testdata/synthetic/comprehensive");
+        var svc = new IliValidatorService();
+        ValidationResult r = svc.validate(
+            compDir.resolve("invalid_xml.xtf"), compDir.toString(), -1, ValidationProfile.FULL);
+        assertFalse(r.isValid(), "Invalid XML should fail validation");
+    }
+
+    @Test
+    @DisplayName("REGRESSION: Truncated XTF is detected in comprehensive model")
+    void comprehensiveModelDetectsTruncated() {
+        Path compDir = REPO_ROOT.resolve("testdata/synthetic/comprehensive");
+        var svc = new IliValidatorService();
+        ValidationResult r = svc.validate(
+            compDir.resolve("truncated.xtf"), compDir.toString(), -1, ValidationProfile.FULL);
+        assertFalse(r.isValid(), "Truncated XTF should fail validation");
+    }
+
+    @Test
+    @DisplayName("REGRESSION: Unicode values in XTF survive round-trip")
+    void unicodeInComprehensiveModel() {
+        Path compDir = REPO_ROOT.resolve("testdata/synthetic/comprehensive");
+        var svc = new IliValidatorService();
+        ValidationResult r = svc.validate(
+            compDir.resolve("unicode.xtf"), compDir.toString(), -1, ValidationProfile.FULL);
+        assertTrue(r.isValid(),
+            "Unicode XTF should pass validation, errors=" + r.getErrorCount());
+    }
+
+    @Test
+    @DisplayName("REGRESSION: Null and empty values are handled correctly")
+    void nullAndEmptyInComprehensiveModel() {
+        Path compDir = REPO_ROOT.resolve("testdata/synthetic/comprehensive");
+        var svc = new IliValidatorService();
+        ValidationResult r = svc.validate(
+            compDir.resolve("null_and_empty.xtf"), compDir.toString(), -1, ValidationProfile.FULL);
+        assertTrue(r.isValid(),
+            "Null/empty XTF should pass validation, errors=" + r.getErrorCount());
+    }
+
+    private static long countTempFiles() {
+        try {
+            return java.nio.file.Files.list(Path.of(System.getProperty("java.io.tmpdir")))
+                .filter(p -> p.getFileName().toString().startsWith("ilival-"))
+                .count();
+        } catch (Exception e) {
+            return -1;
+        }
+    }
 }

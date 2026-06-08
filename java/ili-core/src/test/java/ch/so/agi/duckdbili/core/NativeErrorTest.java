@@ -112,4 +112,20 @@ class NativeErrorTest {
         NativeError unsup = NativeError.unsupported("op", "msg", "detail");
         assertEquals(NativeStatus.UNSUPPORTED, unsup.status());
     }
+
+    @Test
+    @DisplayName("JSON handles Unicode characters in message fields")
+    void testUnicodeInErrorPayload() {
+        NativeError err = NativeError.validationError("validate_xml",
+                "Ungültiges Zeichen in Feld «Höhe ü. M.»: äöü ÄÖÜ éèê 中文",
+                "Attribut 'Höhe' enthält Unicode: 🎉");
+        String json = err.toJson();
+
+        assertTrue(json.contains("Höhe"));
+        assertTrue(json.contains("äöü"));
+        assertTrue(json.contains("中文"));
+        assertTrue(json.contains("🎉"));
+        assertTrue(json.startsWith("{"));
+        assertTrue(json.endsWith("}"));
+    }
 }
