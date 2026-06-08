@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TRANSFER xmlns="http://www.interlis.ch/INTERLIS2.3">
+  <HEADERSECTION VERSION="2.3" SENDER="test">
+    <MODELS>
+      <MODEL NAME="SO_AGI_SameNames_20260608" VERSION="2026-06-08" URI="https://models.interlis.ch"/>
+    </MODELS>
+  </HEADERSECTION>
+  <DATASECTION>
+    <SO_AGI_SameNames_20260608.TopicA BID="basket1">
+      <SO_AGI_SameNames_20260608.TopicA.Eintrag TID="1">
+        <Wert>Wert aus TopicA</Wert>
+      </SO_AGI_SameNames_20260608.TopicA.Eintrag>
+    </SO_AGI_SameNames_20260608.TopicA>
+    <SO_AGI_SameNames_20260608.TopicB BID="basket2">
+      <SO_AGI_SameNames_20260608.TopicB.Eintrag TID="2">
+        <Wert>Wert aus TopicB</Wert>
+      </SO_AGI_SameNames_20260608.TopicB.Eintrag>
+    </SO_AGI_SameNames_20260608.TopicB>
+  </DATASECTION>
+</TRANSFER>

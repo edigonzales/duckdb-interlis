@@ -27,7 +27,8 @@ public class XtfObjectReader {
 
     /**
      * Read all objects from an XTF file. TSV columns: xtf_bid, xtf_topic, xtf_class,
-     * xtf_tid, operation, attributes_json, refs_json, geom_json, raw_event_json
+     * xtf_class_fqn, xtf_tid, operation, xtf_model, attributes_json, refs_json,
+     * geom_json, raw_event_json
      */
     public String readObjects(String xtfPath, String modelDir, String modelNames) {
         return readXtf(xtfPath, modelDir, modelNames, null);
@@ -57,10 +58,10 @@ public class XtfObjectReader {
         
 
         String[] parts = className.split("\\.");
-        if (parts.length < 3) return "";
+        if (parts.length < 3) throw new IllegalArgumentException("Class name must be fully qualified (Model.Topic.Class), got: " + className);
 
         AbstractClassDef cdef = findClass(td, parts[0], parts[1], parts[2]);
-        if (cdef == null) return "";
+        if (cdef == null) throw new IllegalArgumentException("Class not found in model: " + className);
 
         String colSuffix = "duckdb".equals(nested) ? "" : "_json";
 
@@ -104,9 +105,9 @@ public class XtfObjectReader {
         AbstractClassDef classDef = null;
         if (className != null) {
             String[] parts = className.split("\\.");
-            if (parts.length < 3) return "";
+            if (parts.length < 3) throw new IllegalArgumentException("Class name must be fully qualified (Model.Topic.Class), got: " + className);
             classDef = findClass(td, parts[0], parts[1], parts[2]);
-            if (classDef == null) return "";
+            if (classDef == null) throw new IllegalArgumentException("Class not found in model: " + className);
         }
 
         List<String> attrNames = new ArrayList<>();
@@ -171,8 +172,7 @@ public class XtfObjectReader {
                     if (tag == null) continue;
 
                     if (className != null) {
-                        String[] parts = className.split("\\.");
-                        if (!tag.endsWith("." + parts[2])) continue;
+                        if (!tag.equals(className)) continue;
                     }
 
                     String cn = tag.contains(".") ? tag.substring(tag.lastIndexOf('.') + 1) : tag;
@@ -196,12 +196,13 @@ public class XtfObjectReader {
                     } else {
                         // Generic object stream output
                         int op = obj.getobjectoperation();
-                        String operation = op == 1 ? "DELETE" : op == 2 ? "UPDATE" : op == 3 ? "INSERT" : "";
+                        String operation = op == 1 ? "UPDATE" : op == 2 ? "DELETE" : "INSERT";
+                        String modelName = tag.contains(".") ? tag.substring(0, tag.indexOf('.')) : "";
                         sb.append(e(currentBid)).append('\t').append(e(currentTopic)).append('\t');
-                        sb.append(e(cn)).append('\t').append(e(tid)).append('\t');
-                        sb.append(e(operation)).append('\t').append(e(buildAttrs(obj))).append('\t');
-                        sb.append(e(buildRefs(obj))).append('\t').append(e(buildGeom(obj))).append('\t');
-                        sb.append(e(buildRaw(obj))).append('\n');
+                        sb.append(e(cn)).append('\t').append(e(tag)).append('\t').append(e(tid)).append('\t');
+                        sb.append(e(operation)).append('\t').append(e(modelName)).append('\t');
+                        sb.append(e(buildAttrs(obj))).append('\t').append(e(buildRefs(obj))).append('\t');
+                        sb.append(e(buildGeom(obj))).append('\t').append(e(buildRaw(obj))).append('\n');
                     }
                 }
             }
@@ -347,7 +348,7 @@ public class XtfObjectReader {
             sb.append(escJson(obj.getattrvalue(an))).append("\"");
         }
         sb.append("}");
-        return first ? "" : sb.toString();
+        return first ? null : sb.toString();
     }
 
     private String buildAttrs(IomObject obj) {
@@ -392,7 +393,7 @@ public class XtfObjectReader {
     }
 
     private static String e(String s) {
-        if (s == null) return "";
+        if (s == null) return "\\N";
         return s.replace("\\","\\\\").replace("\t","\\t").replace("\n","\\n").replace("\r","\\r");
     }
 
@@ -449,9 +450,9 @@ public class XtfObjectReader {
 
     private String buildSingleStructureJson(IomObject obj, String attrName) {
         int count = obj.getattrvaluecount(attrName);
-        if (count == 0) return "";
+        if (count == 0) return null;
         IomObject child = obj.getattrobj(attrName, 0);
-        if (child == null) return "";
+        if (child == null) return null;
         return buildStructObjJson(child);
     }
 
@@ -499,10 +500,10 @@ public class XtfObjectReader {
         
 
         String[] parts = className.split("\\.");
-        if (parts.length < 3) return "";
+        if (parts.length < 3) throw new IllegalArgumentException("Class name must be fully qualified (Model.Topic.Class), got: " + className);
 
         AbstractClassDef cdef = findClass(td, parts[0], parts[1], parts[2]);
-        if (cdef == null) return "";
+        if (cdef == null) throw new IllegalArgumentException("Class not found in model: " + className);
 
         Set<String> seen = new HashSet<>();
         StringBuilder sb = new StringBuilder();
@@ -591,9 +592,9 @@ public class XtfObjectReader {
 
     private String buildGeometryWkb(IomObject obj, String attrName) {
         int cnt = obj.getattrvaluecount(attrName);
-        if (cnt == 0) return "";
+        if (cnt == 0) return null;
         IomObject geom = obj.getattrobj(attrName, 0);
-        if (geom == null) return "";
+        if (geom == null) return null;
         return geomToHexWkb(geom);
     }
 
@@ -612,10 +613,10 @@ public class XtfObjectReader {
                 case "MULTICOORD":   return Iox2jts.multicoord2hexwkb(geom);
                 case "MULTIPOLYLINE": return Iox2jts.multipolyline2hexwkb(geom, 0);
                 case "MULTISURFACE":  return Iox2jts.multisurface2hexwkb(geom, 0);
-                default:            return "";
+                default:            return null;
             }
         } catch (Exception e) {
-            return "";
+            throw new RuntimeException("Geometry conversion failed for type " + shortType + ": " + e.getMessage(), e);
         }
     }
 
@@ -625,11 +626,11 @@ public class XtfObjectReader {
 
     private static String getRoleRef(IomObject obj, String roleName) {
         int cnt = obj.getattrvaluecount(roleName);
-        if (cnt == 0) return "";
+        if (cnt == 0) return null;
         IomObject child = obj.getattrobj(roleName, 0);
-        if (child == null) return "";
+        if (child == null) return null;
         String ref = child.getobjectrefoid();
-        return ref != null ? ref : "";
+        return ref != null ? ref : null;
     }
 
     // -----------------------------------------------------------------------
@@ -641,10 +642,10 @@ public class XtfObjectReader {
         
 
         String[] parts = associationName.split("\\.");
-        if (parts.length < 3) return "";
+        if (parts.length < 3) throw new IllegalArgumentException("Association name must be fully qualified (Model.Topic.Association), got: " + associationName);
 
         AssociationDef adef = findAssociation(td, parts[0], parts[1], parts[2]);
-        if (adef == null) return "";
+        if (adef == null) throw new IllegalArgumentException("Association not found in model: " + associationName);
 
         StringBuilder sb = new StringBuilder();
         sb.append("xtf_bid\txtf_tid\txtf_class");
@@ -666,10 +667,10 @@ public class XtfObjectReader {
         
 
         String[] parts = associationName.split("\\.");
-        if (parts.length < 3) return "";
+        if (parts.length < 3) throw new IllegalArgumentException("Association name must be fully qualified (Model.Topic.Association), got: " + associationName);
 
         AssociationDef assocDef = findAssociation(td, parts[0], parts[1], parts[2]);
-        if (assocDef == null) return "";
+        if (assocDef == null) throw new IllegalArgumentException("Association not found in model: " + associationName);
 
         List<String> roleNames = new ArrayList<>();
         List<String> attrNames = new ArrayList<>();
@@ -715,7 +716,7 @@ public class XtfObjectReader {
                     if (obj == null) continue;
                     String tag = obj.getobjecttag();
                     if (tag == null) continue;
-                    if (!tag.endsWith("." + parts[2])) continue;
+                    if (!tag.equals(associationName)) continue;
 
                     String cn = tag.contains(".") ? tag.substring(tag.lastIndexOf('.') + 1) : tag;
                     String tid = obj.getobjectoid();

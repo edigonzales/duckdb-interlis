@@ -68,20 +68,20 @@ class XtfObjectReaderTest {
     }
 
     @Test
-    void readClass_unsupportedJson_isEmpty() {
+    void readClass_unsupportedJson_isNull() {
         String result = reader.readClass(XTF_PATH, CLASS_NAME, MODELDIR);
         for (String line : result.split("\n")) {
             if (line.contains("Firma AG")) {
                 String[] fields = line.split("\t", -1);
                 String lastField = fields[fields.length - 1];
-                assertTrue(lastField.isEmpty() || lastField.equals("{}"),
-                    "unsupported_json should be empty, got: " + lastField);
+                assertEquals("\\N", lastField,
+                    "unsupported_json should be \\N when no unsupported attrs, got: " + lastField);
             }
         }
     }
 
     @Test
-    void readClass_missingStructure_returnsEmptyString() {
+    void readClass_missingStructure_returnsNull() {
         String result = reader.readClass(XTF_PATH, CLASS_NAME, MODELDIR);
         String[] lines = result.split("\n");
         String[] headerFields = lines[0].split("\t");
@@ -95,7 +95,7 @@ class XtfObjectReaderTest {
         for (int i = 1; i < lines.length; i++) {
             String[] fields = lines[i].split("\t", -1);
             if (fields.length > adresseIdx && fields[1].equals("2")) {
-                assertEquals("", fields[adresseIdx], "Missing structure should be empty string");
+                assertEquals("\\N", fields[adresseIdx], "Missing structure should be \\N (NULL sentinel)");
             }
         }
     }
@@ -157,14 +157,14 @@ class XtfObjectReaderTest {
     }
 
     @Test
-    void readAssociation_unsupportedJson_isEmpty() {
+    void readAssociation_unsupportedJson_isNull() {
         String result = reader.readAssociation(ASSOC_XTF, ASSOC_BESITZ, ASSOC_MODELDIR);
         for (String line : result.split("\n")) {
             if (line.startsWith("xtf_bid")) continue;
             if (line.isBlank()) continue;
             String[] fields = line.split("\t", -1);
             String lastField = fields[fields.length - 1];
-            assertTrue(lastField.isEmpty(), "unsupported_json should be empty, got: " + lastField);
+            assertEquals("\\N", lastField, "unsupported_json should be \\N when no unsupported attrs, got: " + lastField);
         }
     }
 

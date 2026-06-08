@@ -1146,7 +1146,13 @@ static void mi_function(duckdb_function_info tfinfo, duckdb_data_chunk output) {
             char *tab = strchr(r, '\t');
             idx_t len = tab ? (idx_t)(tab - r) : strlen(r);
             duckdb_vector vec = duckdb_data_chunk_get_vector(output, c);
-            duckdb_vector_assign_string_element_len(vec, i, r, len);
+            if (len == 2 && r[0] == '\\' && r[1] == 'N') {
+                duckdb_vector_ensure_validity_writable(vec);
+                uint64_t *validity = duckdb_vector_get_validity(vec);
+                duckdb_validity_set_row_invalid(validity, i);
+            } else {
+                duckdb_vector_assign_string_element_len(vec, i, r, len);
+            }
             r = tab ? tab + 1 : r + len;
         }
     }
@@ -1206,11 +1212,11 @@ static void register_model_table_functions(duckdb_connection conn) {
 
 static void xtf_objects_bind(duckdb_bind_info info) {
     static const char *cols[] = {
-        "xtf_bid","xtf_topic","xtf_class","xtf_tid",
-        "operation","attributes_json","refs_json","geom_json","raw_event_json"
+        "xtf_bid","xtf_topic","xtf_class","xtf_class_fqn","xtf_tid",
+        "operation","xtf_model","attributes_json","refs_json","geom_json","raw_event_json"
     };
     duckdb_logical_type vt = duckdb_create_logical_type(DUCKDB_TYPE_VARCHAR);
-    for (int i = 0; i < 9; i++)
+    for (int i = 0; i < 11; i++)
         duckdb_bind_add_result_column(info, cols[i], vt);
     duckdb_destroy_logical_type(&vt);
 

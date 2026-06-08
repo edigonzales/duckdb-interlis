@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TRANSFER xmlns="http://www.interlis.ch/INTERLIS2.3">
+  <HEADERSECTION VERSION="2.3" SENDER="test">
+    <MODELS>
+      <MODEL NAME="SO_AGI_Simple_20260605" VERSION="2026-06-05" URI="https://models.interlis.ch"/>
+    </MODELS>
+  </HEADERSECTION>
+  <DATASECTION>
+    <SO_AGI_Simple_20260605.Topic BID="basket1">
+      <SO_AGI_Simple_20260605.Topic.Gemeinde TID="1">
+        <Name>NurINSERT</Name>
+        <BFS_Nr>1001</BFS_Nr>
+      </SO_AGI_Simple_20260605.Topic.Gemeinde>
+      <SO_AGI_Simple_20260605.Topic.Gemeinde TID="2" OPERATION="UPDATE">
+        <Name>UPDATE_Gemeinde</Name>
+        <BFS_Nr>2002</BFS_Nr>
+      </SO_AGI_Simple_20260605.Topic.Gemeinde>
+      <SO_AGI_Simple_20260605.Topic.Gemeinde TID="3" OPERATION="DELETE"/>
+    </SO_AGI_Simple_20260605.Topic>
+  </DATASECTION>
+</TRANSFER>
