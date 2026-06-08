@@ -94,11 +94,21 @@ public class XtfObjectReader {
     }
 
     private String readXtf(String xtfPath, String modelDir, String modelNames, String className, String nested) {
+        long startNanos = System.nanoTime();
+
         // Build effective modeldir: user-specified > XTF directory > default
         String xtfDir = "";
         try { xtfDir = new File(xtfPath).getAbsoluteFile().getParent(); } catch (Exception ignored) {}
         String md = (modelDir != null && !modelDir.isBlank()) ? modelDir
                 : (!xtfDir.isBlank() ? xtfDir + ";" + DEFAULT_MODELDIR : DEFAULT_MODELDIR);
+
+        long xtfFileSize = -1;
+        try { xtfFileSize = Files.size(Path.of(xtfPath)); } catch (Exception ignored) {}
+
+        if (IliLogger.isDebugEnabled()) {
+            System.err.println("[ili-debug] Reading XTF: " + xtfPath
+                + " (size=" + xtfFileSize + " bytes, class=" + className + ", nested=" + nested + ")");
+        }
 
         TransferDescription td = compileModel(md, modelNames);
 
@@ -211,7 +221,18 @@ public class XtfObjectReader {
         } finally {
             if (reader != null) { try { reader.close(); } catch (Exception ignored) {} }
         }
-        return sb.toString();
+
+        String result = sb.toString();
+
+        if (IliLogger.isDebugEnabled()) {
+            long durationMs = (System.nanoTime() - startNanos) / 1_000_000;
+            int rowCount = 0;
+            for (int i = 0; i < result.length(); i++) { if (result.charAt(i) == '\n') rowCount++; }
+            System.err.println("[ili-debug] XTF read completed: " + durationMs + " ms, "
+                + rowCount + " data rows, " + result.length() + " chars (file=" + xtfFileSize + " bytes)");
+        }
+
+        return result;
     }
 
     private TransferDescription compileModel(String modelDir, String modelNames) {

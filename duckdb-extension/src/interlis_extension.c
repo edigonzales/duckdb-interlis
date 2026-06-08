@@ -82,6 +82,22 @@ DUCKDB_EXTENSION_EXTERN
 
 static const char *EXT_VERSION = "0.1.0-dev";
 
+// --- Debug logging (controlled by DUCKDB_ILI_DEBUG=1) ---
+static bool g_debug_enabled = false;
+static bool g_debug_checked = false;
+
+static bool ili_debug_enabled(void) {
+    if (!g_debug_checked) {
+        const char *env = getenv("DUCKDB_ILI_DEBUG");
+        g_debug_enabled = (env && strcmp(env, "1") == 0);
+        g_debug_checked = true;
+    }
+    return g_debug_enabled;
+}
+
+#define ILI_DEBUG_LOG(fmt, ...) \
+    do { if (ili_debug_enabled()) fprintf(stderr, "[ili-debug] " fmt "\n", ##__VA_ARGS__); } while (0)
+
 // --- Native library state ---
 static void *g_native_handle = NULL;
 static graal_isolate_t *g_isolate = NULL;
@@ -379,6 +395,7 @@ static const char *resolve_native_lib_path(void) {
     // 1. Explicit environment override (development only)
     const char *env = getenv("DUCKDB_ILI_NATIVE_LIB");
     if (env && env[0]) {
+        ILI_DEBUG_LOG("Native library path from DUCKDB_ILI_NATIVE_LIB: %s", env);
         return env;
     }
 
@@ -398,20 +415,28 @@ static const char *resolve_native_lib_path(void) {
                 if (!is_regular_file(cache_full_path)) {
                     snprintf(g_path_error, sizeof(g_path_error),
                         "Cache file '%s' is not a regular file (symlink/junction rejected)", cache_full_path);
+                    ILI_DEBUG_LOG("Cache file rejected (not a regular file): %s", cache_full_path);
                     unlink(cache_full_path);
                 } else if (verify_file_hash(cache_full_path, g_path_error, sizeof(g_path_error))) {
+                    ILI_DEBUG_LOG("Native library cache HIT: %s", cache_full_path);
                     return cache_full_path;
                 } else {
                     // Hash mismatch - delete corrupt file and re-extract
+                    ILI_DEBUG_LOG("Cache file hash mismatch, re-extracting: %s", cache_full_path);
                     unlink(cache_full_path);
                 }
+            } else {
+                ILI_DEBUG_LOG("Native library cache MISS: %s", cache_full_path);
             }
 
             // Extract embedded library
             if (make_dir_recursive_safe(cache_dir) == 0) {
+                ILI_DEBUG_LOG("Extracting native library (%zu bytes) to: %s", embedded_native_lib_size, cache_full_path);
                 if (extract_native_lib_safe(cache_full_path, g_path_error, sizeof(g_path_error))) {
+                    ILI_DEBUG_LOG("Native library extraction successful");
                     return cache_full_path;
                 }
+                ILI_DEBUG_LOG("Native library extraction FAILED: %s", g_path_error);
             } else {
                 char errstr[128];
                 ili_strerror(errno, errstr, sizeof(errstr));
@@ -431,6 +456,7 @@ static const char *resolve_native_lib_path(void) {
     };
     for (int i = 0; fallbacks[i]; i++) {
         if (file_exists(fallbacks[i])) {
+            ILI_DEBUG_LOG("Native library found at dev fallback path: %s", fallbacks[i]);
             return fallbacks[i];
         }
     }
@@ -606,6 +632,11 @@ static bool init_native_library_locked(void) {
 
     // Detach the init thread since DuckDB will attach its own threads
     g_detach_thread(init_thread);
+
+    ILI_DEBUG_LOG("Native library initialized: ABI v%u, capabilities=0x%016llx, ext=%s",
+        g_handshake.abi_version,
+        (unsigned long long)g_handshake.capabilities,
+        EXT_VERSION);
     return true;
 
 cleanup_handshake_fail:
@@ -1229,6 +1260,9 @@ static void ili_validate_init(duckdb_init_info info) {
         return;
     }
 
+    size_t payload_size = strlen(result);
+    ILI_DEBUG_LOG("Validation result payload: %zu bytes", payload_size);
+
     // Parse TSV result
     ili_validate_init_data *id = malloc(sizeof(ili_validate_init_data));
     memset(id, 0, sizeof(*id));
@@ -1272,6 +1306,10 @@ static void ili_validate_init(duckdb_init_info info) {
     }
 
     free(result);
+
+    ILI_DEBUG_LOG("Validation parsed: %zu rows (%d errors, %d warnings, %d info)",
+        (size_t)id->row_count, id->error_count, id->warning_count, id->info_count);
+
     duckdb_init_set_init_data(info, id, init_data_destroy);
 }
 
@@ -2048,6 +2086,8 @@ static void gen_sql_init_func(duckdb_init_info info) {
         ili_report_error(info, status, result, "Native import call failed");
         return;
     }
+
+    ILI_DEBUG_LOG("Import SQL payload: %zu bytes", strlen(result));
 
     gen_sql_init_data *id = malloc(sizeof(gen_sql_init_data));
     id->sql_script = result;  // Already C-allocated by ili_call_struct_str (strdup)

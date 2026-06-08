@@ -19,6 +19,15 @@ public class IliImportService {
             : "https://models.interlis.ch";
 
     public String generateImportSql(String xtfPath, String modelDir, String schema, String mapping, String mode) {
+        long startNanos = System.nanoTime();
+
+        long xtfFileSize = -1;
+        try { xtfFileSize = Files.size(Path.of(xtfPath)); } catch (Exception ignored) {}
+
+        if (IliLogger.isDebugEnabled()) {
+            System.err.println("[ili-debug] Generating import SQL: " + xtfPath
+                + " (size=" + xtfFileSize + " bytes, schema=" + schema + ", mapping=" + mapping + ", mode=" + mode + ")");
+        }
         String effectiveMode = (mode != null && !mode.isBlank()) ? mode : "create";
         if (!effectiveMode.equals("create") && !effectiveMode.equals("replace") && !effectiveMode.equals("append")) {
             throw new RuntimeException("Unsupported import mode: '" + mode + "'. Valid modes: create, replace, append.");
@@ -72,7 +81,15 @@ public class IliImportService {
             }
         }
         sql.append("COMMIT;\n");
-        return sql.toString();
+        String result = sql.toString();
+
+        if (IliLogger.isDebugEnabled()) {
+            long durationMs = (System.nanoTime() - startNanos) / 1_000_000;
+            System.err.println("[ili-debug] Import SQL generation completed: " + durationMs + " ms, "
+                + result.length() + " chars (file=" + xtfFileSize + " bytes)");
+        }
+
+        return result;
     }
 
     // -----------------------------------------------------------------------

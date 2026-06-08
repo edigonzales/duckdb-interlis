@@ -77,8 +77,8 @@
 | 37 | LeakSanitizer (LSan) | ❌ | 12 |
 | 38 | Parallel call tests | ❌ | 4,12 |
 | 39 | Regression tests for all known bugs | ❌ | 0,12 |
-| 40 | Documentation (installation, security, ABI, validation, errors, limitations, performance, troubleshooting) | ⚠️ | 0,13 |
-| 41 | Known limitations documented | ❌ | 13 |
+| 40 | Documentation (installation, security, ABI, validation, errors, limitations, performance, troubleshooting) | ✅ | 0,13 |
+| 41 | Known limitations documented | ✅ | 13 |
 
 ## Request Transfer
 
@@ -119,11 +119,11 @@
 | XTF Reading | 5 | 0 |
 | Import | 6 | 0 |
 | Build | 6 | 1 |
-| Quality | 7 | 0 |
+| Quality | 7 | 2 |
 | Request Transfer | 5 | 0 |
 | Java Cache & Logger | 5 | 5 |
 | Native Library Extraction | 4 | 0 |
-| **Total** | **55** | **6** |
+| **Total** | **55** | **8** |
 
 ---
 
@@ -148,4 +148,4 @@ Each requirement is verified by the corresponding Phase:
 | 12 | #34-#39 |
 | 13 | #40, #41 |
 
-**Current overall readiness:** 6/55 = 10.9%
+**Current overall readiness:** 8/55 = 14.5%

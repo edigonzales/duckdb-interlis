@@ -27,6 +27,8 @@ public class IliValidatorService {
     }
 
     public ValidationResult validate(Path xtfFile, String modelDir, int maxMessages, ValidationProfile profile) {
+        long startNanos = System.nanoTime();
+
         if (!Files.isRegularFile(xtfFile)) {
             return new ValidationResult(List.of(
                 new ValidationMessage.Builder()
@@ -34,6 +36,13 @@ public class IliValidatorService {
                     .message("File not found: " + xtfFile)
                     .fileName(xtfFile.toString())
                     .build()));
+        }
+
+        long xtfFileSize = -1;
+        try { xtfFileSize = Files.size(xtfFile); } catch (IOException ignored) {}
+
+        if (IliLogger.isDebugEnabled()) {
+            System.err.println("[ili-debug] Validating: " + xtfFile + " (size=" + xtfFileSize + " bytes, profile=" + profile + ")");
         }
 
         String effectiveModelDir = resolveModelDir(modelDir, xtfFile);
@@ -80,7 +89,15 @@ public class IliValidatorService {
                 IliLogger.restore();
             }
 
-            return parseCsv(csvLog, xtfFile, maxMessages);
+            ValidationResult result = parseCsv(csvLog, xtfFile, maxMessages);
+
+            if (IliLogger.isDebugEnabled()) {
+                long durationMs = (System.nanoTime() - startNanos) / 1_000_000;
+                System.err.println("[ili-debug] Validation completed: " + durationMs + " ms, "
+                    + result.getMessages().size() + " messages (file=" + xtfFileSize + " bytes)");
+            }
+
+            return result;
 
         } catch (Exception e) {
             return new ValidationResult(List.of(

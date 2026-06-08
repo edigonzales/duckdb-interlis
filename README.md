@@ -151,6 +151,31 @@ or with the dev helper:
 scripts/dev-duckdb.sh < sql/examples/01-version.sql
 ```
 
+## Documentation
+
+| Document | Description |
+|---|---|
+| [docs/installation.md](docs/installation.md) | Installation, setup, and environment variables |
+| [docs/security.md](docs/security.md) | Security architecture: hash verification, atomic extraction, symlink rejection |
+| [docs/functions.md](docs/functions.md) | Complete function reference with examples |
+| [docs/validation-profiles.md](docs/validation-profiles.md) | Validation profiles: FULL, STRUCTURAL, FAST |
+| [docs/error-handling.md](docs/error-handling.md) | Error codes, error visibility, common scenarios |
+| [docs/limitations.md](docs/limitations.md) | Known limitations: file size, memory, parallelism, construct coverage |
+| [docs/performance.md](docs/performance.md) | Performance characteristics, caching, debug metrics |
+| [docs/troubleshooting.md](docs/troubleshooting.md) | Common problems and solutions |
+| [docs/native-abi.md](docs/native-abi.md) | Native ABI reference (for developers) |
+| [docs/architecture.md](docs/architecture.md) | System architecture overview |
+
+## Debug Mode
+
+Set `DUCKDB_ILI_DEBUG=1` for diagnostic output on stderr:
+
+```bash
+DUCKDB_ILI_DEBUG=1 duckdb -unsigned -c "SELECT count(*) FROM ili_validate('file.xtf');"
+```
+
+See [docs/performance.md](docs/performance.md) and [docs/troubleshooting.md](docs/troubleshooting.md) for details.
+
 ## Project Structure
 
 ```
