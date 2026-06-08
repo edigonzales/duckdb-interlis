@@ -79,6 +79,19 @@ jobs:
           ./gradlew :java:ili-native:nativeSharedLibrary
           ls -la java/ili-native/build/native/ 2>/dev/null || echo "No native output"
 
+      - name: Generate SBOM (CycloneDX)
+        shell: bash
+        run: |
+          ./gradlew cyclonedxBom
+          find java -name "*sbom*.json" -type f
+
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ matrix.classifier }}
+          path: |
+            java/*/build/sbom/*.json
+
       - name: Copy native library to extension directory
         shell: bash
         run: |
@@ -126,13 +139,14 @@ jobs:
       - name: Append extension metadata
         shell: bash
         run: |
+          EXT_VERSION=$(cat VERSION)
           PYTHON=$(command -v python3 || command -v python)
           $PYTHON scripts/append_extension_metadata.py \
             -l duckdb-extension/build/interlis.duckdb_extension \
             -n interlis \
             -p ${{ matrix.duckdb-platform }} \
              -dv v1.2.0 \
-            -ev 0.1.0-dev \
+            -ev "$EXT_VERSION" \
             -o duckdb-extension/build/interlis.duckdb_extension
 
       - name: Install DuckDB CLI
@@ -149,12 +163,27 @@ jobs:
           EXT_PATH="${{ github.workspace }}/duckdb-extension/build/interlis.duckdb_extension"
           ./${{ matrix.duckdb-cli-bin }} -unsigned -cmd "LOAD '$EXT_PATH'" < sql/smoke.sql
 
+      - name: Generate checksums
+        shell: bash
+        run: |
+          EXT_PATH="duckdb-extension/build/interlis.duckdb_extension"
+          if command -v sha256sum &>/dev/null; then
+            sha256sum "$EXT_PATH" > "${EXT_PATH}.sha256"
+          elif command -v shasum &>/dev/null; then
+            shasum -a 256 "$EXT_PATH" > "${EXT_PATH}.sha256"
+          else
+            echo "WARNING: No sha256sum or shasum available"
+          fi
+          echo "SHA-256:"
+          cat "${EXT_PATH}.sha256" 2>/dev/null || true
+
       - name: Upload extension artifact
         uses: actions/upload-artifact@v4
         with:
           name: interlis-${{ matrix.classifier }}
           path: |
             duckdb-extension/build/interlis.duckdb_extension
+            duckdb-extension/build/interlis.duckdb_extension.sha256
 
   deploy:
     name: Deploy to Repository
@@ -200,26 +229,36 @@ jobs:
           strip_components: 1
           rm: false
 
-  # release:
-  #   name: Create Release
-  #   if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
-  #   needs: build
-  #   runs-on: ubuntu-latest
-  #   permissions:
-  #     contents: write
-  #   steps:
-  #     - uses: actions/download-artifact@v4
-  #       with:
-  #         pattern: interlis-*
-  #         merge-multiple: false
+  release:
+    name: Create GitHub Release
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: interlis-*
+          merge-multiple: false
 
-  #     - name: Create GitHub Release
-  #       uses: softprops/action-gh-release@v2
-  #       with:
-  #         draft: ${{ github.event_name == 'workflow_dispatch' }}
-  #         files: |
-  #           interlis-linux-x86_64/interlis.duckdb_extension
-  #           interlis-linux-aarch64/interlis.duckdb_extension
-  #           interlis-osx-aarch64/interlis.duckdb_extension
-  #           interlis-windows-x86_64/interlis.duckdb_extension
-  #         generate_release_notes: true
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: sbom-*
+          merge-multiple: false
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: ${{ github.event_name == 'workflow_dispatch' }}
+          files: |
+            interlis-linux-x86_64/interlis.duckdb_extension
+            interlis-linux-x86_64/interlis.duckdb_extension.sha256
+            interlis-linux-aarch64/interlis.duckdb_extension
+            interlis-linux-aarch64/interlis.duckdb_extension.sha256
+            interlis-osx-aarch64/interlis.duckdb_extension
+            interlis-osx-aarch64/interlis.duckdb_extension.sha256
+            interlis-windows-x86_64/interlis.duckdb_extension
+            interlis-windows-x86_64/interlis.duckdb_extension.sha256
+          generate_release_notes: true

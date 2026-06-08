@@ -8,7 +8,11 @@ if [[ -f "$SCRIPT_DIR/env.sh" ]]; then
     source "$SCRIPT_DIR/env.sh"
 fi
 
-export JAVA_HOME="${GRAALVM_HOME:-/Users/stefan/.sdkman/candidates/java/25.0.3-graal}"
+if [[ -z "${GRAALVM_HOME:-}" ]]; then
+    echo "ERROR: GRAALVM_HOME is not set. Run: source scripts/env.sh" >&2
+    exit 1
+fi
+export JAVA_HOME="$GRAALVM_HOME"
 export PATH="$JAVA_HOME/bin:$PATH"
 
 cd "$REPO_ROOT"

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Template for scripts/env.sh (copy to scripts/env.sh and adjust paths)
-export GRAALVM_HOME="/Users/stefan/.sdkman/candidates/java/25.0.3-graal"
+export GRAALVM_HOME="/path/to/graalvm-jdk-25"
 export JAVA_HOME="$GRAALVM_HOME"
 export DUCKDB_CLI="$HOME/bin/duckdb"
 export CMAKE="$HOME/cmake-4.1.0/CMake.app/Contents/bin/cmake"

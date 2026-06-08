@@ -7,6 +7,34 @@ set(EXTENSION_NAME "interlis")
 add_definitions(-DDUCKDB_EXTENSION_NAME=${EXTENSION_NAME})
 
 # ---------------------------------------------------------------------------
+# Version: read from repo-root VERSION file (single source of truth)
+# ---------------------------------------------------------------------------
+file(READ "${CMAKE_SOURCE_DIR}/../VERSION" EXTENSION_VERSION)
+string(STRIP "${EXTENSION_VERSION}" EXTENSION_VERSION)
+
+# Native library version matches extension version
+set(NATIVE_LIB_VERSION "${EXTENSION_VERSION}")
+
+# DuckDB C_STRUCT ABI version used in extension cache path
+set(ILI_ABI_VERSION "v1.2.0")
+
+# ---------------------------------------------------------------------------
+# Build metadata
+# ---------------------------------------------------------------------------
+execute_process(
+    COMMAND git -C "${CMAKE_SOURCE_DIR}/.." rev-parse --short HEAD
+    OUTPUT_VARIABLE ILI_GIT_SHA
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+)
+if(NOT ILI_GIT_SHA)
+    set(ILI_GIT_SHA "unknown")
+endif()
+
+string(TIMESTAMP ILI_BUILD_TIMESTAMP UTC)
+set(ILI_BUILD_PLATFORM "${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}")
+
+# ---------------------------------------------------------------------------
 # Platform detection for DuckDB platform name (used in extension cache path)
 # ---------------------------------------------------------------------------
 if(APPLE)
@@ -25,9 +53,6 @@ else()
     endif()
 endif()
 
-# C_STRUCT ABI version used in DuckDB extension cache path
-set(ILI_ABI_VERSION "v1.2.0")
-
 # ---------------------------------------------------------------------------
 # DuckDB C API headers
 # ---------------------------------------------------------------------------
@@ -36,7 +61,6 @@ set(DUCKDB_CAPI_DIR "${CMAKE_SOURCE_DIR}/src/include")
 # ---------------------------------------------------------------------------
 # Extension source files
 # ---------------------------------------------------------------------------
-set(EXTENSION_VERSION "0.1.0-dev")
 
 set(EXTENSION_SOURCES
     src/interlis_extension.c
@@ -46,12 +70,15 @@ set(EXTENSION_SOURCES
 # ---------------------------------------------------------------------------
 # Embed native library as blob
 # ---------------------------------------------------------------------------
+option(ILI_ALLOW_MISSING_NATIVE_LIB "Allow building without embedded native library (development only)" OFF)
+
 set(NATIVE_LIB_DIR "${CMAKE_SOURCE_DIR}/build/native/current")
 set(NATIVE_LIB_PATH "${NATIVE_LIB_DIR}/libduckdb_ili_native${CMAKE_SHARED_LIBRARY_SUFFIX}")
 set(EMBEDDED_C_FILE "${CMAKE_CURRENT_BINARY_DIR}/embedded_native_lib.c")
 
 if(EXISTS "${EMBEDDED_C_FILE}")
     message(STATUS "Using pre-generated embedded native lib: ${EMBEDDED_C_FILE}")
+    list(APPEND EXTENSION_SOURCES "${EMBEDDED_C_FILE}")
 elseif(EXISTS "${NATIVE_LIB_PATH}")
     find_package(Python3 QUIET COMPONENTS Interpreter)
     if(Python3_FOUND)
@@ -62,19 +89,24 @@ elseif(EXISTS "${NATIVE_LIB_PATH}")
             COMMENT "Embedding native library (Python): ${NATIVE_LIB_PATH}"
         )
         message(STATUS "Native library found: ${NATIVE_LIB_PATH} (will embed via Python)")
+        list(APPEND EXTENSION_SOURCES "${EMBEDDED_C_FILE}")
     else()
-        message(WARNING "Native library found but Python3 not available, embedding skipped")
+        if(NOT ILI_ALLOW_MISSING_NATIVE_LIB)
+            message(FATAL_ERROR "Native library found but Python3 not available. Install Python3 or set -DILI_ALLOW_MISSING_NATIVE_LIB=ON")
+        endif()
+        message(WARNING "Native library found but Python3 not available, building without embedded lib")
     endif()
 else()
-    message(WARNING "Native library not found, building extension without embedded lib")
+    if(NOT ILI_ALLOW_MISSING_NATIVE_LIB)
+        message(FATAL_ERROR "Native library not found at ${NATIVE_LIB_PATH}. Build the native library first (scripts/build-native.sh) or set -DILI_ALLOW_MISSING_NATIVE_LIB=ON for development")
+    endif()
+    message(WARNING "Native library not found, building extension without embedded lib (ILI_ALLOW_MISSING_NATIVE_LIB=ON)")
 endif()
 
-if(EXISTS "${EMBEDDED_C_FILE}" OR (EXISTS "${NATIVE_LIB_PATH}" AND Python3_FOUND))
-    list(APPEND EXTENSION_SOURCES "${EMBEDDED_C_FILE}")
-else()
-    # Dummy to satisfy external symbol references
+if(NOT EXISTS "${EMBEDDED_C_FILE}" AND NOT (EXISTS "${NATIVE_LIB_PATH}" AND Python3_FOUND))
+    # Dummy to satisfy external symbol references (only when explicitly allowed)
     file(WRITE "${EMBEDDED_C_FILE}"
-        "// Dummy - native library not embedded\n"
+        "// Dummy - native library not embedded (ILI_ALLOW_MISSING_NATIVE_LIB=ON)\n"
         "#include <stddef.h>\n"
         "const unsigned char embedded_native_lib_data[1] = {0};\n"
         "const size_t embedded_native_lib_size = 0;\n"
@@ -95,6 +127,10 @@ target_compile_definitions(${EXTENSION_NAME} PRIVATE
     ILI_DUCKDB_PLATFORM="${ILI_DUCKDB_PLATFORM}"
     ILI_ABI_VERSION="${ILI_ABI_VERSION}"
     ILI_EXTENSION_VERSION="${EXTENSION_VERSION}"
+    ILI_NATIVE_LIB_VERSION="${NATIVE_LIB_VERSION}"
+    ILI_GIT_SHA="${ILI_GIT_SHA}"
+    ILI_BUILD_TIMESTAMP="${ILI_BUILD_TIMESTAMP}"
+    ILI_BUILD_PLATFORM="${ILI_BUILD_PLATFORM}"
 )
 
 # Link system libraries

@@ -26,19 +26,22 @@ fi
 
 echo ""
 echo "--- Java / GraalVM ---"
-GRAALVM_HOME="${GRAALVM_HOME:-/Users/stefan/.sdkman/candidates/java/25.0.3-graal}"
-if [[ -n "$GRAALVM_HOME" && -x "$GRAALVM_HOME/bin/java" ]]; then
-    check_ok "GRAALVM_HOME=$GRAALVM_HOME"
-    if [[ -x "$GRAALVM_HOME/bin/native-image" ]]; then
-        check_ok "native-image in GRAALVM_HOME"
-    else
-        check_fail "native-image in GRAALVM_HOME"
-    fi
-    echo -n "  GraalVM version ... "
-    "$GRAALVM_HOME/bin/java" --version 2>&1 | head -1
-    ((pass++)) || true
+if [[ -z "${GRAALVM_HOME:-}" ]]; then
+    check_fail "GRAALVM_HOME not set (source scripts/env.sh)"
 else
-    check_fail "GRAALVM_HOME not set or invalid"
+    if [[ -x "$GRAALVM_HOME/bin/java" ]]; then
+        check_ok "GRAALVM_HOME=$GRAALVM_HOME"
+        if [[ -x "$GRAALVM_HOME/bin/native-image" ]]; then
+            check_ok "native-image in GRAALVM_HOME"
+        else
+            check_fail "native-image in GRAALVM_HOME"
+        fi
+        echo -n "  GraalVM version ... "
+        "$GRAALVM_HOME/bin/java" --version 2>&1 | head -1
+        ((pass++)) || true
+    else
+        check_fail "GRAALVM_HOME set but java not found: $GRAALVM_HOME/bin/java"
+    fi
 fi
 
 echo ""

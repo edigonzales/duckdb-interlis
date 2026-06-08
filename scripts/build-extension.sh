@@ -13,11 +13,10 @@ EXT_DIR="$REPO_ROOT/duckdb-extension"
 BUILD_DIR="$EXT_DIR/build"
 CMAKE="${CMAKE:-cmake}"
 # DuckDB C_STRUCT ABI version for extension metadata
-# This is the C API ABI version, not the DuckDB binary version
-# The local DuckDB binary may use a different C_STRUCT ABI version
 DUCKDB_ABI_VERSION="${DUCKDB_ABI_VERSION:-v1.2.0}"
 [[ "$DUCKDB_ABI_VERSION" != v* ]] && DUCKDB_ABI_VERSION="v$DUCKDB_ABI_VERSION"
-EXT_VERSION="${EXT_VERSION:-0.1.0-dev}"
+# Extension version from VERSION file (single source of truth)
+EXT_VERSION="${EXT_VERSION:-$(cat "$REPO_ROOT/VERSION")}"
 
 # Detect DuckDB platform identifier
 detect_platform() {

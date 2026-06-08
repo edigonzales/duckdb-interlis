@@ -18,14 +18,19 @@ tasks.register('nativeSharedLibrary', Exec) {
     def javaHome = providers.environmentVariable('GRAALVM_HOME')
             .orElse(providers.systemProperty('java.home'))
             .get()
-    def isWindows = System.getProperty('os.name').toLowerCase().contains('win')
+    def osName = System.getProperty('os.name').toLowerCase()
+    def isWindows = osName.contains('win')
+    def isMacOS = osName.contains('mac')
     def nativeImage = isWindows
         ? "${javaHome}/bin/native-image.cmd"
         : "${javaHome}/bin/native-image"
     def classpath = sourceSets.main.runtimeClasspath.asPath
     def mainClass = 'ch.so.agi.duckdbili.nativeapi.NativeEntryPoints'
     def outputDir = layout.buildDirectory.dir('native').get().asFile
-    def outputFile = new File(outputDir, 'libduckdb_ili_native')
+    def libSuffix = isWindows ? '.dll' : isMacOS ? '.dylib' : '.so'
+    // GraalVM appends the platform suffix to -o, so pass base name only
+    def outputBase = new File(outputDir, 'libduckdb_ili_native')
+    def outputFile = new File(outputDir, "libduckdb_ili_native${libSuffix}")
 
     def includeDir = new File(project.rootDir, 'duckdb-extension/src/include').absolutePath
     commandLine(
@@ -35,7 +40,7 @@ tasks.register('nativeSharedLibrary', Exec) {
         '-H:+ReportExceptionStackTraces',
         '-H:CLibraryPath=' + includeDir,
         '-H:CCompilerOption=-I' + includeDir,
-        '-o', outputFile.absolutePath,
+        '-o', outputBase.absolutePath,
         '-cp', classpath,
         mainClass
     )
