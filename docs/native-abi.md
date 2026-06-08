@@ -39,23 +39,42 @@ The C extension dynamically loads the GraalVM-compiled shared library at first u
 
 ### Search Order
 
-1. Environment variable `DUCKDB_ILI_NATIVE_LIB` (explicit override)
-2. DuckDB extension cache: `~/.duckdb/extensions/{ILI_ABI_VERSION}/{ILI_DUCKDB_PLATFORM}/libduckdb_ili_native.{dylib|so|dll}`
-3. Extract embedded blob to cache directory (from `embedded_native_lib_data[]`)
-4. Fallback dev paths: `build/native/current/`, `../java/ili-native/build/native/`, `../../java/ili-native/build/native/`
+1. **Environment variable `DUCKDB_ILI_NATIVE_LIB`** (explicit development override).  
+   When set, the path is used directly without hash verification.  
+   This is intended for development only; productive builds should not rely on this variable.
 
-### Extraction Process (Embrittled)
+2. **Hashed extension cache** (primary productive path):  
+   `{HOME}/.duckdb/extensions/{ILI_ABI_VERSION}/{ILI_DUCKDB_PLATFORM}/{hashed_filename}`  
+   
+   The hashed filename format is:  
+   `{EXTENSION_VERSION}_{ABI_VERSION}_{PLATFORM}_{SHA256_SHORT}_{LIB_NAME}`  
+   
+   Example: `0.1.0-dev_v1.2.0_osx_arm64_17fe5b2e0c13_libduckdb_ili_native.dylib`
 
-The embedded native library is extracted by:
-1. Writing `embedded_native_lib_data[]` directly to the cache path
-2. Setting executable permissions (`chmod 0755`)
-3. No hash verification, no atomic rename, no fsync
+3. **Dev fallback paths** (debug builds only):  
+   `build/native/current/{LIB_NAME}`, `../java/ili-native/build/native/{LIB_NAME}`, `../../java/ili-native/build/native/{LIB_NAME}`  
+   These paths are only active when compiled without `-DNDEBUG` (debug builds).  
+   Release builds do not search these paths, preventing accidental use of local developer libraries.
 
-**Issues:**
-- Parallel processes may write the same file simultaneously.
-- Partially written files may be used by subsequent runs.
-- No integrity check.
-- No version/hash in the filename.
+### Extraction Process (Phase 8)
+
+The embedded native library is extracted with full integrity guarantees:
+
+1. **Temp file**: Written to `{cache_path}.tmp.{pid}` in the same directory to ensure filesystem-local atomic operations.
+2. **Full write**: The entire `embedded_native_lib_data[]` blob is written.
+3. **Flush and sync**: `fflush()` + `fsync()` (POSIX) or `FlushFileBuffers()` (Windows) ensures data reaches disk.
+4. **Hash verification**: SHA-256 of the temp file is computed and compared against the build-time hash (`embedded_native_lib_hash`).  
+   If the hash does not match, the temp file is deleted and an error is reported.
+5. **Permissions**: `chmod 0755` is applied to the temp file (POSIX only).
+6. **Atomic rename**: `rename()` (POSIX) atomically moves the temp file to the final cache path.  
+   If another process concurrently extracted the same library, the existing file is verified and used.
+7. **Cache reuse**: On subsequent loads, the cache file's SHA-256 is verified before use.  
+   If verification fails (corrupted file, wrong hash), the file is deleted and re-extracted.
+8. **Symlink rejection**: `lstat()` (POSIX) or reparse point check (Windows) rejects symlinks/junctions in the cache.  
+   Symlinks are deleted and the library is re-extracted.
+9. **Directory permissions**: Cache directory is created with `0700` permissions.
+10. **Parallel safety**: Each process writes to its own temp file, then atomically renames.  
+    Concurrent extraction by multiple processes is safe.
 
 ### Symbol Resolution
 

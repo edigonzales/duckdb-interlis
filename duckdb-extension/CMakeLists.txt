@@ -36,8 +36,11 @@ set(DUCKDB_CAPI_DIR "${CMAKE_SOURCE_DIR}/src/include")
 # ---------------------------------------------------------------------------
 # Extension source files
 # ---------------------------------------------------------------------------
+set(EXTENSION_VERSION "0.1.0-dev")
+
 set(EXTENSION_SOURCES
     src/interlis_extension.c
+    src/sha256.c
 )
 
 # ---------------------------------------------------------------------------
@@ -75,6 +78,8 @@ else()
         "#include <stddef.h>\n"
         "const unsigned char embedded_native_lib_data[1] = {0};\n"
         "const size_t embedded_native_lib_size = 0;\n"
+        "const char embedded_native_lib_hash[65] = \"\";\n"
+        "const char embedded_native_lib_hash_short[13] = \"\";\n"
     )
     list(APPEND EXTENSION_SOURCES "${EMBEDDED_C_FILE}")
 endif()
@@ -89,6 +94,7 @@ target_include_directories(${EXTENSION_NAME} PRIVATE ${DUCKDB_CAPI_DIR})
 target_compile_definitions(${EXTENSION_NAME} PRIVATE
     ILI_DUCKDB_PLATFORM="${ILI_DUCKDB_PLATFORM}"
     ILI_ABI_VERSION="${ILI_ABI_VERSION}"
+    ILI_EXTENSION_VERSION="${EXTENSION_VERSION}"
 )
 
 # Link system libraries
