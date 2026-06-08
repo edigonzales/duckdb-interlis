@@ -48,6 +48,40 @@ typedef struct ili_request {
     const char *profile;
 } ili_request;
 
+/*
+ * ABI Negotiation
+ */
+
+#define ILI_NATIVE_ABI_VERSION 1
+
+/* Capability bits */
+#define ILI_CAP_VERSION               (1ULL << 0)
+#define ILI_CAP_VALIDATE              (1ULL << 1)
+#define ILI_CAP_VALIDATE_TSV          (1ULL << 2)
+#define ILI_CAP_MODEL_INFO            (1ULL << 3)
+#define ILI_CAP_READ_XTF              (1ULL << 4)
+#define ILI_CAP_READ_XTF_CLASS        (1ULL << 5)
+#define ILI_CAP_READ_XTF_CLASS_SCHEMA (1ULL << 6)
+#define ILI_CAP_READ_XTF_STRUCTURES   (1ULL << 7)
+#define ILI_CAP_READ_XTF_ASSOCIATION  (1ULL << 8)
+#define ILI_CAP_READ_XTF_ASSOC_SCHEMA (1ULL << 9)
+#define ILI_CAP_IMPORT_XTF            (1ULL << 10)
+#define ILI_CAP_FREE_STRING           (1ULL << 11)
+
+/* All capabilities required for the core ILI extension functionality */
+#define ILI_CAP_REQUIRED_MASK \
+    (ILI_CAP_VERSION | ILI_CAP_VALIDATE | ILI_CAP_VALIDATE_TSV | \
+     ILI_CAP_MODEL_INFO | ILI_CAP_READ_XTF | ILI_CAP_READ_XTF_CLASS | \
+     ILI_CAP_READ_XTF_CLASS_SCHEMA | ILI_CAP_FREE_STRING)
+
+typedef struct ili_api_v1 {
+    uint32_t struct_size;
+    uint32_t abi_version;
+    uint64_t capabilities;
+} ili_api_v1;
+
+int ili_get_api(uint32_t requested_abi_version, char **out_payload);
+
 #ifdef __cplusplus
 }
 #endif

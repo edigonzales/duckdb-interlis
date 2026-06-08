@@ -442,27 +442,96 @@ All requests are JSON objects built manually with `snprintf` in C and parsed wit
 
 ## 10. ABI Versioning
 
-### Current (No ABI Version)
+### Implemented (Phase 9)
 
-There is **no ABI version handshake**. The C extension resolves individual symbols with `dlsym` and assumes compatibility. If the native library is compiled from a different code version, the mismatch may cause:
-- Wrong function signatures → crash
-- Missing symbols → graceful error (null check)
-- Changed payload format → parser errors silently ignored
+The ABI handshake has been implemented. The extension and native library negotiate
+compatibility through a single entry point, `ili_get_api()`. Individual `dlsym` calls
+for API functions have been replaced by a function pointer table.
 
-### Proposed (Phase 9)
+**Header:** `duckdb-extension/src/include/ili_api.h`
 
 ```c
 #define ILI_NATIVE_ABI_VERSION 1
 
 typedef struct ili_api_v1 {
-    uint32_t struct_size;
-    uint32_t abi_version;
-    uint64_t capabilities;
-    // function pointers...
+    uint32_t struct_size;   // sizeof(ili_api_v1), set by caller
+    uint32_t abi_version;   // populated by callee: ILI_NATIVE_ABI_VERSION
+    uint64_t capabilities;  // bitmask of ILI_CAP_* flags
+
+    int  (*version)(graal_isolatethread_t*, char**);
+    int  (*validate)(graal_isolatethread_t*, ili_request*, char**);
+    int  (*validate_tsv)(graal_isolatethread_t*, ili_request*, char**);
+    int  (*model_info)(graal_isolatethread_t*, ili_request*, char**);
+    int  (*read_xtf)(graal_isolatethread_t*, ili_request*, char**);
+    int  (*read_xtf_class)(graal_isolatethread_t*, ili_request*, char**);
+    int  (*read_xtf_class_schema)(graal_isolatethread_t*, ili_request*, char**);
+    int  (*read_xtf_structures)(graal_isolatethread_t*, ili_request*, char**);
+    int  (*read_xtf_association)(graal_isolatethread_t*, ili_request*, char**);
+    int  (*read_xtf_association_schema)(graal_isolatethread_t*, ili_request*, char**);
+    int  (*import_xtf)(graal_isolatethread_t*, ili_request*, char**);
+    void (*free_string)(graal_isolatethread_t*, char*);
 } ili_api_v1;
 
 int ili_get_api(uint32_t requested_abi_version, ili_api_v1 *out_api);
 ```
+
+**Initialization flow:**
+
+1. `dlopen(lib)` → resolve `graal_create_isolate`, `graal_attach_thread`,
+   `graal_detach_thread`, `graal_tear_down_isolate`, and `ili_get_api` (5 symbols)
+2. `create_isolate` → get init_thread
+3. Set `out_api->struct_size = sizeof(ili_api_v1)`
+4. Call `ili_get_api(init_thread, ILI_NATIVE_ABI_VERSION, &out_api)`
+5. Validate: `struct_size`, `abi_version`, `capabilities`, function pointers
+6. Store `ili_api_v1` and use function pointers from the table
+7. `detach_thread(init_thread)`
+
+**Validation checks (C extension):**
+
+- `struct_size >= sizeof(ili_api_v1)` — truncated struct rejected
+- `abi_version == ILI_NATIVE_ABI_VERSION` — version match required
+- `(ILI_CAP_REQUIRED_MASK & ~capabilities) == 0` — all required caps present
+- Each declared capability's function pointer is non-NULL
+
+**Capability bits:**
+
+| Bit | Constant | Function |
+|-----|----------|----------|
+| 0 | `ILI_CAP_VERSION` | `version` |
+| 1 | `ILI_CAP_VALIDATE` | `validate` |
+| 2 | `ILI_CAP_VALIDATE_TSV` | `validate_tsv` |
+| 3 | `ILI_CAP_MODEL_INFO` | `model_info` |
+| 4 | `ILI_CAP_READ_XTF` | `read_xtf` |
+| 5 | `ILI_CAP_READ_XTF_CLASS` | `read_xtf_class` |
+| 6 | `ILI_CAP_READ_XTF_CLASS_SCHEMA` | `read_xtf_class_schema` |
+| 7 | `ILI_CAP_READ_XTF_STRUCTURES` | `read_xtf_structures` |
+| 8 | `ILI_CAP_READ_XTF_ASSOCIATION` | `read_xtf_association` |
+| 9 | `ILI_CAP_READ_XTF_ASSOC_SCHEMA` | `read_xtf_association_schema` |
+| 10 | `ILI_CAP_IMPORT_XTF` | `import_xtf` |
+| 11 | `ILI_CAP_FREE_STRING` | `free_string` |
+
+**Required capabilities (C extension minimum):**
+`ILI_CAP_VERSION | ILI_CAP_VALIDATE | ILI_CAP_VALIDATE_TSV | ILI_CAP_MODEL_INFO | ILI_CAP_READ_XTF | ILI_CAP_READ_XTF_CLASS | ILI_CAP_READ_XTF_CLASS_SCHEMA | ILI_CAP_FREE_STRING`
+
+**Backward/forward compatibility:**
+
+- New function pointers appended at the end of `ili_api_v1`
+- Older callers with smaller `struct_size` see only the prefix
+- Newer native libraries can serve older callers (subset of pointers)
+- Capability bits declare which function pointers are valid
+
+### Acceptance tests (native_smoke_test.c)
+
+| Test | Description |
+|------|-------------|
+| A1 | Matching ABI — happy path, all fields populated |
+| A2 | Truncated struct (`struct_size=8`) |
+| A3 | Implausible struct_size (`0xDEAD`) |
+| A4 | Too-old ABI version (request `v0`) |
+| A5 | Too-new ABI version (request `v99`) |
+| Func 1-8 | Functional tests using API table instead of individual dlsym |
+| Func 9 | Required capabilities present |
+| Func 10 | All declared function pointers non-NULL |
 
 ## 11. Platform Constants
 

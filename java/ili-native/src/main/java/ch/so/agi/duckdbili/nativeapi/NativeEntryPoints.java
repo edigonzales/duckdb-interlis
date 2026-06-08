@@ -7,6 +7,7 @@ import org.graalvm.nativeimage.IsolateThread;
 import org.graalvm.nativeimage.UnmanagedMemory;
 import org.graalvm.nativeimage.c.function.CEntryPoint;
 import org.graalvm.nativeimage.c.type.CCharPointer;
+import org.graalvm.nativeimage.c.type.CCharPointer;
 import org.graalvm.nativeimage.c.type.CCharPointerPointer;
 import org.graalvm.nativeimage.c.type.CTypeConversion;
 import org.graalvm.word.WordFactory;
@@ -27,6 +28,9 @@ public class NativeEntryPoints {
     private static volatile IliModelService modelService;
     private static volatile XtfObjectReader xtfReader;
     private static volatile IliImportService importService;
+
+    // ABI handshake constants
+    static final int ABI_VERSION = 1; // Must match ILI_NATIVE_ABI_VERSION in ili_api.h
 
     public static void main(String[] args) {
         System.out.println("ILI Native Library - use as shared library only");
@@ -479,6 +483,49 @@ public class NativeEntryPoints {
             outPayload.write(allocCString(err.toJson()));
             return NativeStatus.MODEL_ERROR;
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // ABI Handshake entry point
+    // -----------------------------------------------------------------------
+
+    @CEntryPoint(name = "ili_get_api")
+    public static int iliGetApi(
+            IsolateThread thread,
+            int requestedAbiVersion,
+            CCharPointerPointer outPayload) {
+
+        if (requestedAbiVersion < 1) {
+            NativeError err = NativeError.invalidArgument("ili_get_api",
+                    "Requested ABI version too low", String.valueOf(requestedAbiVersion));
+            outPayload.write(allocCString(err.toJson()));
+            return NativeStatus.INVALID_ARGUMENT;
+        }
+        if (requestedAbiVersion > ABI_VERSION) {
+            NativeError err = NativeError.unsupported("ili_get_api",
+                    "Requested ABI version too high", String.valueOf(requestedAbiVersion));
+            outPayload.write(allocCString(err.toJson()));
+            return NativeStatus.UNSUPPORTED;
+        }
+
+        long capabilities =
+            (1L << 0)  // VERSION
+            | (1L << 1)  // VALIDATE
+            | (1L << 2)  // VALIDATE_TSV
+            | (1L << 3)  // MODEL_INFO
+            | (1L << 4)  // READ_XTF
+            | (1L << 5)  // READ_XTF_CLASS
+            | (1L << 6)  // READ_XTF_CLASS_SCHEMA
+            | (1L << 7)  // READ_XTF_STRUCTURES
+            | (1L << 8)  // READ_XTF_ASSOCIATION
+            | (1L << 9)  // READ_XTF_ASSOC_SCHEMA
+            | (1L << 10) // IMPORT_XTF
+            | (1L << 11); // FREE_STRING
+
+        // Return ABI metadata as simple JSON
+        String json = "{\"abi_version\":" + ABI_VERSION + ",\"capabilities\":" + capabilities + "}";
+        outPayload.write(allocCString(json));
+        return NativeStatus.OK;
     }
 
     // -----------------------------------------------------------------------

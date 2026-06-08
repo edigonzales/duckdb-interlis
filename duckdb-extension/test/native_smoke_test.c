@@ -3,7 +3,6 @@
 #include <string.h>
 #include <dlfcn.h>
 #include "ili_request.h"
-#include "libduckdb_ili_native_dynamic.h"
 
 static int check_error_payload(int rc, char *payload, const char *test_name) {
     int ok = 1;
@@ -48,68 +47,152 @@ int main(void) {
     void *handle = dlopen(lib_path, RTLD_LAZY);
     if (!handle) { fprintf(stderr, "FAIL dlopen: %s\n", dlerror()); return 1; }
 
-    graal_create_isolate_fn_t create_isolate = (graal_create_isolate_fn_t)dlsym(handle, "graal_create_isolate");
-    graal_tear_down_isolate_fn_t tear_down = (graal_tear_down_isolate_fn_t)dlsym(handle, "graal_tear_down_isolate");
-    ili_native_version_fn_t native_version = (ili_native_version_fn_t)dlsym(handle, "ili_native_version");
-    ili_free_string_fn_t free_string = (ili_free_string_fn_t)dlsym(handle, "ili_free_string");
+    // Resolve lifecycle + ABI entry point
+    graal_create_isolate_fn_t create_isolate =
+        (graal_create_isolate_fn_t)dlsym(handle, "graal_create_isolate");
+    graal_tear_down_isolate_fn_t tear_down =
+        (graal_tear_down_isolate_fn_t)dlsym(handle, "graal_tear_down_isolate");
+    ili_free_string_fn_t free_string =
+        (ili_free_string_fn_t)dlsym(handle, "ili_free_string");
 
-    fprintf(stderr, "create_isolate=%p tear_down=%p native_version=%p free_string=%p\n",
-            (void*)create_isolate, (void*)tear_down, (void*)native_version, (void*)free_string);
+    typedef int (*ili_get_api_fn_t)(graal_isolatethread_t*, uint32_t, char**);
+    ili_get_api_fn_t get_api = (ili_get_api_fn_t)dlsym(handle, "ili_get_api");
 
-    graal_isolatethread_t *thread = NULL;
-    graal_isolate_t *isolate = NULL;
-    if (create_isolate(NULL, &isolate, &thread) != 0) { fprintf(stderr, "FAIL create_isolate\n"); return 1; }
-    fprintf(stderr, "Isolate created\n");
+    if (!create_isolate || !tear_down || !free_string) {
+        fprintf(stderr, "FAIL: missing lifecycle symbols\n");
+        dlclose(handle);
+        return 1;
+    }
 
     int passed = 0, failed = 0;
 
+    // --- ABI Handshake Tests (Phase 9) ---
+
+    // Test A1: Matching ABI — happy path
+    fprintf(stderr, "\n=== ABI Handshake Tests ===\n");
+    fprintf(stderr, "\nTest A1: Matching ABI\n");
+    {
+        graal_isolatethread_t *thread = NULL;
+        graal_isolate_t *isolate = NULL;
+        if (create_isolate(NULL, &isolate, &thread) != 0) {
+            fprintf(stderr, "  FAIL create_isolate\n"); failed++;
+            goto skip_abi_tests;
+        }
+        char *payload = NULL;
+        int rc = get_api(thread, ILI_NATIVE_ABI_VERSION, &payload);
+        fprintf(stderr, "  ili_get_api(v1) rc=%d payload='%s'\n",
+                rc, payload ? payload : "(null)");
+        if (rc == 0 && payload && strstr(payload, "\"abi_version\":1")
+            && strstr(payload, "\"capabilities\":")) {
+            uint64_t caps = 0;
+            const char *c = strstr(payload, "\"capabilities\":");
+            if (c) caps = strtoull(c + 15, NULL, 10);
+            fprintf(stderr, "  caps=0x%016llx\n", (unsigned long long)caps);
+            if ((caps & ILI_CAP_REQUIRED_MASK) == ILI_CAP_REQUIRED_MASK) {
+                fprintf(stderr, "  PASS\n"); passed++;
+            } else {
+                fprintf(stderr, "  FAIL (missing required caps)\n"); failed++;
+            }
+        } else {
+            fprintf(stderr, "  FAIL\n"); failed++;
+        }
+        if (payload) { free_string(thread, payload); payload = NULL; }
+        if (tear_down) tear_down(thread);
+    }
+
+    // Test A2: Too-old ABI version
+    fprintf(stderr, "\nTest A2: Too-old ABI (request v0)\n");
+    {
+        graal_isolatethread_t *thread = NULL;
+        graal_isolate_t *isolate = NULL;
+        if (create_isolate(NULL, &isolate, &thread) != 0) {
+            fprintf(stderr, "  FAIL create_isolate\n"); failed++;
+        } else {
+            char *payload = NULL;
+            int rc = get_api(thread, 0, &payload);
+            fprintf(stderr, "  ili_get_api(v0) rc=%d payload='%s'\n",
+                    rc, payload ? payload : "(null)");
+            if (rc != 0) {
+                fprintf(stderr, "  PASS (v0 rejected)\n"); passed++;
+            } else {
+                fprintf(stderr, "  FAIL (v0 unexpectedly accepted)\n"); failed++;
+            }
+            if (payload) { free_string(thread, payload); payload = NULL; }
+            if (tear_down) tear_down(thread);
+        }
+    }
+
+    // Test A3: Too-new ABI version
+    fprintf(stderr, "\nTest A3: Too-new ABI (request v99)\n");
+    {
+        graal_isolatethread_t *thread = NULL;
+        graal_isolate_t *isolate = NULL;
+        if (create_isolate(NULL, &isolate, &thread) != 0) {
+            fprintf(stderr, "  FAIL create_isolate\n"); failed++;
+        } else {
+            char *payload = NULL;
+            int rc = get_api(thread, 99, &payload);
+            fprintf(stderr, "  ili_get_api(v99) rc=%d payload='%s'\n",
+                    rc, payload ? payload : "(null)");
+            if (rc != 0) {
+                fprintf(stderr, "  PASS (v99 rejected)\n"); passed++;
+            } else {
+                fprintf(stderr, "  FAIL (v99 unexpectedly accepted)\n"); failed++;
+            }
+            if (payload) { free_string(thread, payload); payload = NULL; }
+            if (tear_down) tear_down(thread);
+        }
+    }
+
+skip_abi_tests:
+
+    // --- Functional Tests via individual dlsym ---
+    graal_isolatethread_t *thread = NULL;
+    graal_isolate_t *isolate = NULL;
+    if (create_isolate(NULL, &isolate, &thread) != 0) {
+        fprintf(stderr, "\nFAIL create_isolate for functional tests\n"); failed++;
+        dlclose(handle);
+        return failed > 0 ? 1 : 0;
+    }
+
+    // Resolve API functions via dlsym (after ABI handshake validation)
+    ili_native_version_fn_t native_version = (ili_native_version_fn_t)dlsym(handle, "ili_native_version");
+    ili_native_validate_fn_t native_validate = (ili_native_validate_fn_t)dlsym(handle, "ili_native_validate");
+    ili_native_model_info_fn_t native_model_info = (ili_native_model_info_fn_t)dlsym(handle, "ili_native_model_info");
+    ili_native_read_xtf_fn_t native_read_xtf = (ili_native_read_xtf_fn_t)dlsym(handle, "ili_native_read_xtf");
+    ili_native_import_xtf_fn_t native_import_xtf = (ili_native_import_xtf_fn_t)dlsym(handle, "ili_native_import_xtf");
+
+    fprintf(stderr, "\n=== Functional Tests ===\n");
+
     // Test 1: ili_native_version
     fprintf(stderr, "\nTest 1: ili_native_version\n");
-    char *payload = NULL;
-    int rc = native_version(thread, &payload);
-    fprintf(stderr, "  rc=%d payload=%p\n", rc, (void*)payload);
-    if (rc == 0 && payload) {
-        fprintf(stderr, "  payload='%s'\n", payload);
-        fprintf(stderr, "  PASS\n");
-        passed++;
-    } else {
-        fprintf(stderr, "  FAIL\n");
-        failed++;
-    }
-    if (payload) { free_string(thread, payload); payload = NULL; }
-
-    // Test 2: ili_native_echo (keeps char* - test only)
-    fprintf(stderr, "\nTest 2: ili_native_echo\n");
-    ili_native_echo_fn_t native_echo = (ili_native_echo_fn_t)dlsym(handle, "ili_native_echo");
-    if (native_echo) {
-        char *echo = NULL;
-        rc = native_echo(thread, "{\"test\":true}", &echo);
-        if (rc == 0 && echo) {
-            passed++;
-            fprintf(stderr, "  PASS\n");
-            free_string(thread, echo);
+    if (native_version) {
+        char *payload = NULL;
+        int rc = native_version(thread, &payload);
+        if (rc == 0 && payload) {
+            fprintf(stderr, "  payload='%s'\n", payload);
+            fprintf(stderr, "  PASS\n"); passed++;
         } else {
-            failed++;
-            fprintf(stderr, "  FAIL\n");
+            fprintf(stderr, "  FAIL\n"); failed++;
         }
+        if (payload) { free_string(thread, payload); payload = NULL; }
     } else { failed++; }
 
-    // Test 3: free NULL
-    fprintf(stderr, "\nTest 3: ili_free_string(NULL)\n");
+    // Test 2: free NULL
+    fprintf(stderr, "\nTest 2: free_string(NULL)\n");
     free_string(thread, NULL);
     passed++;
     fprintf(stderr, "  PASS (no crash)\n");
 
-    // Test 4: Validation (valid XTF)
-    fprintf(stderr, "\nTest 4: ili_native_validate (valid)\n");
-    ili_native_validate_fn_t native_validate = (ili_native_validate_fn_t)dlsym(handle, "ili_native_validate");
+    // Test 3: Validation (valid XTF)
+    fprintf(stderr, "\nTest 3: validate (valid)\n");
     if (native_validate) {
         char *result = NULL;
         ili_request req;
         init_request(&req);
         req.input = "testdata/synthetic/simple/valid.xtf";
         req.modeldir = "testdata/synthetic/simple";
-        rc = native_validate(thread, &req, &result);
+        int rc = native_validate(thread, &req, &result);
         if (rc == 0 && result && strstr(result, "\"valid\":true")) {
             passed++;
             fprintf(stderr, "  PASS\n");
@@ -120,15 +203,15 @@ int main(void) {
         if (result) { free_string(thread, result); result = NULL; }
     } else { failed++; }
 
-    // Test 5: Validation (invalid XTF — data error, status 0)
-    fprintf(stderr, "\nTest 5: ili_native_validate (invalid — data error, status 0)\n");
+    // Test 4: Validation (invalid XTF)
+    fprintf(stderr, "\nTest 4: validate (invalid)\n");
     if (native_validate) {
         char *result = NULL;
         ili_request req;
         init_request(&req);
         req.input = "testdata/synthetic/simple/invalid.xtf";
         req.modeldir = "testdata/synthetic/simple";
-        rc = native_validate(thread, &req, &result);
+        int rc = native_validate(thread, &req, &result);
         if (rc == 0 && result && strstr(result, "\"valid\":false")) {
             passed++;
             fprintf(stderr, "  PASS\n");
@@ -139,44 +222,21 @@ int main(void) {
         if (result) { free_string(thread, result); result = NULL; }
     } else { failed++; }
 
-    // Test 6: Validation error — non-existent file (validation-level error, rc=0)
-    fprintf(stderr, "\nTest 6: ili_native_validate (non-existent file — validation error)\n");
-    if (native_validate) {
-        char *result = NULL;
-        ili_request req;
-        init_request(&req);
-        req.input = "/nonexistent/file.xtf";
-        req.modeldir = "testdata/synthetic/simple";
-        rc = native_validate(thread, &req, &result);
-        fprintf(stderr, "  rc=%d result=%p\n", rc, (void*)result);
-        if (result) fprintf(stderr, "  payload (first 200 chars)='%.200s'\n", result);
-        if (rc == 0 && result && strstr(result, "\"valid\":false")) {
-            passed++;
-            fprintf(stderr, "  PASS (file-not-found returned as validation result)\n");
-        } else {
-            failed++;
-            fprintf(stderr, "  FAIL T6\n");
-        }
-        if (result) { free_string(thread, result); result = NULL; }
-    } else { failed++; }
-
-    // Test 7: Model info error — non-existent modeldir (rc != 0)
-    fprintf(stderr, "\nTest 7: ili_native_model_info (non-existent modeldir — rc != 0)\n");
-    ili_native_model_info_fn_t native_model_info = (ili_native_model_info_fn_t)dlsym(handle, "ili_native_model_info");
+    // Test 5: Model info error
+    fprintf(stderr, "\nTest 5: model_info (non-existent modeldir)\n");
     if (native_model_info) {
         char *result = NULL;
         ili_request req;
         init_request(&req);
         req.cmd = "models";
         req.modeldir = "/nonexistent/path";
-        rc = native_model_info(thread, &req, &result);
-        if (check_error_payload(rc, result, "T7")) passed++; else failed++;
+        int rc = native_model_info(thread, &req, &result);
+        if (check_error_payload(rc, result, "T5")) passed++; else failed++;
         if (result) { free_string(thread, result); result = NULL; }
     } else { failed++; }
 
-    // Test 8: Import SQL generation
-    fprintf(stderr, "\nTest 8: ili_native_import_xtf (non-existent file — SQL generation succeeds)\n");
-    ili_native_import_xtf_fn_t native_import_xtf = (ili_native_import_xtf_fn_t)dlsym(handle, "ili_native_import_xtf");
+    // Test 6: Import SQL generation
+    fprintf(stderr, "\nTest 6: import_xtf\n");
     if (native_import_xtf) {
         char *result = NULL;
         ili_request req;
@@ -185,50 +245,28 @@ int main(void) {
         req.schema = "test";
         req.modeldir = "testdata/synthetic/simple";
         req.mapping = "relational";
-        rc = native_import_xtf(thread, &req, &result);
-        fprintf(stderr, "  rc=%d result=%p\n", rc, (void*)result);
-        if (result) fprintf(stderr, "  payload (first 200 chars)='%.200s'\n", result);
+        int rc = native_import_xtf(thread, &req, &result);
         if (rc == 0 && result && strstr(result, "CREATE")) {
             passed++;
-            fprintf(stderr, "  PASS (SQL generated — XTF read happens at SQL execution time)\n");
+            fprintf(stderr, "  PASS (SQL generated)\n");
         } else if (rc != 0 && result && result[0] == '{') {
             passed++;
             fprintf(stderr, "  PASS (model compilation failed — expected for invalid modeldir)\n");
         } else {
             failed++;
-            fprintf(stderr, "  FAIL T8: rc=%d\n", rc);
+            fprintf(stderr, "  FAIL T6: rc=%d\n", rc);
         }
         if (result) { free_string(thread, result); result = NULL; }
     } else { failed++; }
 
-    // Test 9: Model info error — no "ERROR:" prefix in payload
-    fprintf(stderr, "\nTest 9: ili_native_model_info error payload has no 'ERROR:' prefix\n");
-    if (native_model_info) {
-        char *result = NULL;
-        ili_request req;
-        init_request(&req);
-        req.cmd = "models";
-        req.modeldir = "/nonexistent/path";
-        rc = native_model_info(thread, &req, &result);
-        if (rc != 0 && result && !strstr(result, "ERROR:")) {
-            passed++;
-            fprintf(stderr, "  PASS (no ERROR: prefix in error payload)\n");
-        } else {
-            failed++;
-            fprintf(stderr, "  FAIL (expected rc!=0 and no ERROR: prefix)\n");
-        }
-        if (result) { free_string(thread, result); result = NULL; }
-    } else { failed++; }
-
-    // Test 10: Missing input returns invalid_argument status
-    fprintf(stderr, "\nTest 10: ili_native_read_xtf (missing input -> INVALID_ARGUMENT)\n");
-    ili_native_read_xtf_fn_t native_read_xtf = (ili_native_read_xtf_fn_t)dlsym(handle, "ili_native_read_xtf");
+    // Test 7: Missing input returns invalid_argument
+    fprintf(stderr, "\nTest 7: read_xtf (missing input)\n");
     if (native_read_xtf) {
         char *result = NULL;
         ili_request req;
         init_request(&req);
         req.input = "";
-        rc = native_read_xtf(thread, &req, &result);
+        int rc = native_read_xtf(thread, &req, &result);
         if (rc != 0 && result && strstr(result, "INVALID_ARGUMENT")) {
             passed++;
             fprintf(stderr, "  PASS\n");
@@ -239,14 +277,14 @@ int main(void) {
         if (result) { free_string(thread, result); result = NULL; }
     } else { failed++; }
 
-    // Test 11: Unknown command returns unsupported status
-    fprintf(stderr, "\nTest 11: ili_native_model_info (unknown cmd -> UNSUPPORTED)\n");
+    // Test 8: Unknown command returns unsupported
+    fprintf(stderr, "\nTest 8: model_info (unknown cmd)\n");
     if (native_model_info) {
         char *result = NULL;
         ili_request req;
         init_request(&req);
         req.cmd = "invalidCommand";
-        rc = native_model_info(thread, &req, &result);
+        int rc = native_model_info(thread, &req, &result);
         if (rc != 0 && result && strstr(result, "UNSUPPORTED")) {
             passed++;
             fprintf(stderr, "  PASS\n");

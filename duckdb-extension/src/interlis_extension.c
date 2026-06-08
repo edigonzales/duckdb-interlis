@@ -92,7 +92,7 @@ static graal_attach_thread_fn_t g_attach_thread = NULL;
 static graal_detach_thread_fn_t g_detach_thread = NULL;
 static graal_tear_down_isolate_fn_t g_tear_down = NULL;
 
-// Native API functions
+// Native API function pointers — resolved via dlsym after ABI handshake
 typedef int (*native_version_fn)(graal_isolatethread_t*, char**);
 typedef int (*native_struct_fn)(graal_isolatethread_t*, ili_request*, char**);
 typedef void (*native_free_fn)(graal_isolatethread_t*, char*);
@@ -109,6 +109,9 @@ static native_struct_fn g_native_read_xtf_association = NULL;
 static native_struct_fn g_native_read_xtf_association_schema = NULL;
 static native_struct_fn g_native_import_xtf = NULL;
 static native_free_fn g_native_free = NULL;
+
+// ABI handshake result
+static ili_api_v1 g_handshake = {0};
 
 // --- Thread-safe initialization state ---
 static bool g_init_done = false;
@@ -481,26 +484,17 @@ static bool init_native_library_locked(void) {
         return false;
     }
 
-    // Resolve API functions
-    g_native_version = (native_version_fn)dlsym(g_native_handle, "ili_native_version");
-    g_native_validate = (native_struct_fn)dlsym(g_native_handle, "ili_native_validate");
-    g_native_validate_tsv = (native_struct_fn)dlsym(g_native_handle, "ili_native_validate_tsv");
-    g_native_model_info = (native_struct_fn)dlsym(g_native_handle, "ili_native_model_info");
-    g_native_read_xtf = (native_struct_fn)dlsym(g_native_handle, "ili_native_read_xtf");
-    g_native_read_xtf_class = (native_struct_fn)dlsym(g_native_handle, "ili_native_read_xtf_class");
-    g_native_read_xtf_class_schema = (native_struct_fn)dlsym(g_native_handle, "ili_native_read_xtf_class_schema");
-    g_native_read_xtf_structures = (native_struct_fn)dlsym(g_native_handle, "ili_native_read_xtf_structures");
-    g_native_read_xtf_association = (native_struct_fn)dlsym(g_native_handle, "ili_native_read_xtf_association");
-    g_native_read_xtf_association_schema = (native_struct_fn)dlsym(g_native_handle, "ili_native_read_xtf_association_schema");
-    g_native_import_xtf = (native_struct_fn)dlsym(g_native_handle, "ili_native_import_xtf");
-    g_native_free = (native_free_fn)dlsym(g_native_handle, "ili_free_string");
+    // Resolve ili_get_api — single entry point for ABI handshake
+    typedef int (*ili_get_api_fn_t)(graal_isolatethread_t*, uint32_t, char**);
+    ili_get_api_fn_t get_api = (ili_get_api_fn_t)dlsym(g_native_handle, "ili_get_api");
 
-    if (!g_native_version || !g_native_validate || !g_native_validate_tsv || !g_native_model_info
-        || !g_native_read_xtf || !g_native_read_xtf_class || !g_native_read_xtf_class_schema || !g_native_free) {
+    // Also resolve free_string early so we can free the ABI payload
+    g_native_free = (native_free_fn)dlsym(g_native_handle, "ili_free_string");
+    if (!get_api) {
         size_t len = strlen(lib_path) + 128;
         g_init_error = malloc(len);
         snprintf(g_init_error, len,
-            "Failed to resolve ILI API symbols in '%s'", lib_path);
+            "Native library '%s' is incompatible (missing ili_get_api)", lib_path);
         dlclose(g_native_handle);
         g_native_handle = NULL;
         return false;
@@ -519,9 +513,107 @@ static bool init_native_library_locked(void) {
         return false;
     }
 
+    // ABI handshake: validate version and capabilities
+    memset(&g_handshake, 0, sizeof(g_handshake));
+    g_handshake.struct_size = sizeof(g_handshake);
+    char *abi_payload = NULL;
+    rc = get_api(init_thread, ILI_NATIVE_ABI_VERSION, &abi_payload);
+    if (rc != 0 || !abi_payload) {
+        size_t len = 512;
+        g_init_error = malloc(len);
+        if (abi_payload) {
+            snprintf(g_init_error, len,
+                "ABI handshake failed (rc=%d): %.480s", rc, abi_payload);
+            g_native_free(init_thread, abi_payload);
+        } else {
+            snprintf(g_init_error, len,
+                "ABI handshake failed: requested version %d, library returned code %d",
+                ILI_NATIVE_ABI_VERSION, rc);
+        }
+        g_tear_down(init_thread);
+        g_isolate = NULL;
+        dlclose(g_native_handle);
+        g_native_handle = NULL;
+        return false;
+    }
+
+    // Parse ABI payload: {"abi_version":1,"capabilities":4095}
+    {
+        const char *v = strstr(abi_payload, "\"abi_version\":");
+        const char *c = strstr(abi_payload, "\"capabilities\":");
+        if (!v || !c) {
+            size_t len = strlen(abi_payload) + 256;
+            g_init_error = malloc(len);
+            snprintf(g_init_error, len,
+                "ABI handshake returned invalid payload: %.480s", abi_payload);
+            g_native_free(init_thread, abi_payload);
+            g_tear_down(init_thread);
+            g_isolate = NULL;
+            dlclose(g_native_handle);
+            g_native_handle = NULL;
+            return false;
+        }
+        g_handshake.abi_version = (uint32_t)atoi(v + 14);
+        g_handshake.capabilities = (uint64_t)strtoull(c + 15, NULL, 10);
+        g_native_free(init_thread, abi_payload);
+    }
+
+    // Validate the handshake result
+    if (g_handshake.abi_version != ILI_NATIVE_ABI_VERSION) {
+        size_t len = 512;
+        g_init_error = malloc(len);
+        snprintf(g_init_error, len,
+            "ABI version mismatch: got %u, expected %u",
+            g_handshake.abi_version, ILI_NATIVE_ABI_VERSION);
+        goto cleanup_handshake_fail;
+    }
+
+    // Check required capabilities
+    uint64_t missing = ILI_CAP_REQUIRED_MASK & ~g_handshake.capabilities;
+    if (missing != 0) {
+        size_t len = 512;
+        g_init_error = malloc(len);
+        snprintf(g_init_error, len,
+            "Missing required capabilities: 0x%016llx (have 0x%016llx, need 0x%016llx)",
+            (unsigned long long)missing,
+            (unsigned long long)g_handshake.capabilities,
+            (unsigned long long)ILI_CAP_REQUIRED_MASK);
+        goto cleanup_handshake_fail;
+    }
+
+    // ABI handshake successful. Now resolve individual API function pointers.
+    g_native_version = (native_version_fn)dlsym(g_native_handle, "ili_native_version");
+    g_native_validate = (native_struct_fn)dlsym(g_native_handle, "ili_native_validate");
+    g_native_validate_tsv = (native_struct_fn)dlsym(g_native_handle, "ili_native_validate_tsv");
+    g_native_model_info = (native_struct_fn)dlsym(g_native_handle, "ili_native_model_info");
+    g_native_read_xtf = (native_struct_fn)dlsym(g_native_handle, "ili_native_read_xtf");
+    g_native_read_xtf_class = (native_struct_fn)dlsym(g_native_handle, "ili_native_read_xtf_class");
+    g_native_read_xtf_class_schema = (native_struct_fn)dlsym(g_native_handle, "ili_native_read_xtf_class_schema");
+    g_native_read_xtf_structures = (native_struct_fn)dlsym(g_native_handle, "ili_native_read_xtf_structures");
+    g_native_read_xtf_association = (native_struct_fn)dlsym(g_native_handle, "ili_native_read_xtf_association");
+    g_native_read_xtf_association_schema = (native_struct_fn)dlsym(g_native_handle, "ili_native_read_xtf_association_schema");
+    g_native_import_xtf = (native_struct_fn)dlsym(g_native_handle, "ili_native_import_xtf");
+    g_native_free = (native_free_fn)dlsym(g_native_handle, "ili_free_string");
+
+    if (!g_native_version || !g_native_validate || !g_native_validate_tsv || !g_native_model_info
+        || !g_native_read_xtf || !g_native_read_xtf_class || !g_native_read_xtf_class_schema || !g_native_free) {
+        size_t len = strlen(lib_path) + 128;
+        g_init_error = malloc(len);
+        snprintf(g_init_error, len,
+            "Failed to resolve ILI API symbols in '%s' (ABI handshake passed but symbols missing)", lib_path);
+        goto cleanup_handshake_fail;
+    }
+
     // Detach the init thread since DuckDB will attach its own threads
     g_detach_thread(init_thread);
     return true;
+
+cleanup_handshake_fail:
+    g_tear_down(init_thread);
+    g_isolate = NULL;
+    dlclose(g_native_handle);
+    g_native_handle = NULL;
+    return false;
 }
 
 // Thread-safe initialization. Returns true if native library is ready.
@@ -588,6 +680,7 @@ static void shutdown_native_library(void) {
     g_native_read_xtf_association_schema = NULL;
     g_native_import_xtf = NULL;
     g_native_free = NULL;
+    memset(&g_handshake, 0, sizeof(g_handshake));
     g_create_isolate = NULL;
     g_attach_thread = NULL;
     g_detach_thread = NULL;
