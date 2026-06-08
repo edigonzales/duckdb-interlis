@@ -342,43 +342,40 @@ class RegressionTest {
     // -----------------------------------------------------------------------
 
     @Test
-    @DisplayName("REGRESSION: Table names use short class names, causing potential collisions")
+    @DisplayName("REGRESSION-FIXED: Table names now use topic__class naming (Phase 10)")
     void tableNamesUseShortClassNames() {
-        // BUG: IliImportService.generateImportSql uses sanitizeTableName(classDef.getName())
-        // which returns only the short class name.
-        // Two classes with the same name in different topics would collide.
-        // Phase 10 will use topic__class or model__topic__class naming.
+        // FIXED in Phase 10: Table names now use topic__class naming
+        // to avoid collisions when classes share short names across topics.
         IliImportService svc = new IliImportService();
         String sql = svc.generateImportSql(
             SIMPLE_DIR.resolve("valid.xtf").toString(),
             SIMPLE_DIR.toString(),
             "test_schema",
-            "relational"
+            "relational", null
         );
 
         assertNotNull(sql);
-        // Currently: generates CREATE TABLE test_schema.gemeinde (...)
-        // Expected after Phase 10: CREATE TABLE test_schema.Topic__Gemeinde (...)
-        assertTrue(sql.contains("gemeinde") || sql.contains("Gemeinde"),
-            "Should reference the Gemeinde table");
+        assertTrue(sql.contains("topic__gemeinde") || sql.contains("Topic__Gemeinde"),
+            "Should reference the Topic__Gemeinde table using topic__class naming, got: " + sql);
     }
 
     @Test
-    @DisplayName("REGRESSION: Generated SQL has no transaction wrapping")
+    @DisplayName("REGRESSION-FIXED: Generated SQL now includes transaction wrapping (Phase 10)")
     void generatedSqlHasNoTransaction() {
-        // BUG: The generated SQL does not include BEGIN TRANSACTION / COMMIT.
-        // Phase 10 will add transaction wrapping by default.
+        // FIXED in Phase 10: The generated SQL now includes
+        // BEGIN TRANSACTION / COMMIT wrapping.
         IliImportService svc = new IliImportService();
         String sql = svc.generateImportSql(
             SIMPLE_DIR.resolve("valid.xtf").toString(),
             SIMPLE_DIR.toString(),
             "test_schema",
-            "relational"
+            "relational", null
         );
 
-        assertFalse(sql.toUpperCase().contains("BEGIN"),
-            "Currently: no BEGIN TRANSACTION in generated SQL (documented limitation)");
-        // Phase 10 will add BEGIN/COMMIT wrapping.
+        assertTrue(sql.toUpperCase().contains("BEGIN"),
+            "After Phase 10: BEGIN TRANSACTION should be present in generated SQL");
+        assertTrue(sql.toUpperCase().contains("COMMIT"),
+            "After Phase 10: COMMIT should be present in generated SQL");
     }
 
     // -----------------------------------------------------------------------

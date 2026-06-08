@@ -3,6 +3,7 @@
 #include <string.h>
 #include <dlfcn.h>
 #include "ili_request.h"
+#include "libduckdb_ili_native_dynamic.h"
 
 static int check_error_payload(int rc, char *payload, const char *test_name) {
     int ok = 1;
@@ -160,7 +161,7 @@ skip_abi_tests:
     ili_native_validate_fn_t native_validate = (ili_native_validate_fn_t)dlsym(handle, "ili_native_validate");
     ili_native_model_info_fn_t native_model_info = (ili_native_model_info_fn_t)dlsym(handle, "ili_native_model_info");
     ili_native_read_xtf_fn_t native_read_xtf = (ili_native_read_xtf_fn_t)dlsym(handle, "ili_native_read_xtf");
-    ili_native_import_xtf_fn_t native_import_xtf = (ili_native_import_xtf_fn_t)dlsym(handle, "ili_native_import_xtf");
+    ili_native_generate_import_sql_fn_t native_generate_import_sql = (ili_native_generate_import_sql_fn_t)dlsym(handle, "ili_native_generate_import_sql");
 
     fprintf(stderr, "\n=== Functional Tests ===\n");
 
@@ -236,8 +237,8 @@ skip_abi_tests:
     } else { failed++; }
 
     // Test 6: Import SQL generation
-    fprintf(stderr, "\nTest 6: import_xtf\n");
-    if (native_import_xtf) {
+    fprintf(stderr, "\nTest 6: generate_import_sql\n");
+    if (native_generate_import_sql) {
         char *result = NULL;
         ili_request req;
         init_request(&req);
@@ -245,7 +246,7 @@ skip_abi_tests:
         req.schema = "test";
         req.modeldir = "testdata/synthetic/simple";
         req.mapping = "relational";
-        int rc = native_import_xtf(thread, &req, &result);
+        int rc = native_generate_import_sql(thread, &req, &result);
         if (rc == 0 && result && strstr(result, "CREATE")) {
             passed++;
             fprintf(stderr, "  PASS (SQL generated)\n");

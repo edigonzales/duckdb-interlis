@@ -87,4 +87,10 @@ public interface IliRequest extends PointerBase {
 
     @CField("profile")
     void profile(CCharPointer value);
+
+    @CField("mode")
+    CCharPointer mode();
+
+    @CField("mode")
+    void mode(CCharPointer value);
 }

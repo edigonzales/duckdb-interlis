@@ -18,10 +18,17 @@ public class IliImportService {
             ? System.getenv("ILI_DEFAULT_MODELDIR")
             : "https://models.interlis.ch";
 
-    public String generateImportSql(String xtfPath, String modelDir, String schema, String mapping) {
+    public String generateImportSql(String xtfPath, String modelDir, String schema, String mapping, String mode) {
+        String effectiveMode = (mode != null && !mode.isBlank()) ? mode : "create";
+        if (!effectiveMode.equals("create") && !effectiveMode.equals("replace") && !effectiveMode.equals("append")) {
+            throw new RuntimeException("Unsupported import mode: '" + mode + "'. Valid modes: create, replace, append.");
+        }
+
         TransferDescription td = compileModel(resolveModelDir(modelDir, xtfPath), null);
 
+        Set<String> tableNames = new HashSet<>();
         StringBuilder sql = new StringBuilder();
+        sql.append("BEGIN TRANSACTION;\n");
         sql.append("CREATE SCHEMA IF NOT EXISTS ").append(quoteIdent(schema)).append(";\n");
 
         for (Iterator<Model> mit = td.iterator(); mit.hasNext(); ) {
@@ -36,20 +43,35 @@ public class IliImportService {
                     Element tel = tit.next();
                     if (tel instanceof AssociationDef assocDef) {
                         String assocFqn = model.getName() + "." + topic.getName() + "." + assocDef.getName();
+                        String tableName = buildTableName(topic, assocDef.getName());
+                        ensureNoTableCollision(tableName, assocFqn, tableNames);
                         List<ColInfo> cols = buildAssociationColumns(assocDef);
-                        String ddl = generateDdl(schema, sanitizeTableName(assocDef.getName()), cols);
-                        sql.append(ddl).append('\n');
-                        sql.append(generateAssociationInsert(schema, xtfPath, modelDir, assocFqn, cols)).append('\n');
+                        if (effectiveMode.equals("replace")) {
+                            sql.append("DROP TABLE IF EXISTS ").append(quoteIdent(schema)).append(".")
+                              .append(quoteIdent(tableName)).append(";\n");
+                        }
+                        if (!effectiveMode.equals("append")) {
+                            sql.append(generateDdl(schema, tableName, cols)).append('\n');
+                        }
+                        sql.append(generateAssociationInsert(schema, xtfPath, modelDir, assocFqn, tableName, cols)).append('\n');
                     } else if (tel instanceof AbstractClassDef classDef && !(tel instanceof AssociationDef)) {
                         String classFqn = model.getName() + "." + topic.getName() + "." + classDef.getName();
+                        String tableName = buildTableName(topic, classDef.getName());
+                        ensureNoTableCollision(tableName, classFqn, tableNames);
                         List<ColInfo> cols = buildClassColumns(classDef);
-                        String ddl = generateDdl(schema, sanitizeTableName(classDef.getName()), cols);
-                        sql.append(ddl).append('\n');
-                        sql.append(generateClassInsert(schema, xtfPath, modelDir, classFqn, cols)).append('\n');
+                        if (effectiveMode.equals("replace")) {
+                            sql.append("DROP TABLE IF EXISTS ").append(quoteIdent(schema)).append(".")
+                              .append(quoteIdent(tableName)).append(";\n");
+                        }
+                        if (!effectiveMode.equals("append")) {
+                            sql.append(generateDdl(schema, tableName, cols)).append('\n');
+                        }
+                        sql.append(generateClassInsert(schema, xtfPath, modelDir, classFqn, tableName, cols)).append('\n');
                     }
                 }
             }
         }
+        sql.append("COMMIT;\n");
         return sql.toString();
     }
 
@@ -132,8 +154,7 @@ public class IliImportService {
     // -----------------------------------------------------------------------
 
     private String generateClassInsert(String schema, String xtfPath, String modelDir,
-                                        String classFqn, List<ColInfo> cols) {
-        String tableName = sanitizeTableName(extractClassName(classFqn));
+                                        String classFqn, String tableName, List<ColInfo> cols) {
         String colList = buildTargetColList(cols);
         String selList = buildSelectList(cols);
         return "INSERT INTO " + quoteIdent(schema) + "." + quoteIdent(tableName)
@@ -147,8 +168,7 @@ public class IliImportService {
     }
 
     private String generateAssociationInsert(String schema, String xtfPath, String modelDir,
-                                              String assocFqn, List<ColInfo> cols) {
-        String tableName = sanitizeTableName(extractClassName(assocFqn));
+                                              String assocFqn, String tableName, List<ColInfo> cols) {
         String colList = buildTargetColList(cols);
         String selList = buildSelectList(cols);
         return "INSERT INTO " + quoteIdent(schema) + "." + quoteIdent(tableName)
@@ -197,23 +217,27 @@ public class IliImportService {
         }
         if (domain instanceof TextType) return "VARCHAR";
         if (domain instanceof EnumerationType) return "VARCHAR";
+
+        if (domain.isBoolean()) return "BOOLEAN";
+
+        String typeName = domain.getScopedName(null);
+        if (typeName == null) typeName = domain.getName();
+        if (typeName != null) {
+            if (typeName.contains("DATETIME")) return "TIMESTAMP";
+            if (typeName.contains("TIME") && !typeName.contains("DATETIME")) return "TIME";
+            if (typeName.contains("DATE") && !typeName.contains("DATETIME")) return "DATE";
+        }
+
         if (domain instanceof AbstractCoordType
                 || domain instanceof LineType
                 || domain instanceof AbstractSurfaceOrAreaType
                 || domain instanceof MultiCoordType
                 || domain instanceof MultiSurfaceType
                 || domain instanceof MultiPolylineType
-                || domain instanceof MultiAreaType) return "VARCHAR"; // geometry → WKB as VARCHAR
-        if (domain instanceof ObjectType || domain instanceof CompositionType) return "VARCHAR"; // structures → JSON
+                || domain instanceof MultiAreaType) return "VARCHAR";
+        if (domain instanceof ObjectType || domain instanceof CompositionType) return "VARCHAR";
         if (domain instanceof ReferenceType) return "VARCHAR";
-        // BOOLEAN, DATE, TIMESTAMP etc. are mapped by name
-        String typeName = domain.getScopedName(null);
-        if (typeName == null) typeName = domain.getName();
-        if (typeName != null) {
-            if (typeName.contains("BOOLEAN")) return "BOOLEAN";
-            if (typeName.contains("DATE") && !typeName.contains("DATETIME")) return "DATE";
-            if (typeName.contains("DATETIME")) return "TIMESTAMP";
-        }
+
         return "VARCHAR";
     }
 
@@ -240,9 +264,17 @@ public class IliImportService {
         return s.toLowerCase().replaceAll("[^a-z0-9_]", "_");
     }
 
-    private static String extractClassName(String fqn) {
-        int dot = fqn.lastIndexOf('.');
-        return dot >= 0 ? fqn.substring(dot + 1) : fqn;
+    private static String buildTableName(Topic topic, String className) {
+        return sanitizeTableName(topic.getName() + "__" + className);
+    }
+
+    private static void ensureNoTableCollision(String tableName, String fqn, Set<String> seen) {
+        if (!seen.add(tableName)) {
+            throw new RuntimeException("Table name collision: '" + tableName
+                    + "' produced by FQN '" + fqn
+                    + "'. Two different INTERLIS classes/associations produce the same table name. "
+                    + "Use distinct topic or class names.");
+        }
     }
 
     private static boolean isBaseModel(String name) {

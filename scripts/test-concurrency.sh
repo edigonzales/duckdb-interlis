@@ -70,7 +70,7 @@ echo ""
 
 echo "--- Test 5: 5 parallel import SQL queries ---"
 for i in $(seq 1 5); do
-    run_query "imp$i" "SELECT count(*) FROM ili_import_xtf('$TESTDATA/valid.xtf', schema := 'conc_test_$i', modeldir := '$TESTDATA');" &
+    run_query "imp$i" "SELECT count(*) FROM ili_generate_import_sql('$TESTDATA/valid.xtf', schema := 'conc_test_$i', modeldir := '$TESTDATA');" &
 done
 wait
 echo ""

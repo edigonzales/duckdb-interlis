@@ -21,7 +21,7 @@
 | 11 | `read_xtf_class(input, class =>, modeldir =>, nested =>)` | Table | Dynamic |
 | 12 | `read_xtf_structures(class =>, modeldir =>)` | Table | 5 columns |
 | 13 | `read_xtf_association(input, association =>, modeldir =>)` | Table | Dynamic |
-| 14 | `ili_import_xtf(input, schema =>, modeldir =>, mapping =>)` | Table | 1 column |
+| 14 | `ili_generate_import_sql(input, schema =>, modeldir =>, mapping =>, mode =>)` | Table | 1 column |
 
 ---
 
@@ -419,11 +419,13 @@ Plus: one column per scalar attribute, `*_wkb` for geometry attributes, `*_json`
 
 ---
 
-### `ili_import_xtf(input, schema =>, modeldir =>, mapping =>)`
+### `ili_generate_import_sql(input, schema =>, modeldir =>, mapping =>, mode =>)`
 
-**Signature:** `ili_import_xtf(input VARCHAR, schema => VARCHAR, modeldir => VARCHAR, mapping => VARCHAR) → TABLE(sql_statement VARCHAR)`
+**Signature:** `ili_generate_import_sql(input VARCHAR, schema => VARCHAR, modeldir => VARCHAR, mapping => VARCHAR, mode => VARCHAR) → TABLE(sql_statement VARCHAR)`
 
-**Description:** Generates SQL DDL (`CREATE TABLE`) and DML (`INSERT INTO`) statements for importing an XTF file into a DuckDB schema.
+**Description:** Generates typed SQL DDL (`CREATE TABLE`) and DML (`INSERT INTO`) statements for importing an XTF file into a DuckDB schema. Output is wrapped in `BEGIN TRANSACTION`/`COMMIT`. Table names use `topic__class` convention.
+
+**Breaking change (Phase 10):** Renamed from `ili_import_xtf`. Table names now use `topic__class` naming (e.g., `topic__gemeinde`). Migration: rename function calls and update table references.
 
 **Parameters:**
 
@@ -432,7 +434,8 @@ Plus: one column per scalar attribute, `*_wkb` for geometry attributes, `*_json`
 | 1 | `input` | positional | Yes | Path to XTF file |
 | 2 | `schema` | named | Yes | Target schema name |
 | 3 | `modeldir` | named | No | ILI model directory |
-| 4 | `mapping` | named | No | Mapping mode (default: `"relational"`) |
+| 4 | `mapping` | named | No | Mapping mode. Only `"relational"` is supported (default). Unsupported values return `INVALID_ARGUMENT`. |
+| 5 | `mode` | named | No | Import mode: `"create"` (default), `"replace"`, or `"append"`. |
 
 **Return columns:**
 
@@ -445,18 +448,14 @@ Plus: one column per scalar attribute, `*_wkb` for geometry attributes, `*_json`
 **Error behaviour:**
 - Native library init failure → `duckdb_init_set_error(g_error_buf)`.
 - Missing `input` or `schema` → `duckdb_init_set_error("Missing input or schema")`.
-- Native call failure → DuckDB error with extracted NativeError message (Phase 2 fix).
-- Java-side compilation failure → returns `"ERROR: Failed to compile model"` as a **successful** result row (status 0) — not a DuckDB error (Phase 2 fix).
+- Native call failure → DuckDB error with extracted NativeError message.
+- Unsupported mapping value → `INVALID_ARGUMENT` with error message.
+- Table name collision → DuckDB error with details.
 
 **Known limitations:**
-- **`mapping` parameter is ignored** — always uses `"relational"` regardless of what the user specifies (Phase 10 fix). The C side hardcodes `"relational"` in the request.
-- **`mapping` parameter in Java is passed but silently accepted** with any value — no `UNSUPPORTED` error.
-- **Table names use short class names only** — collisions occur when two topics have identically named classes (Phase 10 fix).
-- **No transaction wrapping** — generated SQL has no `BEGIN/COMMIT` (Phase 10 fix).
-- **No import mode** — always generates `CREATE TABLE IF NOT EXISTS` + `INSERT INTO`, no `replace` or `append` mode.
-- **Allocator mismatch**: The returned SQL string is allocated via GraalVM `UnmanagedMemory.malloc()` but freed with C `free()` in `import_init_destroy()` — **undefined behaviour** (Phase 1 fix).
-- **Generated INSERT statements reference `read_xtf_class`** with full FQN, but table names use short names only — creates a mismatch if multiple topics exist.
-- Column types are limited: `NUMERIC` always maps to `BIGINT`, losing decimal precision. Geometry maps to `VARCHAR` (not `BLOB`).
+- Only `"relational"` mapping is supported.
+- `DECIMAL(p,s)` precision not yet derived from INTERLIS `NUMERIC` bounds; decimal types use `DOUBLE`.
+- Generated INSERT statements reference `read_xtf_class`/`read_xtf_association` which currently use TSV encoding.
 
 ---
 

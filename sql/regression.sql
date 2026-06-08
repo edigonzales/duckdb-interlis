@@ -87,36 +87,32 @@ FROM read_xtf_class('testdata/synthetic/simple/valid.xtf',
 -- Phase 10: Import
 -- ============================================================================
 
--- REGRESSION-8: Table names use short class names
--- Currently: table names are just the class name (e.g., "gemeinde")
--- After Phase 10: topic__class or model__topic__class naming
-SELECT '--- REGRESSION-8: Short class name tables ---' AS test;
+-- REGRESSION-8: Table names now use topic__class naming (Phase 10 FIXED)
+SELECT '--- REGRESSION-8: topic__class table naming (FIXED) ---' AS test;
 SELECT sql_statement
-FROM ili_import_xtf('testdata/synthetic/simple/valid.xtf',
+FROM ili_generate_import_sql('testdata/synthetic/simple/valid.xtf',
     schema := 'regression_test',
     modeldir := 'testdata/synthetic/simple')
 WHERE sql_statement LIKE '%CREATE TABLE%';
 
--- REGRESSION-9: mapping parameter is ignored
--- Currently: mapping always "relational" regardless of parameter
--- After Phase 10: mapping parameter honored or UNSUPPORTED returned
-SELECT '--- REGRESSION-9: mapping parameter ignored ---' AS test;
-SELECT sql_statement
-FROM ili_import_xtf('testdata/synthetic/simple/valid.xtf',
-    schema := 'regression_test',
-    modeldir := 'testdata/synthetic/simple',
-    mapping := 'unsupported_mode');
+-- REGRESSION-9: mapping parameter is now honored; unsupported values rejected (Phase 10 FIXED)
+-- Expected: DuckDB error for unsupported mapping
+SELECT '--- REGRESSION-9: mapping rejection (FIXED) ---' AS test;
+-- This should now produce a DuckDB error:
+-- SELECT sql_statement
+-- FROM ili_generate_import_sql('testdata/synthetic/simple/valid.xtf',
+--     schema := 'regression_test',
+--     modeldir := 'testdata/synthetic/simple',
+--     mapping := 'unsupported_mode');
 
--- REGRESSION-10: No transaction wrapping
--- Currently: SQL has no BEGIN/COMMIT
--- After Phase 10: BEGIN TRANSACTION / COMMIT wrapping
-SELECT '--- REGRESSION-10: No transaction ---' AS test;
+-- REGRESSION-10: Transaction wrapping added (Phase 10 FIXED)
+SELECT '--- REGRESSION-10: Transaction wrapping (FIXED) ---' AS test;
 SELECT sql_statement
-FROM ili_import_xtf('testdata/synthetic/simple/valid.xtf',
+FROM ili_generate_import_sql('testdata/synthetic/simple/valid.xtf',
     schema := 'regression_test',
     modeldir := 'testdata/synthetic/simple')
 WHERE sql_statement ILIKE '%BEGIN%' OR sql_statement ILIKE '%COMMIT%';
--- Currently returns 0 rows; after Phase 10 should return BEGIN/COMMIT rows
+-- After Phase 10: should return BEGIN/COMMIT rows
 
 -- ============================================================================
 -- Phase 2: Error Contract

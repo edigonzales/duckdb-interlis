@@ -330,18 +330,20 @@ int ili_native_read_xtf_association_schema(graal_isolatethread_t*, char* request
 - **Success payload:** Tab-separated column names.
 - **Error payload:** `{"status":"INVALID_ARGUMENT","operation":"read_xtf_association_schema","message":"Missing required field","detail":"association"}` (status 1)
 
-### 5.12 `ili_native_import_xtf`
+### 5.12 `ili_native_generate_import_sql`
 
 ```c
-int ili_native_import_xtf(graal_isolatethread_t*, char* request_json, char** out_payload);
+int ili_native_generate_import_sql(graal_isolatethread_t*, ili_request*, char** out_payload);
 ```
 
 - **Purpose:** Generate SQL DDL/DML for XTF import.
-- **Input:** `{"input":"path.xtf","schema":"target","modeldir":"...","mapping":"relational"}`
-- **Returns:** 0 on success, 1 on error.
-- **Success payload:** SQL statements (one per line).
+- **Input:** Uses `input`, `schema`, `modeldir`, `mapping`, `mode` fields from `ili_request`.
+- **Returns:** 0 on success, non-zero on error.
+- **Success payload:** SQL statements (`BEGIN TRANSACTION;` / DDL / INSERT / `COMMIT;`, one per line).
 - **Error payload:** `{"status":"MODEL_ERROR","operation":"import_xtf","message":"...","detail":"...","path":"..."}` (status 3)
-- **Issues:** Allocator mismatch fixed in Phase 1 (C-side now uses `strdup` + `ili_free_result`).
+- **Mapping validation:** `mapping` must be `"relational"` or NULL (defaults to `"relational"`). Unsupported values return `INVALID_ARGUMENT` (status 1).
+- **Mode support:** `mode` can be `"create"` (default), `"replace"`, or `"append"`.
+- **Breaking change (Phase 10):** Renamed from `ili_native_import_xtf`. Table names now use `topic__class` convention.
 
 ### 5.13 `ili_free_string`
 
@@ -468,7 +470,7 @@ typedef struct ili_api_v1 {
     int  (*read_xtf_structures)(graal_isolatethread_t*, ili_request*, char**);
     int  (*read_xtf_association)(graal_isolatethread_t*, ili_request*, char**);
     int  (*read_xtf_association_schema)(graal_isolatethread_t*, ili_request*, char**);
-    int  (*import_xtf)(graal_isolatethread_t*, ili_request*, char**);
+    int  (*generate_import_sql)(graal_isolatethread_t*, ili_request*, char**);
     void (*free_string)(graal_isolatethread_t*, char*);
 } ili_api_v1;
 
@@ -507,7 +509,7 @@ int ili_get_api(uint32_t requested_abi_version, ili_api_v1 *out_api);
 | 7 | `ILI_CAP_READ_XTF_STRUCTURES` | `read_xtf_structures` |
 | 8 | `ILI_CAP_READ_XTF_ASSOCIATION` | `read_xtf_association` |
 | 9 | `ILI_CAP_READ_XTF_ASSOC_SCHEMA` | `read_xtf_association_schema` |
-| 10 | `ILI_CAP_IMPORT_XTF` | `import_xtf` |
+| 10 | `ILI_CAP_IMPORT_XTF` | `generate_import_sql` |
 | 11 | `ILI_CAP_FREE_STRING` | `free_string` |
 
 **Required capabilities (C extension minimum):**

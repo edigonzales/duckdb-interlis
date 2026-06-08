@@ -16,6 +16,7 @@ fi
 echo "Compiling native smoke test..."
 cc -o "$TEST_BIN" "$TEST_DIR/native_smoke_test.c" \
     -I"$REPO_ROOT/java/ili-native/build/native" \
+    -I"$REPO_ROOT/duckdb-extension/src/include" \
     -ldl
 
 echo "Running native smoke test..."

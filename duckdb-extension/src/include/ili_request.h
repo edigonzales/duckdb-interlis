@@ -16,10 +16,10 @@ extern "C" {
  *
  * Fields map to specific operations:
  *
- *   Operation            | input | modeldir | cmd | class_name | models | model | association | schema | nested | mapping | max_messages | profile
- *   ---------------------+-------+----------+-----+------------+--------+-------+-------------+--------+--------+---------+--------------+--------
- *   validate             |   X   |    X     |     |            |        |       |             |        |        |         |     X     |    X
- *   validate_tsv         |   X   |    X     |     |            |        |       |             |        |        |         |     X     |    X
+ *   Operation            | input | modeldir | cmd | class_name | models | model | association | schema | nested | mapping | max_messages | profile | mode
+ *   ---------------------+-------+----------+-----+------------+--------+-------+-------------+--------+--------+---------+--------------+---------+-----
+ *   validate             |   X   |    X     |     |            |        |       |             |        |        |         |     X     |    X    |
+ *   validate_tsv         |   X   |    X     |     |            |        |       |             |        |        |         |     X     |    X    |
  *   model_info           |       |    X     |  X  |     X      |        |   X   |             |        |        |         |
  *   read_xtf             |   X   |    X     |     |            |   X    |       |             |        |        |         |
  *   read_xtf_class       |   X   |    X     |     |     X      |        |       |             |        |   X    |         |
@@ -27,7 +27,7 @@ extern "C" {
  *   read_xtf_structures  |       |    X     |     |     X      |        |       |             |        |        |         |
  *   read_xtf_association |   X   |    X     |     |            |        |       |      X      |        |        |         |
  *   read_xtf_assoc_schema|       |    X     |     |            |        |       |      X      |        |        |         |
- *   import_xtf           |   X   |    X     |     |            |        |       |             |    X   |        |    X    |
+ *   import_xtf           |   X   |    X     |     |            |        |       |             |    X   |        |    X    |              |    X  |
  *
  * The struct_size field MUST be set to sizeof(ili_request) by the caller.
  * It allows forward-compatible ABI version detection.
@@ -46,6 +46,7 @@ typedef struct ili_request {
     const char *mapping;
     int32_t max_messages;
     const char *profile;
+    const char *mode;
 } ili_request;
 
 /*

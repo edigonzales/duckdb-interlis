@@ -448,8 +448,8 @@ public class NativeEntryPoints {
     // XTF import entry point
     // -----------------------------------------------------------------------
 
-    @CEntryPoint(name = "ili_native_import_xtf")
-    public static int nativeImportXtf(
+    @CEntryPoint(name = "ili_native_generate_import_sql")
+    public static int nativeGenerateImportSql(
             IsolateThread thread,
             IliRequest request,
             CCharPointerPointer outPayload) {
@@ -458,6 +458,7 @@ public class NativeEntryPoints {
         String modelDir = getField(request.modeldir());
         String schema = getField(request.schema());
         String mapping = getField(request.mapping());
+        String mode = getField(request.mode());
 
         if (input == null || input.isBlank()) {
             NativeError err = NativeError.invalidArgument("import_xtf", "Missing required field", "input");
@@ -469,11 +470,17 @@ public class NativeEntryPoints {
             outPayload.write(allocCString(err.toJson()));
             return NativeStatus.INVALID_ARGUMENT;
         }
+        if (mapping != null && !mapping.equals("relational")) {
+            NativeError err = NativeError.unsupported("import_xtf",
+                    "Unsupported mapping mode: '" + mapping + "'. Only 'relational' is currently supported.",
+                    "mapping");
+            outPayload.write(allocCString(err.toJson()));
+            return NativeStatus.UNSUPPORTED;
+        }
 
         try {
             IliImportService impSvc = getImportService();
-            String sql = impSvc.generateImportSql(input, modelDir, schema,
-                    mapping != null ? mapping : "relational");
+            String sql = impSvc.generateImportSql(input, modelDir, schema, mapping, mode);
             outPayload.write(allocCString(sql));
             return NativeStatus.OK;
         } catch (Exception e) {

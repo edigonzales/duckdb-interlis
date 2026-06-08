@@ -717,15 +717,17 @@ SELECT * FROM read_xtf_association(
 
 ---
 
-### `ili_import_xtf()`
+### `ili_generate_import_sql()`
 
 **Signature:**
 
 ```sql
-ili_import_xtf(input VARCHAR, schema => VARCHAR, modeldir => VARCHAR, mapping => VARCHAR) → TABLE(sql_statement VARCHAR)
+ili_generate_import_sql(input VARCHAR, schema => VARCHAR, modeldir => VARCHAR, mapping => VARCHAR, mode => VARCHAR) → TABLE(sql_statement VARCHAR)
 ```
 
-**Description:** Generates typed SQL DDL (`CREATE TABLE`) and DML (`INSERT INTO`) statements for importing an XTF file into a DuckDB schema. Numeric types are mapped to `BIGINT`, text and geometry to `VARCHAR`.
+**Description:** Generates typed SQL DDL (`CREATE TABLE`) and DML (`INSERT INTO`) statements for importing an XTF file into a DuckDB schema. The output is wrapped in `BEGIN TRANSACTION` / `COMMIT`. Numeric types are mapped to `BIGINT`/`DOUBLE`, text and geometry to `VARCHAR`, booleans to `BOOLEAN`, dates to `DATE`, timestamps to `TIMESTAMP`.
+
+**Breaking change:** Renamed from `ili_import_xtf` in Phase 10. Table names now use `topic__class` naming (e.g., `topic__gemeinde` instead of `gemeinde`) to avoid collisions across topics.
 
 **Parameters:**
 
@@ -733,8 +735,9 @@ ili_import_xtf(input VARCHAR, schema => VARCHAR, modeldir => VARCHAR, mapping =>
 |---|---|---|---|---|---|
 | 1 | `input` | positional | VARCHAR | Ja | Pfad zur XTF-Datei |
 | 2 | `schema` | named | VARCHAR | Ja | Name des Ziel-Schemas in DuckDB |
-| 3 | `modeldir` | named | VARCHAR | Nein | Verzeichnis mit ILI-Modelldateien. Default: Verzeichnis der XTF-Datei + `https://models.interlis.ch`, überschreibbar via `ILI_DEFAULT_MODELDIR` |
-| 4 | `mapping` | named | VARCHAR | Nein (Default: `"relational"`) | Mapping-Modus |
+| 3 | `modeldir` | named | VARCHAR | Nein | Verzeichnis mit ILI-Modelldateien. Default: Verzeichnis der XTF-Datei + `https://models.interlis.ch` |
+| 4 | `mapping` | named | VARCHAR | Nein (Default: `"relational"`) | Mapping-Modus. Nur `"relational"` wird derzeit unterstützt. |
+| 5 | `mode` | named | VARCHAR | Nein (Default: `"create"`) | Import-Modus: `"create"` (CREATE TABLE IF NOT EXISTS), `"replace"` (DROP + CREATE), `"append"` (nur INSERT) |
 
 **Return columns:**
 
@@ -745,34 +748,28 @@ ili_import_xtf(input VARCHAR, schema => VARCHAR, modeldir => VARCHAR, mapping =>
 **Examples:**
 
 ```sql
--- 1. Generate typed DDL and INSERT statements
+-- 1. Generate typed DDL and INSERT statements (default mode: create)
 SELECT sql_statement
-FROM ili_import_xtf('testdata/synthetic/simple/valid.xtf',
+FROM ili_generate_import_sql('testdata/synthetic/simple/valid.xtf',
     schema := 'my_schema',
     modeldir := 'testdata/synthetic/simple');
 ```
 
 ```sql
--- 2. Mit explizitem mapping-Parameter
+-- 2. Mit mode=replace (DROP + CREATE + INSERT)
 SELECT sql_statement
-FROM ili_import_xtf('testdata/synthetic/simple/valid.xtf',
+FROM ili_generate_import_sql('testdata/synthetic/simple/valid.xtf',
     schema := 'my_schema',
     modeldir := 'testdata/synthetic/simple',
-    mapping := 'relational');
+    mode := 'replace');
 ```
 
 ```sql
--- 3. Generate and execute SQL (full import pipeline)
-CREATE SCHEMA IF NOT EXISTS my_schema;
-
--- Generate and execute each statement
-SELECT FORMAT('Executed: {}', sql_statement)
-FROM ili_import_xtf('testdata/synthetic/simple/valid.xtf',
+-- 3. Mit mode=append (nur INSERT, keine DDL)
+SELECT sql_statement
+FROM ili_generate_import_sql('testdata/synthetic/simple/valid.xtf',
     schema := 'my_schema',
-    modeldir := 'testdata/synthetic/simple');
-
--- Verify
-SELECT count(*) FROM my_schema.gemeinde;
-SELECT count(*) FROM my_schema.abbaustelle;
+    modeldir := 'testdata/synthetic/simple',
+    mode := 'append');
 ```
 
