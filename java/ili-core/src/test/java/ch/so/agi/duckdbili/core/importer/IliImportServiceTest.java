@@ -34,8 +34,8 @@ class IliImportServiceTest {
     void generateImportSql_createsTableForGemeinde() {
         String sql = service.generateImportSql(XTF_PATH, MODELDIR, "test", "relational", null);
         assertTrue(sql.contains("CREATE TABLE IF NOT EXISTS \"test\".\"topic__gemeinde\""));
-        assertTrue(sql.contains("xtf_bid VARCHAR"));
-        assertTrue(sql.contains("xtf_tid VARCHAR"));
+        assertTrue(sql.contains("\"xtf_bid\" VARCHAR"));
+        assertTrue(sql.contains("\"xtf_tid\" VARCHAR"));
     }
 
     @Test
@@ -62,18 +62,18 @@ class IliImportServiceTest {
     void generateImportSql_usesTypedColumns() {
         String sql = service.generateImportSql(XTF_PATH, MODELDIR, "test", "relational", null);
         // BFS_Nr is a NUMERIC 0..9999 → should be BIGINT
-        assertTrue(sql.contains("bfs_nr BIGINT"), "bfs_nr should be BIGINT, got: " + sql);
+        assertTrue(sql.contains("\"bfs_nr\" BIGINT"), "bfs_nr should be BIGINT, got: " + sql);
         // Name is TEXT → should stay VARCHAR
-        assertTrue(sql.contains("name VARCHAR"), "name should be VARCHAR");
+        assertTrue(sql.contains("\"name\" VARCHAR"), "name should be VARCHAR");
         // Status is enumeration → should stay VARCHAR
-        assertTrue(sql.contains("status VARCHAR"), "status should be VARCHAR");
+        assertTrue(sql.contains("\"status\" VARCHAR"), "status should be VARCHAR");
     }
 
     @Test
     void generateImportSql_usesCastInSelect() {
         String sql = service.generateImportSql(XTF_PATH, MODELDIR, "test", "relational", null);
         // BFS_Nr needs CAST to BIGINT
-        assertTrue(sql.contains("CAST(bfs_nr AS BIGINT)"), "Should CAST bfs_nr, got: " + sql);
+        assertTrue(sql.contains("CAST(\"bfs_nr\" AS BIGINT)"), "Should CAST bfs_nr, got: " + sql);
         // Name does NOT need CAST
         assertFalse(sql.contains("CAST(name AS"), "Should not CAST name (it's VARCHAR)");
     }
@@ -129,12 +129,12 @@ class IliImportServiceTest {
             "test", "relational", null);
 
         // Flaeche NUMERIC → BIGINT
-        assertTrue(sql.contains("flaeche BIGINT"), "flaeche should be BIGINT, got: " + sql);
+        assertTrue(sql.contains("\"flaeche\" BIGINT"), "flaeche should be BIGINT, got: " + sql);
         // Anteil NUMERIC 0..100 → BIGINT
-        assertTrue(sql.contains("anteil BIGINT"), "anteil should be BIGINT, got: " + sql);
+        assertTrue(sql.contains("\"anteil\" BIGINT"), "anteil should be BIGINT, got: " + sql);
         // CAST for Flaeche
-        assertTrue(sql.contains("CAST(flaeche AS BIGINT)"), "Should CAST flaeche");
-        assertTrue(sql.contains("CAST(anteil AS BIGINT)"), "Should CAST anteil");
+        assertTrue(sql.contains("CAST(\"flaeche\" AS BIGINT)"), "Should CAST flaeche");
+        assertTrue(sql.contains("CAST(\"anteil\" AS BIGINT)"), "Should CAST anteil");
     }
 
     @Test
@@ -220,5 +220,76 @@ class IliImportServiceTest {
             service.generateImportSql(XTF_PATH, MODELDIR, "test", "relational", "bogus"));
         assertTrue(ex.getMessage().contains("Unsupported import mode"),
             "Should reject invalid mode: " + ex.getMessage());
+    }
+
+    @Test
+    void generateImportSql_columnNamesAreQuoted() {
+        String sql = service.generateImportSql(XTF_PATH, MODELDIR, "test", "relational", null);
+        assertTrue(sql.contains("\"xtf_bid\" VARCHAR"), "Technical column xtf_bid should be quoted");
+        assertTrue(sql.contains("\"xtf_tid\" VARCHAR"), "Technical column xtf_tid should be quoted");
+        assertFalse(sql.contains("xtf_bid VARCHAR"), "Unquoted xtf_bid should not appear");
+        assertFalse(sql.contains("xtf_tid VARCHAR"), "Unquoted xtf_tid should not appear");
+    }
+
+    @Test
+    void generateImportSql_nullModelDirIsSafe() {
+        String sql = service.generateImportSql(XTF_PATH, null, "test", "relational", null);
+        assertNotNull(sql);
+        assertFalse(sql.isBlank());
+        assertFalse(sql.contains("'null'"), "SQL should not contain literal 'null' for modelDir: " + sql);
+        assertTrue(sql.contains("read_xtf_class"), "Should generate class INSERT even with null modelDir");
+    }
+
+    @Test
+    void generateImportSql_emptyModelDirIsSafe() {
+        String sql = service.generateImportSql(XTF_PATH, "", "test", "relational", null);
+        assertNotNull(sql);
+        assertFalse(sql.isBlank());
+        assertFalse(sql.contains("'null'"));
+        assertTrue(sql.contains("read_xtf_class"));
+    }
+
+    @Test
+    void generateImportSql_keywordColumnNamesAreQuoted() {
+        Path keywordsDir;
+        Path cwd = Path.of("").toAbsolutePath();
+        if (Files.isRegularFile(cwd.resolve("testdata/synthetic/keywords/SO_AGI_Keywords_20260609.ili"))) {
+            keywordsDir = cwd.resolve("testdata/synthetic/keywords");
+        } else if (Files.isRegularFile(cwd.getParent().resolve("testdata/synthetic/keywords/SO_AGI_Keywords_20260609.ili"))) {
+            keywordsDir = cwd.getParent().resolve("testdata/synthetic/keywords");
+        } else {
+            keywordsDir = cwd.getParent().getParent().resolve("testdata/synthetic/keywords");
+        }
+
+        String sql = service.generateImportSql(
+            keywordsDir.resolve("valid.xtf").toString(),
+            keywordsDir.toString(),
+            "test", "relational", null);
+
+        // SQL keywords as column names must be quoted in DDL
+        assertTrue(sql.contains("\"select\" VARCHAR"), "SQL keyword 'select' should be quoted, got: " + sql);
+        assertTrue(sql.contains("\"limit\" BIGINT"), "SQL keyword 'limit' should be quoted, got: " + sql);
+        assertTrue(sql.contains("\"union\" VARCHAR"), "SQL keyword 'union' should be quoted, got: " + sql);
+
+        // CAST for non-VARCHAR columns
+        assertTrue(sql.contains("CAST(\"limit\" AS BIGINT)"), "CAST for 'limit' should use quoted identifier");
+    }
+
+    @Test
+    void generateImportSql_identifiersQuotedInAllStatements() {
+        String sql = service.generateImportSql(XTF_PATH, MODELDIR, "test", "relational", "replace");
+
+        // Table names quoted in DROP, CREATE, INSERT
+        String dropLine = sql.lines().filter(l -> l.contains("DROP TABLE IF EXISTS")).findFirst().orElse("");
+        assertTrue(dropLine.contains("\"test\"") && dropLine.contains("\"topic__"), "DROP should quote schema and table: " + dropLine);
+
+        String createLine = sql.lines().filter(l -> l.contains("CREATE TABLE IF NOT EXISTS")).findFirst().orElse("");
+        assertTrue(createLine.contains("\"test\"") && createLine.contains("\"topic__"), "CREATE should quote schema and table: " + createLine);
+
+        String insertLine = sql.lines().filter(l -> l.contains("INSERT INTO")).findFirst().orElse("");
+        assertTrue(insertLine.contains("\"test\"") && insertLine.contains("\"topic__"), "INSERT should quote schema and table: " + insertLine);
+
+        // Column names always quoted in DDL
+        assertTrue(createLine.contains("\"xtf_bid\""), "DDL columns should be quoted");
     }
 }

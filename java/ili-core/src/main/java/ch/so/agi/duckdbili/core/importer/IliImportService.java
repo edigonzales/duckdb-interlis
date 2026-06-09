@@ -7,6 +7,7 @@ import ch.interlis.ili2c.metamodel.*;
 import ch.interlis.ilirepository.IliManager;
 import ch.so.agi.duckdbili.core.logging.IliLogger;
 import ch.so.agi.duckdbili.core.model.ModelCache;
+import ch.so.agi.duckdbili.core.sql.SqlIdentifiers;
 
 import java.io.File;
 import java.nio.file.*;
@@ -33,12 +34,13 @@ public class IliImportService {
             throw new RuntimeException("Unsupported import mode: '" + mode + "'. Valid modes: create, replace, append.");
         }
 
-        TransferDescription td = compileModel(resolveModelDir(modelDir, xtfPath), null);
+        String effectiveModelDir = resolveModelDir(modelDir, xtfPath);
+        TransferDescription td = compileModel(effectiveModelDir, null);
 
         Set<String> tableNames = new HashSet<>();
         StringBuilder sql = new StringBuilder();
         sql.append("BEGIN TRANSACTION;\n");
-        sql.append("CREATE SCHEMA IF NOT EXISTS ").append(quoteIdent(schema)).append(";\n");
+        sql.append("CREATE SCHEMA IF NOT EXISTS ").append(SqlIdentifiers.quoteIdent(schema)).append(";\n");
 
         for (Iterator<Model> mit = td.iterator(); mit.hasNext(); ) {
             Model model = mit.next();
@@ -56,26 +58,26 @@ public class IliImportService {
                         ensureNoTableCollision(tableName, assocFqn, tableNames);
                         List<ColInfo> cols = buildAssociationColumns(assocDef);
                         if (effectiveMode.equals("replace")) {
-                            sql.append("DROP TABLE IF EXISTS ").append(quoteIdent(schema)).append(".")
-                              .append(quoteIdent(tableName)).append(";\n");
+                            sql.append("DROP TABLE IF EXISTS ").append(SqlIdentifiers.quoteIdent(schema)).append(".")
+                              .append(SqlIdentifiers.quoteIdent(tableName)).append(";\n");
                         }
                         if (!effectiveMode.equals("append")) {
                             sql.append(generateDdl(schema, tableName, cols)).append('\n');
                         }
-                        sql.append(generateAssociationInsert(schema, xtfPath, modelDir, assocFqn, tableName, cols)).append('\n');
+                        sql.append(generateAssociationInsert(schema, xtfPath, effectiveModelDir, assocFqn, tableName, cols)).append('\n');
                     } else if (tel instanceof AbstractClassDef classDef && !(tel instanceof AssociationDef)) {
                         String classFqn = model.getName() + "." + topic.getName() + "." + classDef.getName();
                         String tableName = buildTableName(topic, classDef.getName());
                         ensureNoTableCollision(tableName, classFqn, tableNames);
                         List<ColInfo> cols = buildClassColumns(classDef);
                         if (effectiveMode.equals("replace")) {
-                            sql.append("DROP TABLE IF EXISTS ").append(quoteIdent(schema)).append(".")
-                              .append(quoteIdent(tableName)).append(";\n");
+                            sql.append("DROP TABLE IF EXISTS ").append(SqlIdentifiers.quoteIdent(schema)).append(".")
+                              .append(SqlIdentifiers.quoteIdent(tableName)).append(";\n");
                         }
                         if (!effectiveMode.equals("append")) {
                             sql.append(generateDdl(schema, tableName, cols)).append('\n');
                         }
-                        sql.append(generateClassInsert(schema, xtfPath, modelDir, classFqn, tableName, cols)).append('\n');
+                        sql.append(generateClassInsert(schema, xtfPath, effectiveModelDir, classFqn, tableName, cols)).append('\n');
                     }
                 }
             }
@@ -101,7 +103,7 @@ public class IliImportService {
         final String duckdbType;
 
         ColInfo(String name, String duckdbType) {
-            this.name = safeColName(name);
+            this.name = SqlIdentifiers.normalizeColumnName(name);
             this.duckdbType = duckdbType;
         }
     }
@@ -155,11 +157,11 @@ public class IliImportService {
 
     private static String generateDdl(String schema, String tableName, List<ColInfo> cols) {
         StringBuilder sb = new StringBuilder();
-        sb.append("CREATE TABLE IF NOT EXISTS ").append(quoteIdent(schema)).append(".")
-          .append(quoteIdent(tableName)).append(" (");
+        sb.append("CREATE TABLE IF NOT EXISTS ").append(SqlIdentifiers.quoteIdent(schema)).append(".")
+          .append(SqlIdentifiers.quoteIdent(tableName)).append(" (");
         List<String> parts = new ArrayList<>();
         for (ColInfo ci : cols) {
-            parts.add(ci.name + " " + ci.duckdbType);
+            parts.add(SqlIdentifiers.quoteIdent(ci.name) + " " + ci.duckdbType);
         }
         sb.append(String.join(", ", parts));
         sb.append(");");
@@ -174,13 +176,13 @@ public class IliImportService {
                                         String classFqn, String tableName, List<ColInfo> cols) {
         String colList = buildTargetColList(cols);
         String selList = buildSelectList(cols);
-        return "INSERT INTO " + quoteIdent(schema) + "." + quoteIdent(tableName)
+        return "INSERT INTO " + SqlIdentifiers.quoteIdent(schema) + "." + SqlIdentifiers.quoteIdent(tableName)
              + " (" + colList + ")"
              + " SELECT " + selList
              + " FROM read_xtf_class("
-             + sqlString(xtfPath)
-             + ", class := " + sqlString(classFqn)
-             + ", modeldir := " + sqlString(modelDir)
+             + SqlIdentifiers.sqlString(xtfPath)
+             + ", class := " + SqlIdentifiers.sqlString(classFqn)
+             + ", modeldir := " + SqlIdentifiers.sqlString(modelDir)
              + ");";
     }
 
@@ -188,19 +190,19 @@ public class IliImportService {
                                               String assocFqn, String tableName, List<ColInfo> cols) {
         String colList = buildTargetColList(cols);
         String selList = buildSelectList(cols);
-        return "INSERT INTO " + quoteIdent(schema) + "." + quoteIdent(tableName)
+        return "INSERT INTO " + SqlIdentifiers.quoteIdent(schema) + "." + SqlIdentifiers.quoteIdent(tableName)
              + " (" + colList + ")"
              + " SELECT " + selList
              + " FROM read_xtf_association("
-             + sqlString(xtfPath)
-             + ", association := " + sqlString(assocFqn)
-             + ", modeldir := " + sqlString(modelDir)
+             + SqlIdentifiers.sqlString(xtfPath)
+             + ", association := " + SqlIdentifiers.sqlString(assocFqn)
+             + ", modeldir := " + SqlIdentifiers.sqlString(modelDir)
              + ");";
     }
 
     private static String buildTargetColList(List<ColInfo> cols) {
         List<String> names = new ArrayList<>();
-        for (ColInfo ci : cols) names.add(ci.name);
+        for (ColInfo ci : cols)             names.add(SqlIdentifiers.quoteIdent(ci.name));
         return String.join(", ", names);
     }
 
@@ -209,9 +211,9 @@ public class IliImportService {
         for (ColInfo ci : cols) {
             if ("VARCHAR".equals(ci.duckdbType)) {
                 // read_xtf_class/read_xtf_association returns VARCHAR for everything
-                parts.add(ci.name);
+                parts.add(SqlIdentifiers.quoteIdent(ci.name));
             } else {
-                parts.add("CAST(" + ci.name + " AS " + ci.duckdbType + ")");
+                parts.add("CAST(" + SqlIdentifiers.quoteIdent(ci.name) + " AS " + ci.duckdbType + ")");
             }
         }
         return String.join(", ", parts);
@@ -262,27 +264,8 @@ public class IliImportService {
     // Helpers
     // -----------------------------------------------------------------------
 
-    private static String sqlString(String s) {
-        return "'" + s.replace("'", "''") + "'";
-    }
-
-    private static String quoteIdent(String s) {
-        if (s == null) return "";
-        return "\"" + s.replace("\"", "\"\"") + "\"";
-    }
-
-    private static String safeColName(String s) {
-        if (s == null) return "";
-        return s.toLowerCase();
-    }
-
-    private static String sanitizeTableName(String s) {
-        if (s == null) return "";
-        return s.toLowerCase().replaceAll("[^a-z0-9_]", "_");
-    }
-
     private static String buildTableName(Topic topic, String className) {
-        return sanitizeTableName(topic.getName() + "__" + className);
+        return SqlIdentifiers.sanitizeTableName(topic.getName() + "__" + className);
     }
 
     private static void ensureNoTableCollision(String tableName, String fqn, Set<String> seen) {

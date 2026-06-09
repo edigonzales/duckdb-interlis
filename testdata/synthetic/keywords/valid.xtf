@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TRANSFER xmlns="http://www.interlis.ch/INTERLIS2.3">
+  <HEADERSECTION VERSION="2.3" SENDER="test">
+    <MODELS>
+      <MODEL NAME="SO_AGI_Keywords_20260609" VERSION="2026-06-09" URI="https://models.interlis.ch"/>
+    </MODELS>
+  </HEADERSECTION>
+  <DATASECTION>
+    <SO_AGI_Keywords_20260609.Topic BID="basket1">
+      <SO_AGI_Keywords_20260609.Topic.Entry TID="1">
+        <select>hello</select>
+        <limit>42</limit>
+        <union>test</union>
+      </SO_AGI_Keywords_20260609.Topic.Entry>
+    </SO_AGI_Keywords_20260609.Topic>
+  </DATASECTION>
+</TRANSFER>

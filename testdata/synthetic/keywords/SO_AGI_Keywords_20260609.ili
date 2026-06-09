@@ -1,0 +1,13 @@
+INTERLIS 2.3;
+
+MODEL SO_AGI_Keywords_20260609 (de)
+AT "https://models.interlis.ch"
+VERSION "2026-06-09" =
+  TOPIC Topic =
+    CLASS Entry =
+      select : MANDATORY TEXT*60;
+      limit : 0 .. 9999;
+      union : MANDATORY TEXT*40;
+    END Entry;
+  END Topic;
+END SO_AGI_Keywords_20260609.
