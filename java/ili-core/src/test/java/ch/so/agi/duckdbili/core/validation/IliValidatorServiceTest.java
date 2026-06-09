@@ -4,8 +4,10 @@ import ch.so.agi.duckdbili.core.NativeStatus;
 
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
@@ -18,9 +20,11 @@ class IliValidatorServiceTest {
 
     private final IliValidatorService service = new IliValidatorService();
 
+    @TempDir
+    Path tempDir;
+
     @BeforeAll
     static void resolvePaths() {
-        // JUnit runs from the subproject directory; navigate up to repo root
         Path cwd = Path.of("").toAbsolutePath();
         if (Files.isRegularFile(cwd.resolve("testdata/synthetic/simple/valid.xtf"))) {
             REPO_ROOT = cwd;
@@ -29,10 +33,24 @@ class IliValidatorServiceTest {
         } else if (Files.isRegularFile(cwd.getParent().getParent().resolve("testdata/synthetic/simple/valid.xtf"))) {
             REPO_ROOT = cwd.getParent().getParent();
         } else {
-            // fallback: try absolute
             REPO_ROOT = Path.of(System.getProperty("user.dir"));
         }
         TESTDATA = REPO_ROOT.resolve("testdata/synthetic/simple");
+    }
+
+    private Path writeCsv(String... lines) throws IOException {
+        Path csv = tempDir.resolve("test.csv");
+        Files.write(csv, String.join("\n", lines).getBytes(StandardCharsets.UTF_8));
+        return csv;
+    }
+
+    private ValidationResult parseCsv(String... lines) {
+        try {
+            Path csv = writeCsv(lines);
+            return service.parseCsv(csv, tempDir.resolve("test.xtf"), -1);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @Test
@@ -103,79 +121,103 @@ class IliValidatorServiceTest {
     }
 
     // -----------------------------------------------------------------------
-    // CSV parser tests
+    // CSV parser tests (using Apache Commons CSV via parseCsv)
     // -----------------------------------------------------------------------
 
     @Test
     void csvParserSimpleLine() {
-        var fields = IliValidatorService.parseCsvLine("a,b,c");
-        assertEquals(3, fields.size());
-        assertEquals("a", fields.get(0));
-        assertEquals("b", fields.get(1));
-        assertEquals("c", fields.get(2));
+        ValidationResult result = parseCsv(
+                "Message,Type,iliName,Tid,,,,DataSource,Line",
+                "hello,Info,,,"
+        );
+        assertEquals(1, result.getInfoCount());
+        assertEquals(0, result.getErrorCount());
+        assertEquals("hello", result.getMessages().get(0).getMessage());
     }
 
     @Test
     void csvParserQuotedFieldComma() {
-        var fields = IliValidatorService.parseCsvLine("\"a,b\",c,d");
-        assertEquals(3, fields.size());
-        assertEquals("a,b", fields.get(0));
-        assertEquals("c", fields.get(1));
-        assertEquals("d", fields.get(2));
+        ValidationResult result = parseCsv(
+                "Message,Type",
+                "\"hello, world\",Warning"
+        );
+        assertEquals(1, result.getWarningCount());
+        assertEquals("hello, world", result.getMessages().get(0).getMessage());
     }
 
     @Test
     void csvParserEscapedQuotes() {
-        var fields = IliValidatorService.parseCsvLine("\"a\"\"b\"\"\",c");
-        assertEquals(2, fields.size());
-        assertEquals("a\"b\"", fields.get(0));
-        assertEquals("c", fields.get(1));
+        ValidationResult result = parseCsv(
+                "Message,Type",
+                "\"a\"\"b\"\"\",Info"
+        );
+        assertEquals(1, result.getInfoCount());
+        assertEquals("a\"b\"", result.getMessages().get(0).getMessage());
     }
 
     @Test
     void csvParserEmptyFields() {
-        var fields = IliValidatorService.parseCsvLine("a,,c");
-        assertEquals(3, fields.size());
-        assertEquals("a", fields.get(0));
-        assertEquals("", fields.get(1));
-        assertEquals("c", fields.get(2));
+        ValidationResult result = parseCsv(
+                "Message,Type,Col3",
+                "msg,Error,"
+        );
+        assertEquals(1, result.getErrorCount());
+        assertEquals("msg", result.getMessages().get(0).getMessage());
     }
 
     @Test
     void csvParserQuotedEmptyField() {
-        var fields = IliValidatorService.parseCsvLine("a,\"\",c");
-        assertEquals(3, fields.size());
-        assertEquals("a", fields.get(0));
-        assertEquals("", fields.get(1));
-        assertEquals("c", fields.get(2));
-    }
-
-    @Test
-    void csvParserSingleQuoteInMiddle() {
-        var fields = IliValidatorService.parseCsvLine("value 1\"5,c");
-        assertEquals(2, fields.size());
-        assertEquals("value 1\"5", fields.get(0));
-        assertEquals("c", fields.get(1));
+        ValidationResult result = parseCsv(
+                "Message,Type,Col3",
+                "msg,Info,\"\""
+        );
+        assertEquals(1, result.getInfoCount());
     }
 
     @Test
     void csvParserUnicode() {
-        var fields = IliValidatorService.parseCsvLine("\"Höhe ü. M.\",äöü,中文,🎉");
-        assertEquals(4, fields.size());
-        assertEquals("Höhe ü. M.", fields.get(0));
-        assertEquals("äöü", fields.get(1));
-        assertEquals("中文", fields.get(2));
-        assertEquals("🎉", fields.get(3));
+        ValidationResult result = parseCsv(
+                "Message,Type",
+                "\"Höhe ü. M.\",Info"
+        );
+        assertEquals(1, result.getInfoCount());
+        assertEquals("Höhe ü. M.", result.getMessages().get(0).getMessage());
     }
 
     @Test
     void csvParserTrailingEmptyFields() {
-        var fields = IliValidatorService.parseCsvLine("a,b,c,");
-        assertEquals(4, fields.size());
-        assertEquals("a", fields.get(0));
-        assertEquals("b", fields.get(1));
-        assertEquals("c", fields.get(2));
-        assertEquals("", fields.get(3));
+        ValidationResult result = parseCsv(
+                "Message,Type,Col3,Col4",
+                "msg,Info,,"
+        );
+        assertEquals(1, result.getInfoCount());
+        assertEquals("msg", result.getMessages().get(0).getMessage());
+    }
+
+    @Test
+    void csvParserMultiLineField() {
+        ValidationResult result = parseCsv(
+                "Message,Type",
+                "\"line1\nline2\",Error"
+        );
+        assertEquals(1, result.getErrorCount());
+        assertEquals("line1\nline2", result.getMessages().get(0).getMessage());
+    }
+
+    @Test
+    void csvParserUnclosedQuoteThrowsException() throws IOException {
+        Path csv = writeCsv("Message,Type", "\"unclosed,Error");
+        var xtfFile = tempDir.resolve("test.xtf");
+        assertThrows(ValidationOutputException.class,
+                () -> service.parseCsv(csv, xtfFile, -1));
+    }
+
+    @Test
+    void csvParserTooFewColumnsThrowsException() throws IOException {
+        Path csv = writeCsv("Message,Type", "only_one_column");
+        var xtfFile = tempDir.resolve("test.xtf");
+        assertThrows(ValidationOutputException.class,
+                () -> service.parseCsv(csv, xtfFile, -1));
     }
 
     // -----------------------------------------------------------------------

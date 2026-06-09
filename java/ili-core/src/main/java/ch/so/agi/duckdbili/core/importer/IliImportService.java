@@ -7,6 +7,7 @@ import ch.interlis.ili2c.metamodel.*;
 import ch.interlis.ilirepository.IliManager;
 import ch.so.agi.duckdbili.core.logging.IliLogger;
 import ch.so.agi.duckdbili.core.model.ModelCache;
+import ch.so.agi.duckdbili.core.model.ModelRepositoryResolver;
 import ch.so.agi.duckdbili.core.sql.SqlIdentifiers;
 
 import java.io.File;
@@ -32,6 +33,13 @@ public class IliImportService {
         String effectiveMode = (mode != null && !mode.isBlank()) ? mode : "create";
         if (!effectiveMode.equals("create") && !effectiveMode.equals("replace") && !effectiveMode.equals("append")) {
             throw new RuntimeException("Unsupported import mode: '" + mode + "'. Valid modes: create, replace, append.");
+        }
+
+        String effectiveMapping = mapping == null || mapping.isBlank() ? "relational" : mapping;
+        if (!"relational".equals(effectiveMapping)) {
+            throw new IllegalArgumentException(
+                    "Unsupported mapping mode: '" + effectiveMapping
+                            + "'. Currently only 'relational' mapping is supported.");
         }
 
         String effectiveModelDir = resolveModelDir(modelDir, xtfPath);
@@ -99,11 +107,13 @@ public class IliImportService {
     // -----------------------------------------------------------------------
 
     private static final class ColInfo {
+        final String sourceName;
         final String name;
         final String duckdbType;
 
-        ColInfo(String name, String duckdbType) {
-            this.name = SqlIdentifiers.normalizeColumnName(name);
+        ColInfo(String sourceName, String generatedName, String duckdbType) {
+            this.sourceName = sourceName;
+            this.name = SqlIdentifiers.normalizeColumnName(generatedName);
             this.duckdbType = duckdbType;
         }
     }
@@ -112,7 +122,7 @@ public class IliImportService {
 
     private List<ColInfo> buildClassColumns(AbstractClassDef cdef) {
         List<ColInfo> cols = new ArrayList<>();
-        for (String tc : TECH_COLS) cols.add(new ColInfo(tc, "VARCHAR"));
+        for (String tc : TECH_COLS) cols.add(new ColInfo("<technical>", tc, "VARCHAR"));
 
         Iterator<?> ait = cdef.getAttributesAndRoles2();
         while (ait.hasNext()) {
@@ -120,34 +130,36 @@ public class IliImportService {
             if (vte.obj instanceof AttributeDef ad) {
                 String type = mapScalarType(ad);
                 if (isGeometryDomain(ad) || isMultiGeometryDomain(ad)) {
-                    cols.add(new ColInfo(ad.getName() + "_wkb", type));
+                    cols.add(new ColInfo(ad.getScopedName(null), ad.getName() + "_wkb", type));
                 } else if (isStructureDomain(ad) || isCompositionDomain(ad)) {
-                    cols.add(new ColInfo(ad.getName() + "_json", type));
+                    cols.add(new ColInfo(ad.getScopedName(null), ad.getName() + "_json", type));
                 } else {
-                    cols.add(new ColInfo(ad.getName(), type));
+                    cols.add(new ColInfo(ad.getScopedName(null), ad.getName(), type));
                 }
             } else if (vte.obj instanceof RoleDef rd) {
-                cols.add(new ColInfo(rd.getName() + "_ref", "VARCHAR"));
+                cols.add(new ColInfo(rd.getScopedName(null), rd.getName() + "_ref", "VARCHAR"));
             }
         }
-        cols.add(new ColInfo("unsupported_json", "VARCHAR"));
+        cols.add(new ColInfo("<technical>", "unsupported_json", "VARCHAR"));
+        ensureNoColumnCollisions(cdef.getScopedName(null), cols);
         return cols;
     }
 
     private List<ColInfo> buildAssociationColumns(AssociationDef adef) {
         List<ColInfo> cols = new ArrayList<>();
-        for (String tc : TECH_COLS) cols.add(new ColInfo(tc, "VARCHAR"));
+        for (String tc : TECH_COLS) cols.add(new ColInfo("<technical>", tc, "VARCHAR"));
 
         Iterator<?> ait = adef.getAttributesAndRoles2();
         while (ait.hasNext()) {
             ViewableTransferElement vte = (ViewableTransferElement) ait.next();
             if (vte.obj instanceof RoleDef rd) {
-                cols.add(new ColInfo(rd.getName() + "_ref", "VARCHAR"));
+                cols.add(new ColInfo(rd.getScopedName(null), rd.getName() + "_ref", "VARCHAR"));
             } else if (vte.obj instanceof AttributeDef ad) {
-                cols.add(new ColInfo(ad.getName(), mapScalarType(ad)));
+                cols.add(new ColInfo(ad.getScopedName(null), ad.getName(), mapScalarType(ad)));
             }
         }
-        cols.add(new ColInfo("unsupported_json", "VARCHAR"));
+        cols.add(new ColInfo("<technical>", "unsupported_json", "VARCHAR"));
+        ensureNoColumnCollisions(adef.getScopedName(null), cols);
         return cols;
     }
 
@@ -260,6 +272,24 @@ public class IliImportService {
         return "VARCHAR";
     }
 
+    private static void ensureNoColumnCollisions(String ownerFqn, List<ColInfo> columns) {
+        Map<String, ColInfo> seen = new LinkedHashMap<>();
+
+        for (ColInfo column : columns) {
+            String key = SqlIdentifiers.collisionKey(column.name);
+            ColInfo existing = seen.putIfAbsent(key, column);
+
+            if (existing != null) {
+                throw new IllegalArgumentException(
+                        "Column name collision in " + ownerFqn
+                                + ": source '" + existing.sourceName
+                                + "' and source '" + column.sourceName
+                                + "' both map to DuckDB column '"
+                                + column.name + "'");
+            }
+        }
+    }
+
     // -----------------------------------------------------------------------
     // Helpers
     // -----------------------------------------------------------------------
@@ -286,23 +316,11 @@ public class IliImportService {
     // -----------------------------------------------------------------------
 
     private TransferDescription compileModel(String modelDir, String modelNames) {
-        String md = normalizeModelDir(modelDir);
+        String md = ModelRepositoryResolver.resolveToString(modelDir, DEFAULT_MODELDIR);
         Set<String> names = parseModelNames(modelNames);
         String fingerprint = ModelCache.computeFingerprint(md);
         ModelCache.CacheKey key = new ModelCache.CacheKey(md, names, fingerprint);
         return ModelCache.getInstance().getOrCompile(key, () -> doCompileModel(md, modelNames));
-    }
-
-    private static String normalizeModelDir(String modelDir) {
-        List<String> repos = new ArrayList<>();
-        if (modelDir != null) {
-            for (String part : modelDir.split(";")) {
-                String trimmed = part.trim();
-                if (!trimmed.isBlank()) repos.add(trimmed);
-            }
-        }
-        if (repos.isEmpty()) repos.add(DEFAULT_MODELDIR);
-        return String.join(";", repos);
     }
 
     private static Set<String> parseModelNames(String modelNames) {
@@ -319,14 +337,7 @@ public class IliImportService {
         try {
             IliManager manager = new IliManager();
 
-            List<String> repoList = new ArrayList<>();
-            if (normalizedModelDir != null) {
-                for (String part : normalizedModelDir.split(";")) {
-                    String trimmed = part.trim();
-                    if (!trimmed.isBlank()) repoList.add(trimmed);
-                }
-            }
-            if (repoList.isEmpty()) repoList.add(DEFAULT_MODELDIR);
+            List<String> repoList = ModelRepositoryResolver.resolve(normalizedModelDir, DEFAULT_MODELDIR);
             manager.setRepositories(repoList.toArray(new String[0]));
 
             ArrayList<String> entries = new ArrayList<>();
@@ -336,13 +347,9 @@ public class IliImportService {
                     if (!trimmed.isBlank()) entries.add(trimmed);
                 }
             } else {
-                for (String part : normalizedModelDir.split(";")) {
-                    Path p = null;
-                    try { p = Path.of(part.trim()); } catch (Exception ignored) {}
-                    if (p != null && Files.isDirectory(p)) {
-                        try (DirectoryStream<Path> ds = Files.newDirectoryStream(p, "*.ili")) {
-                            for (Path f : ds) entries.add(f.toAbsolutePath().toString());
-                        }
+                for (Path directory : ModelRepositoryResolver.localDirectories(normalizedModelDir, DEFAULT_MODELDIR)) {
+                    try (DirectoryStream<Path> ds = Files.newDirectoryStream(directory, "*.ili")) {
+                        for (Path f : ds) entries.add(f.toAbsolutePath().toString());
                     }
                 }
             }
@@ -427,7 +434,8 @@ public class IliImportService {
         if (modelDir != null && !modelDir.isBlank()) return modelDir;
         String xtfDir = "";
         try { xtfDir = new File(xtfPath).getAbsoluteFile().getParent(); } catch (Exception ignored) {}
-        if (xtfDir != null && !xtfDir.isBlank()) return xtfDir + ";" + DEFAULT_MODELDIR;
-        return DEFAULT_MODELDIR;
+        return ModelRepositoryResolver.resolveToString(
+                xtfDir != null && !xtfDir.isBlank() ? xtfDir + ";" + DEFAULT_MODELDIR : DEFAULT_MODELDIR,
+                DEFAULT_MODELDIR);
     }
 }

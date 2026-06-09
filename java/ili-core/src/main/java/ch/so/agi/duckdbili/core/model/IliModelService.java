@@ -21,7 +21,7 @@ public class IliModelService {
             : "https://models.interlis.ch";
 
     private TransferDescription compileIli(String modelDir) {
-        String effectiveDir = (modelDir != null && !modelDir.isBlank()) ? modelDir : DEFAULT_MODELDIR;
+        String effectiveDir = ModelRepositoryResolver.resolveToString(modelDir, DEFAULT_MODELDIR);
         String fingerprint = ModelCache.computeFingerprint(effectiveDir);
         ModelCache.CacheKey key = new ModelCache.CacheKey(effectiveDir, emptySet(), fingerprint);
         return ModelCache.getInstance().getOrCompile(key, () -> doCompileIli(effectiveDir));
@@ -30,18 +30,16 @@ public class IliModelService {
     private TransferDescription doCompileIli(String effectiveDir) {
         try {
             IliManager manager = new IliManager();
-            manager.setRepositories(new String[]{effectiveDir});
+            List<String> repositories = ModelRepositoryResolver.resolve(effectiveDir, DEFAULT_MODELDIR);
+            manager.setRepositories(repositories.toArray(String[]::new));
 
             ArrayList<String> entries = new ArrayList<>();
-            try {
-                Path dir = Path.of(effectiveDir);
-                if (Files.isDirectory(dir)) {
-                    try (DirectoryStream<Path> stream = Files.newDirectoryStream(dir, "*.ili")) {
-                        for (Path f : stream)
-                            entries.add(f.toAbsolutePath().toString());
-                    }
+            for (Path directory : ModelRepositoryResolver.localDirectories(effectiveDir, DEFAULT_MODELDIR)) {
+                try (DirectoryStream<Path> stream = Files.newDirectoryStream(directory, "*.ili")) {
+                    for (Path f : stream)
+                        entries.add(f.toAbsolutePath().toString());
                 }
-            } catch (IOException ignored) {}
+            }
 
             Configuration cfg = manager.getConfigWithFiles(entries, null, 0.0);
             if (cfg == null) {

@@ -123,14 +123,12 @@ public final class ModelCache {
     public static String computeFingerprint(String modelDir) {
         try {
             MessageDigest md = MessageDigest.getInstance("SHA-256");
-            for (String repo : modelDir.split(";")) {
-                String trimmed = repo.trim();
-                if (trimmed.isBlank()) continue;
-                if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
-                    md.update(trimmed.getBytes(StandardCharsets.UTF_8));
+            for (String repo : ModelRepositoryResolver.resolve(modelDir, "")) {
+                if (repo.startsWith("http://") || repo.startsWith("https://")) {
+                    md.update(repo.getBytes(StandardCharsets.UTF_8));
                     continue;
                 }
-                Path dir = Path.of(trimmed);
+                Path dir = Path.of(repo);
                 if (!Files.isDirectory(dir)) continue;
                 try (DirectoryStream<Path> ds = Files.newDirectoryStream(dir, "*.ili")) {
                     List<Path> sorted = new ArrayList<>();

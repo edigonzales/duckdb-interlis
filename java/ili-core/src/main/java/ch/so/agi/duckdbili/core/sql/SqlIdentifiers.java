@@ -1,6 +1,7 @@
 package ch.so.agi.duckdbili.core.sql;
 
 import java.text.Normalizer;
+import java.util.Locale;
 
 public final class SqlIdentifiers {
     private SqlIdentifiers() {}
@@ -17,7 +18,7 @@ public final class SqlIdentifiers {
 
     public static String collisionKey(String s) {
         if (s == null) return "";
-        return Normalizer.normalize(s, Normalizer.Form.NFC).toLowerCase();
+        return Normalizer.normalize(s, Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
     }
 
     public static String sanitizeTableName(String s) {

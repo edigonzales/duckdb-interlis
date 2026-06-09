@@ -126,7 +126,7 @@ public class NativeEntryPoints {
             IliRequest request,
             CCharPointerPointer outPayload) {
 
-        NativeError verr = NativeRequestValidator.requireRequest(request, NativeRequestValidator.EXPECTED_STRUCT_SIZE, "validate");
+        NativeError verr = NativeRequestValidator.requireRequest(request, NativeRequestValidator.expectedStructSize(), "validate");
         if (verr != null) {
             outPayload.write(allocCString(verr.toJson()));
             return verr.status();
@@ -211,7 +211,7 @@ public class NativeEntryPoints {
             IliRequest request,
             CCharPointerPointer outPayload) {
 
-        NativeError verr = NativeRequestValidator.requireRequest(request, NativeRequestValidator.EXPECTED_STRUCT_SIZE, "validate_tsv");
+        NativeError verr = NativeRequestValidator.requireRequest(request, NativeRequestValidator.expectedStructSize(), "validate_tsv");
         if (verr != null) {
             outPayload.write(allocCString(verr.toJson()));
             return verr.status();
@@ -293,7 +293,7 @@ public class NativeEntryPoints {
             IliRequest request,
             CCharPointerPointer outPayload) {
 
-        NativeError verr = NativeRequestValidator.requireRequest(request, NativeRequestValidator.EXPECTED_STRUCT_SIZE, "model_info");
+        NativeError verr = NativeRequestValidator.requireRequest(request, NativeRequestValidator.expectedStructSize(), "model_info");
         if (verr != null) {
             outPayload.write(allocCString(verr.toJson()));
             return verr.status();
@@ -340,7 +340,7 @@ public class NativeEntryPoints {
             IliRequest request,
             CCharPointerPointer outPayload) {
 
-        NativeError verr = NativeRequestValidator.requireRequest(request, NativeRequestValidator.EXPECTED_STRUCT_SIZE, "read_xtf");
+        NativeError verr = NativeRequestValidator.requireRequest(request, NativeRequestValidator.expectedStructSize(), "read_xtf");
         if (verr != null) {
             outPayload.write(allocCString(verr.toJson()));
             return verr.status();
@@ -375,7 +375,7 @@ public class NativeEntryPoints {
             IliRequest request,
             CCharPointerPointer outPayload) {
 
-        NativeError verr = NativeRequestValidator.requireRequest(request, NativeRequestValidator.EXPECTED_STRUCT_SIZE, "read_xtf_class");
+        NativeError verr = NativeRequestValidator.requireRequest(request, NativeRequestValidator.expectedStructSize(), "read_xtf_class");
         if (verr != null) {
             outPayload.write(allocCString(verr.toJson()));
             return verr.status();
@@ -411,7 +411,7 @@ public class NativeEntryPoints {
             IliRequest request,
             CCharPointerPointer outPayload) {
 
-        NativeError verr = NativeRequestValidator.requireRequest(request, NativeRequestValidator.EXPECTED_STRUCT_SIZE, "read_xtf_class_schema");
+        NativeError verr = NativeRequestValidator.requireRequest(request, NativeRequestValidator.expectedStructSize(), "read_xtf_class_schema");
         if (verr != null) {
             outPayload.write(allocCString(verr.toJson()));
             return verr.status();
@@ -445,7 +445,7 @@ public class NativeEntryPoints {
             IliRequest request,
             CCharPointerPointer outPayload) {
 
-        NativeError verr = NativeRequestValidator.requireRequest(request, NativeRequestValidator.EXPECTED_STRUCT_SIZE, "read_xtf_structures");
+        NativeError verr = NativeRequestValidator.requireRequest(request, NativeRequestValidator.expectedStructSize(), "read_xtf_structures");
         if (verr != null) {
             outPayload.write(allocCString(verr.toJson()));
             return verr.status();
@@ -478,7 +478,7 @@ public class NativeEntryPoints {
             IliRequest request,
             CCharPointerPointer outPayload) {
 
-        NativeError verr = NativeRequestValidator.requireRequest(request, NativeRequestValidator.EXPECTED_STRUCT_SIZE, "read_xtf_association");
+        NativeError verr = NativeRequestValidator.requireRequest(request, NativeRequestValidator.expectedStructSize(), "read_xtf_association");
         if (verr != null) {
             outPayload.write(allocCString(verr.toJson()));
             return verr.status();
@@ -513,7 +513,7 @@ public class NativeEntryPoints {
             IliRequest request,
             CCharPointerPointer outPayload) {
 
-        NativeError verr = NativeRequestValidator.requireRequest(request, NativeRequestValidator.EXPECTED_STRUCT_SIZE, "read_xtf_association_schema");
+        NativeError verr = NativeRequestValidator.requireRequest(request, NativeRequestValidator.expectedStructSize(), "read_xtf_association_schema");
         if (verr != null) {
             outPayload.write(allocCString(verr.toJson()));
             return verr.status();
@@ -551,7 +551,7 @@ public class NativeEntryPoints {
             IliRequest request,
             CCharPointerPointer outPayload) {
 
-        NativeError verr = NativeRequestValidator.requireRequest(request, NativeRequestValidator.EXPECTED_STRUCT_SIZE, "import_xtf");
+        NativeError verr = NativeRequestValidator.requireRequest(request, NativeRequestValidator.expectedStructSize(), "import_xtf");
         if (verr != null) {
             outPayload.write(allocCString(verr.toJson()));
             return verr.status();

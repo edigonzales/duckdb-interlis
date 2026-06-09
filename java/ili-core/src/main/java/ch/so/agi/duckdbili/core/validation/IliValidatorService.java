@@ -6,6 +6,7 @@ import org.interlis2.validator.Validator;
 
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.Reader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -111,7 +112,9 @@ public class IliValidatorService {
         } catch (IOException ignored) {}
     }
 
-    private ValidationResult parseCsv(Path csvLog, Path xtfFile, int maxMessages) {
+    private static final int REQUIRED_CSV_COLUMNS = 2;
+
+    ValidationResult parseCsv(Path csvLog, Path xtfFile, int maxMessages) {
         List<ValidationMessage> messages = new ArrayList<>();
 
         int totalErrors = 0;
@@ -123,20 +126,40 @@ public class IliValidatorService {
         }
 
         try (BufferedReader reader = Files.newBufferedReader(csvLog, StandardCharsets.UTF_8)) {
-            String line;
+            StringBuilder record = new StringBuilder();
             boolean first = true;
-            int rowIdx = 0;
+            long recordNumber = 0;
 
+            String line;
             while ((line = reader.readLine()) != null) {
-                rowIdx++;
-                if (line.isEmpty()) continue;
-                if (line.charAt(0) == '\uFEFF') line = line.substring(1);
+                // Strip UTF-8 BOM if present
+                if (record.length() == 0 && line.startsWith("\uFEFF")) {
+                    line = line.substring(1);
+                }
+
+                record.append(line);
+                // Check if we have a complete CSV record (quotes are balanced)
+                if (!isRecordComplete(record)) {
+                    record.append('\n');
+                    continue;
+                }
+
+                recordNumber++;
+                String recordText = record.toString();
+                record.setLength(0);
+
+                if (recordText.isEmpty()) continue;
+
+                // Skip header row
                 if (first) { first = false; continue; }
 
-                boolean retainMessage = maxMessages <= 0 || messages.size() < maxMessages;
+                List<String> fields = parseCsvFields(recordText);
+                if (fields.size() < REQUIRED_CSV_COLUMNS) {
+                    throw ValidationOutputException.forMalformedCsv(csvLog, recordNumber,
+                            "Expected at least " + REQUIRED_CSV_COLUMNS + " columns, got " + fields.size());
+                }
 
-                List<String> fields = parseCsvLine(line);
-                if (fields.size() < 2) continue;
+                boolean retainMessage = maxMessages <= 0 || messages.size() < maxMessages;
 
                 String message = fields.get(0);
                 String type = fields.get(1);
@@ -152,7 +175,7 @@ public class IliValidatorService {
                     case "ERROR" -> totalErrors++;
                     case "WARNING" -> totalWarnings++;
                     case "INFO" -> totalInfos++;
-                    default -> throw ValidationOutputException.forMalformedCsv(csvLog, rowIdx,
+                    default -> throw ValidationOutputException.forMalformedCsv(csvLog, recordNumber,
                             "Unknown severity/type: " + type);
                 }
 
@@ -183,9 +206,15 @@ public class IliValidatorService {
                             .topic(topic)
                             .className(className)
                             .attributeName(attrName)
-                            .raw(line)
+                            .raw(recordText)
                             .build());
                 }
+            }
+
+            // Handle any trailing incomplete record as an error
+            if (record.length() > 0) {
+                throw ValidationOutputException.forMalformedCsv(csvLog, recordNumber + 1,
+                        "Unterminated quoted field at end of CSV log");
             }
         } catch (IOException e) {
             throw ValidationOutputException.forReadError(csvLog, e);
@@ -194,18 +223,38 @@ public class IliValidatorService {
         return new ValidationResult(messages, totalErrors, totalWarnings, totalInfos);
     }
 
-    static List<String> parseCsvLine(String line) {
+    // Check whether a CSV record has balanced double-quotes.
+    // A record is complete when the number of non-escaped double-quotes is even.
+    private static boolean isRecordComplete(StringBuilder record) {
+        int len = record.length();
+        boolean inQuote = false;
+        for (int i = 0; i < len; i++) {
+            char c = record.charAt(i);
+            if (c == '"') {
+                if (inQuote && i + 1 < len && record.charAt(i + 1) == '"') {
+                    i++; // escaped quote
+                } else {
+                    inQuote = !inQuote;
+                }
+            }
+        }
+        return !inQuote;
+    }
+
+    // Parse a single CSV record into fields.
+    // Handles quoted fields (with escaped quotes "") and empty fields.
+    static List<String> parseCsvFields(String record) {
         List<String> fields = new ArrayList<>();
         StringBuilder field = new StringBuilder();
         boolean inQuotes = false;
-        int len = line.length();
+        int len = record.length();
 
         for (int i = 0; i < len; i++) {
-            char c = line.charAt(i);
+            char c = record.charAt(i);
 
             if (inQuotes) {
                 if (c == '"') {
-                    if (i + 1 < len && line.charAt(i + 1) == '"') {
+                    if (i + 1 < len && record.charAt(i + 1) == '"') {
                         field.append('"');
                         i++;
                     } else {

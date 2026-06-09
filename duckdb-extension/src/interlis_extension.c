@@ -492,7 +492,7 @@ static bool init_native_library_locked(void) {
     if (!g_native_handle) {
         size_t len = strlen(lib_path) + 256;
         g_init_error = malloc(len);
-        snprintf(g_init_error, len,
+        if (g_init_error) snprintf(g_init_error, len,
             "Failed to load native library '%s': %s", lib_path, dlerror());
         return false;
     }
@@ -506,7 +506,7 @@ static bool init_native_library_locked(void) {
     if (!g_create_isolate || !g_attach_thread || !g_detach_thread || !g_tear_down) {
         size_t len = strlen(lib_path) + 128;
         g_init_error = malloc(len);
-        snprintf(g_init_error, len,
+        if (g_init_error) snprintf(g_init_error, len,
             "Failed to resolve GraalVM lifecycle symbols in '%s'", lib_path);
         dlclose(g_native_handle);
         g_native_handle = NULL;
@@ -522,7 +522,7 @@ static bool init_native_library_locked(void) {
     if (!g_native_free) {
         size_t len = strlen(lib_path) + 128;
         g_init_error = malloc(len);
-        snprintf(g_init_error, len,
+        if (g_init_error) snprintf(g_init_error, len,
             "Native library '%s' is incompatible (missing ili_free_string)", lib_path);
         dlclose(g_native_handle);
         g_native_handle = NULL;
@@ -531,7 +531,7 @@ static bool init_native_library_locked(void) {
     if (!get_api) {
         size_t len = strlen(lib_path) + 128;
         g_init_error = malloc(len);
-        snprintf(g_init_error, len,
+        if (g_init_error) snprintf(g_init_error, len,
             "Native library '%s' is incompatible (missing ili_get_api)", lib_path);
         dlclose(g_native_handle);
         g_native_handle = NULL;
@@ -544,7 +544,7 @@ static bool init_native_library_locked(void) {
     if (rc != 0 || !g_isolate) {
         size_t len = 128;
         g_init_error = malloc(len);
-        snprintf(g_init_error, len,
+        if (g_init_error) snprintf(g_init_error, len,
             "Failed to create GraalVM isolate (code=%d)", rc);
         dlclose(g_native_handle);
         g_native_handle = NULL;
@@ -560,11 +560,11 @@ static bool init_native_library_locked(void) {
         size_t len = 512;
         g_init_error = malloc(len);
         if (abi_payload) {
-            snprintf(g_init_error, len,
+            if (g_init_error) snprintf(g_init_error, len,
                 "ABI handshake failed (rc=%d): %.480s", rc, abi_payload);
             g_native_free(init_thread, abi_payload);
         } else {
-            snprintf(g_init_error, len,
+            if (g_init_error) snprintf(g_init_error, len,
                 "ABI handshake failed: requested version %d, library returned code %d",
                 ILI_NATIVE_ABI_VERSION, rc);
         }
@@ -589,7 +589,7 @@ static bool init_native_library_locked(void) {
         if (n_matched != 2 || parsed_version < 1 || n == 0) {
             size_t len = strlen(abi_payload) + 256;
             g_init_error = malloc(len);
-            snprintf(g_init_error, len,
+            if (g_init_error) snprintf(g_init_error, len,
                 "ABI handshake returned malformed payload (matched=%d, n=%d): %.480s",
                 n_matched, n, abi_payload);
             g_native_free(init_thread, abi_payload);
@@ -608,7 +608,7 @@ static bool init_native_library_locked(void) {
     if (g_handshake.abi_version != ILI_NATIVE_ABI_VERSION) {
         size_t len = 512;
         g_init_error = malloc(len);
-        snprintf(g_init_error, len,
+        if (g_init_error) snprintf(g_init_error, len,
             "ABI version mismatch: got %u, expected %u",
             g_handshake.abi_version, ILI_NATIVE_ABI_VERSION);
         goto cleanup_handshake_fail;
@@ -619,7 +619,7 @@ static bool init_native_library_locked(void) {
     if (missing != 0) {
         size_t len = 512;
         g_init_error = malloc(len);
-        snprintf(g_init_error, len,
+        if (g_init_error) snprintf(g_init_error, len,
             "Missing required capabilities: 0x%016llx (have 0x%016llx, need 0x%016llx)",
             (unsigned long long)missing,
             (unsigned long long)g_handshake.capabilities,
@@ -647,7 +647,7 @@ static bool init_native_library_locked(void) {
         || !g_native_read_xtf_association_schema || !g_native_generate_import_sql || !g_native_free) {
         size_t len = strlen(lib_path) + 128;
         g_init_error = malloc(len);
-        snprintf(g_init_error, len,
+        if (g_init_error) snprintf(g_init_error, len,
             "Failed to resolve ILI API symbols in '%s' (ABI handshake passed but symbols missing)", lib_path);
         goto cleanup_handshake_fail;
     }
@@ -938,8 +938,34 @@ static void ili_report_bind_error(duckdb_bind_info info, int status, char *paylo
 }
 
 // ---------------------------------------------------------------------------
-// Safe calloc helpers — return NULL and set DuckDB error on OOM
+// Safe allocation helpers — return NULL and set DuckDB error on OOM
 // ---------------------------------------------------------------------------
+static void *ili_malloc_or_error_bind(
+        duckdb_bind_info info,
+        size_t size,
+        const char *what) {
+    void *p = malloc(size);
+    if (!p) {
+        char buf[256];
+        snprintf(buf, sizeof(buf), "Out of memory allocating %s", what);
+        duckdb_bind_set_error(info, buf);
+    }
+    return p;
+}
+
+static void *ili_malloc_or_error_init(
+        duckdb_init_info info,
+        size_t size,
+        const char *what) {
+    void *p = malloc(size);
+    if (!p) {
+        char buf[256];
+        snprintf(buf, sizeof(buf), "Out of memory allocating %s", what);
+        duckdb_init_set_error(info, buf);
+    }
+    return p;
+}
+
 static void *ili_calloc_or_error_bind(
         duckdb_bind_info info,
         size_t count,
@@ -999,7 +1025,8 @@ static void ili_native_version_fn_cb(duckdb_function_info info, duckdb_data_chun
 
         int status = -1;
         char *result = ili_call_str(g_native_version, &status);
-        if (status == 0 && result) {
+        bool ok = (status == 0 && result != NULL);
+        if (ok) {
             duckdb_validity_set_row_valid(validity, row);
             duckdb_vector_assign_string_element(output, row, result);
         } else {
@@ -1010,7 +1037,7 @@ static void ili_native_version_fn_cb(duckdb_function_info info, duckdb_data_chun
             free(msg);
         }
         free(result);
-        if (status != 0 || !result) return;
+        if (!ok) return;
     }
 }
 
@@ -1078,7 +1105,8 @@ static void ili_validate_summary_json_fn(duckdb_function_info info, duckdb_data_
         char *result = ili_call_struct_str(g_native_validate, &req, &status);
         free(path_z);
         free(modeldir_z);
-        if (status == 0 && result) {
+        bool ok = (status == 0 && result != NULL);
+        if (ok) {
             duckdb_validity_set_row_valid(validity, row);
             duckdb_vector_assign_string_element(output, row, result);
         } else {
@@ -1089,7 +1117,7 @@ static void ili_validate_summary_json_fn(duckdb_function_info info, duckdb_data_
             free(msg);
         }
         free(result);
-        if (status != 0 || !result) return;
+        if (!ok) return;
     }
 }
 
@@ -1344,8 +1372,8 @@ static void ili_validate_init(duckdb_init_info info) {
     }
 
     // Allocate and parse rows
-    id->rows = malloc(id->row_count * sizeof(ili_validate_row));
-    memset(id->rows, 0, id->row_count * sizeof(ili_validate_row));
+    id->rows = ili_calloc_or_error_init(info, id->row_count, sizeof(ili_validate_row), "validator rows");
+    if (!id->rows) { free(result); free(id); return; }
 
     for (idx_t i = 0; i < id->row_count; i++) {
         ili_validate_row *row = &id->rows[i];
@@ -1530,6 +1558,12 @@ static void mi_bind(duckdb_bind_info info, const char *cmd, int ncols,
         return;
     }
     bd->cmd = strdup(cmd);
+    if (!bd->cmd) {
+        duckdb_bind_set_error(info, "Out of memory");
+        mi_bind_destroy(bd);
+        free(modeldir); free(model); free(cls);
+        return;
+    }
     bd->modeldir = modeldir;
     bd->model = model;
     bd->class = cls;
@@ -1570,12 +1604,19 @@ static void mi_init(duckdb_init_info info) {
     const char *p = result;
     while (*p) { id->row_count++; while (*p && *p != '\n') p++; if (*p == '\n') p++; }
 
-    id->rows = malloc(id->row_count * sizeof(char*));
+    id->rows = ili_malloc_or_error_init(info, id->row_count * sizeof(char*), "model info rows");
+    if (!id->rows) { free(result); free(id); return; }
     p = result;
     for (idx_t i = 0; i < id->row_count; i++) {
         const char *start = p; size_t len = 0;
         while (*p && *p != '\n') { p++; len++; }
         id->rows[i] = malloc(len + 1);
+        if (!id->rows[i]) {
+            duckdb_init_set_error(info, "Out of memory allocating model info row");
+            free(result);
+            mi_init_destroy(id);
+            return;
+        }
         memcpy(id->rows[i], start, len);
         id->rows[i][len] = '\0';
         if (*p == '\n') p++;
@@ -1682,6 +1723,7 @@ static void xtf_objects_bind(duckdb_bind_info info) {
         return;
     }
     bd->cmd = strdup("xtf");
+    if (!bd->cmd) { duckdb_bind_set_error(info, "Out of memory"); mi_bind_destroy(bd); free(input); free(models); free(modeldir); return; }
     bd->modeldir = modeldir;
     bd->model = input;
     bd->class = models;
@@ -1719,12 +1761,19 @@ static void xtf_objects_init(duckdb_init_info info) {
 
     const char *p = result;
     while (*p) { id->row_count++; while (*p && *p != '\n') p++; if (*p == '\n') p++; }
-    id->rows = malloc(id->row_count * sizeof(char*));
+    id->rows = ili_malloc_or_error_init(info, id->row_count * sizeof(char*), "XTF object rows");
+    if (!id->rows) { free(result); free(id); return; }
     p = result;
     for (idx_t i = 0; i < id->row_count; i++) {
         const char *start = p; size_t len = 0;
         while (*p && *p != '\n') { p++; len++; }
         id->rows[i] = malloc(len + 1);
+        if (!id->rows[i]) {
+            duckdb_init_set_error(info, "Out of memory allocating XTF object row");
+            free(result);
+            mi_init_destroy(id);
+            return;
+        }
         memcpy(id->rows[i], start, len);
         id->rows[i][len] = '\0';
         if (*p == '\n') p++;
@@ -1803,12 +1852,20 @@ static void xtf_class_bind(duckdb_bind_info info) {
     for (char *p = schema_result; *p; p++) if (*p == '\t') bd->col_count++;
     bd->col_count++;
 
-    bd->col_names = malloc(bd->col_count * sizeof(char*));
+    bd->col_names = ili_malloc_or_error_bind(info, bd->col_count * sizeof(char*), "class column names");
+    if (!bd->col_names) { free(schema_result); return; }
     char *h = schema_result;
     for (int i = 0; i < bd->col_count; i++) {
         char *tab = strchr(h, '\t');
         idx_t len = tab ? (idx_t)(tab - h) : strlen(h);
         bd->col_names[i] = malloc(len + 1);
+        if (!bd->col_names[i]) {
+            duckdb_bind_set_error(info, "Out of memory allocating class column name");
+            for (int j = 0; j < i; j++) free(bd->col_names[j]);
+            free(bd->col_names);
+            free(schema_result);
+            return;
+        }
         memcpy(bd->col_names[i], h, len);
         bd->col_names[i][len] = '\0';
         h = tab ? tab + 1 : h + len;
@@ -1862,11 +1919,18 @@ static void xtf_class_init(duckdb_init_info info) {
 
     if (id->row_count == 0) { free(id); free(result); return; }
 
-    id->rows = malloc(id->row_count * sizeof(char*));
+    id->rows = ili_malloc_or_error_init(info, id->row_count * sizeof(char*), "XTF class rows");
+    if (!id->rows) { free(id); free(result); return; }
     for (idx_t i = 0; i < id->row_count; i++) {
         const char *start = p; size_t len = 0;
         while (*p && *p != '\n') { p++; len++; }
         id->rows[i] = malloc(len + 1);
+        if (!id->rows[i]) {
+            duckdb_init_set_error(info, "Out of memory allocating XTF class row");
+            free(result);
+            mi_init_destroy(id);
+            return;
+        }
         memcpy(id->rows[i], start, len);
         id->rows[i][len] = '\0';
         if (*p == '\n') p++;
@@ -1909,8 +1973,19 @@ static void xtf_structures_bind(duckdb_bind_info info) {
     bd->class_name = cls;
     bd->modeldir = modeldir;
     bd->col_count = n_fixed;
-    bd->col_names = malloc(n_fixed * sizeof(char*));
-    for (int i = 0; i < n_fixed; i++) bd->col_names[i] = strdup(fixed_cols[i]);
+    bd->col_names = ili_malloc_or_error_bind(info, n_fixed * sizeof(char*), "structure column names");
+    if (!bd->col_names) { xtf_structures_bind_destroy(bd); return; }
+    for (int i = 0; i < n_fixed; i++) {
+        bd->col_names[i] = strdup(fixed_cols[i]);
+        if (!bd->col_names[i]) {
+            duckdb_bind_set_error(info, "Out of memory allocating structure column name");
+            for (int j = 0; j < i; j++) free(bd->col_names[j]);
+            free(bd->col_names);
+            bd->col_names = NULL;
+            xtf_structures_bind_destroy(bd);
+            return;
+        }
+    }
 
     duckdb_logical_type vt = duckdb_create_logical_type(DUCKDB_TYPE_VARCHAR);
     for (int i = 0; i < bd->col_count; i++)
@@ -1956,11 +2031,18 @@ static void xtf_structures_init(duckdb_init_info info) {
 
     if (id->row_count == 0) { free(id); free(result); return; }
 
-    id->rows = malloc(id->row_count * sizeof(char*));
+    id->rows = ili_malloc_or_error_init(info, id->row_count * sizeof(char*), "XTF structures rows");
+    if (!id->rows) { free(id); free(result); return; }
     for (idx_t i = 0; i < id->row_count; i++) {
         const char *start = p; size_t len = 0;
         while (*p && *p != '\n') { p++; len++; }
         id->rows[i] = malloc(len + 1);
+        if (!id->rows[i]) {
+            duckdb_init_set_error(info, "Out of memory allocating XTF structures row");
+            free(result);
+            mi_init_destroy(id);
+            return;
+        }
         memcpy(id->rows[i], start, len);
         id->rows[i][len] = '\0';
         if (*p == '\n') p++;
@@ -2035,12 +2117,20 @@ static void xtf_assoc_bind(duckdb_bind_info info) {
     bd->col_count = 0;
     for (char *p = schema_result; *p; p++) if (*p == '\t') bd->col_count++;
     bd->col_count++;
-    bd->col_names = malloc(bd->col_count * sizeof(char*));
+    bd->col_names = ili_malloc_or_error_bind(info, bd->col_count * sizeof(char*), "association column names");
+    if (!bd->col_names) { free(schema_result); return; }
     char *h = schema_result;
     for (int i = 0; i < bd->col_count; i++) {
         char *tab = strchr(h, '\t');
         idx_t len = tab ? (idx_t)(tab - h) : strlen(h);
         bd->col_names[i] = malloc(len + 1);
+        if (!bd->col_names[i]) {
+            duckdb_bind_set_error(info, "Out of memory allocating association column name");
+            for (int j = 0; j < i; j++) free(bd->col_names[j]);
+            free(bd->col_names);
+            free(schema_result);
+            return;
+        }
         memcpy(bd->col_names[i], h, len);
         bd->col_names[i][len] = '\0';
         h = tab ? tab + 1 : h + len;
@@ -2091,11 +2181,18 @@ static void xtf_assoc_init(duckdb_init_info info) {
 
     if (id->row_count == 0) { free(id); free(result); return; }
 
-    id->rows = malloc(id->row_count * sizeof(char*));
+    id->rows = ili_malloc_or_error_init(info, id->row_count * sizeof(char*), "XTF association rows");
+    if (!id->rows) { free(id); free(result); return; }
     for (idx_t i = 0; i < id->row_count; i++) {
         const char *start = p; size_t len = 0;
         while (*p && *p != '\n') { p++; len++; }
         id->rows[i] = malloc(len + 1);
+        if (!id->rows[i]) {
+            duckdb_init_set_error(info, "Out of memory allocating XTF association row");
+            free(result);
+            mi_init_destroy(id);
+            return;
+        }
         memcpy(id->rows[i], start, len);
         id->rows[i][len] = '\0';
         if (*p == '\n') p++;
@@ -2135,6 +2232,7 @@ static void gen_sql_bind(duckdb_bind_info info) {
         return;
     }
     bd->cmd = strdup("import");
+    if (!bd->cmd) { duckdb_bind_set_error(info, "Out of memory"); mi_bind_destroy(bd); free(input); free(schema_name); free(modeldir); free(mapping); free(mode); return; }
     bd->modeldir = modeldir;
     bd->model = input;
     bd->class = schema_name;
@@ -2213,10 +2311,28 @@ static void gen_sql_function(duckdb_function_info tfinfo, duckdb_data_chunk outp
 // ---------------------------------------------------------------------------
 // Extension entry point
 // ---------------------------------------------------------------------------
-DUCKDB_EXTENSION_ENTRYPOINT(duckdb_connection connection, duckdb_extension_info info, struct duckdb_extension_access *access) {
+
 #ifdef _WIN32
+static INIT_ONCE g_mutex_init_once = INIT_ONCE_STATIC_INIT;
+
+static BOOL CALLBACK ili_initialize_mutexes_once(
+        PINIT_ONCE init_once,
+        PVOID parameter,
+        PVOID *context) {
+    (void)init_once;
+    (void)parameter;
+    (void)context;
     ili_mutex_init(&g_init_lock);
     ili_mutex_init(&g_java_lock);
+    return TRUE;
+}
+#endif
+
+DUCKDB_EXTENSION_ENTRYPOINT(duckdb_connection connection, duckdb_extension_info info, struct duckdb_extension_access *access) {
+#ifdef _WIN32
+    if (!InitOnceExecuteOnce(&g_mutex_init_once, ili_initialize_mutexes_once, NULL, NULL)) {
+        return false;
+    }
 #endif
 
     register_functions(connection);

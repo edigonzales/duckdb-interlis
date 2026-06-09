@@ -15,6 +15,7 @@ import ch.interlis.iox_j.utility.ReaderFactory;
 import ch.so.agi.duckdbili.core.logging.IliLogger;
 import ch.so.agi.duckdbili.core.transport.TsvCodec;
 import ch.so.agi.duckdbili.core.model.ModelCache;
+import ch.so.agi.duckdbili.core.model.ModelRepositoryResolver;
 
 import java.io.File;
 import java.nio.file.*;
@@ -237,23 +238,11 @@ public class XtfObjectReader {
     }
 
     private TransferDescription compileModel(String modelDir, String modelNames) {
-        String md = normalizeModelDir(modelDir);
+        String md = ModelRepositoryResolver.resolveToString(modelDir, DEFAULT_MODELDIR);
         Set<String> names = parseModelNames(modelNames);
         String fingerprint = ModelCache.computeFingerprint(md);
         ModelCache.CacheKey key = new ModelCache.CacheKey(md, names, fingerprint);
         return ModelCache.getInstance().getOrCompile(key, () -> doCompileModel(md, modelNames));
-    }
-
-    private static String normalizeModelDir(String modelDir) {
-        List<String> repos = new ArrayList<>();
-        if (modelDir != null) {
-            for (String part : modelDir.split(";")) {
-                String trimmed = part.trim();
-                if (!trimmed.isBlank()) repos.add(trimmed);
-            }
-        }
-        if (repos.isEmpty()) repos.add(DEFAULT_MODELDIR);
-        return String.join(";", repos);
     }
 
     private static Set<String> parseModelNames(String modelNames) {
@@ -270,18 +259,7 @@ public class XtfObjectReader {
         try {
             IliManager manager = new IliManager();
 
-            List<String> repoList = new ArrayList<>();
-            if (normalizedModelDir != null) {
-                for (String part : normalizedModelDir.split(";")) {
-                    String trimmed = part.trim();
-                    if (!trimmed.isBlank()) {
-                        repoList.add(trimmed);
-                    }
-                }
-            }
-            if (repoList.isEmpty()) {
-                repoList.add(DEFAULT_MODELDIR);
-            }
+            List<String> repoList = ModelRepositoryResolver.resolve(normalizedModelDir, DEFAULT_MODELDIR);
             manager.setRepositories(repoList.toArray(new String[0]));
 
             ArrayList<String> entries = new ArrayList<>();
@@ -293,15 +271,9 @@ public class XtfObjectReader {
                     }
                 }
             } else {
-                for (String part : normalizedModelDir.split(";")) {
-                    Path p = null;
-                    try { p = Path.of(part.trim()); } catch (Exception ignored) {}
-                    if (p != null && Files.isDirectory(p)) {
-                        try (DirectoryStream<Path> ds = Files.newDirectoryStream(p, "*.ili")) {
-                            for (Path f : ds) {
-                                entries.add(f.toAbsolutePath().toString());
-                            }
-                        }
+                for (Path directory : ModelRepositoryResolver.localDirectories(normalizedModelDir, DEFAULT_MODELDIR)) {
+                    try (DirectoryStream<Path> ds = Files.newDirectoryStream(directory, "*.ili")) {
+                        for (Path f : ds) entries.add(f.toAbsolutePath().toString());
                     }
                 }
             }

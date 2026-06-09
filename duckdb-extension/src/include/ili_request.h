@@ -2,6 +2,7 @@
 #define ILI_REQUEST_H
 
 #include <stdint.h>
+#include "graal_isolate_dynamic.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -87,13 +88,21 @@ typedef struct ili_request {
  */
 #define ILI_REQUEST_STRUCT_SIZE 112  /* sizeof(ili_request) on LP64 */
 
+#ifdef __cplusplus
+static_assert(sizeof(ili_request) == ILI_REQUEST_STRUCT_SIZE,
+    "ILI_REQUEST_STRUCT_SIZE does not match sizeof(ili_request)");
+#else
+_Static_assert(sizeof(ili_request) == ILI_REQUEST_STRUCT_SIZE,
+    "ILI_REQUEST_STRUCT_SIZE does not match sizeof(ili_request)");
+#endif
+
 typedef struct ili_api_v1 {
     uint32_t struct_size;
     uint32_t abi_version;
     uint64_t capabilities;
 } ili_api_v1;
 
-int ili_get_api(uint32_t requested_abi_version, char **out_payload);
+int ili_get_api(graal_isolatethread_t *thread, uint32_t requested_abi_version, char **out_payload);
 
 #ifdef __cplusplus
 }

@@ -2,12 +2,17 @@ package ch.so.agi.duckdbili.nativeapi;
 
 import ch.so.agi.duckdbili.core.NativeError;
 import ch.so.agi.duckdbili.core.NativeStatus;
+import org.graalvm.nativeimage.c.struct.SizeOf;
 
 public final class NativeRequestValidator {
 
     public static final long EXPECTED_STRUCT_SIZE = 112L;
 
     private NativeRequestValidator() {}
+
+    public static long expectedStructSize() {
+        return SizeOf.get(IliRequest.class);
+    }
 
     public static NativeError requireRequest(IliRequest request, long minimumStructSize, String operation) {
         if (request.isNull()) {
