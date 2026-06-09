@@ -194,7 +194,7 @@ class IliValidatorServiceTest {
         assertEquals(ValidationProfile.FULL, ValidationProfile.fromString("full"));
         assertEquals(ValidationProfile.STRUCTURAL, ValidationProfile.fromString("structural"));
         assertEquals(ValidationProfile.FAST, ValidationProfile.fromString("fast"));
-        assertEquals(ValidationProfile.FULL, ValidationProfile.fromString("unknown"));
+        assertThrows(IllegalArgumentException.class, () -> ValidationProfile.fromString("unknown"));
     }
 
     @Test
@@ -202,6 +202,13 @@ class IliValidatorServiceTest {
         assertEquals(ValidationProfile.FULL, ValidationProfile.fromString("FULL"));
         assertEquals(ValidationProfile.FAST, ValidationProfile.fromString("Fast"));
         assertEquals(ValidationProfile.STRUCTURAL, ValidationProfile.fromString("STRUCTURAL"));
+    }
+
+    @Test
+    void unknownProfileThrowsException() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+            () -> ValidationProfile.fromString("garbage"));
+        assertTrue(ex.getMessage().contains("garbage"));
     }
 
     @Test

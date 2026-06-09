@@ -171,6 +171,10 @@ public class NativeEntryPoints {
 
             outPayload.write(allocCString(json.toString()));
             return NativeStatus.OK;
+        } catch (IllegalArgumentException e) {
+            NativeError err = NativeError.invalidArgument("validate", e.getMessage(), null);
+            outPayload.write(allocCString(err.toJson()));
+            return NativeStatus.INVALID_ARGUMENT;
         } catch (ValidationExecutionException e) {
             String detail = e.getCause() != null ? e.getCause().toString() : e.getMessage();
             NativeError err = switch (e.nativeErrorCode()) {
@@ -239,6 +243,10 @@ public class NativeEntryPoints {
 
             outPayload.write(allocCString(tsv.toString()));
             return NativeStatus.OK;
+        } catch (IllegalArgumentException e) {
+            NativeError err = NativeError.invalidArgument("validate_tsv", e.getMessage(), null);
+            outPayload.write(allocCString(err.toJson()));
+            return NativeStatus.INVALID_ARGUMENT;
         } catch (ValidationExecutionException e) {
             String detail = e.getCause() != null ? e.getCause().toString() : e.getMessage();
             NativeError err = switch (e.nativeErrorCode()) {

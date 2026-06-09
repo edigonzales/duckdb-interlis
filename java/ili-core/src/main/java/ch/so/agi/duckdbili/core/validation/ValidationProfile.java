@@ -21,9 +21,12 @@ public enum ValidationProfile {
             return FULL;
         }
         return switch (s.trim().toLowerCase()) {
+            case "full" -> FULL;
             case "structural" -> STRUCTURAL;
             case "fast" -> FAST;
-            default -> FULL;
+            default -> throw new IllegalArgumentException(
+                "Unknown validation profile: " + s
+            );
         };
     }
 
