@@ -4,6 +4,7 @@ import ch.so.agi.duckdbili.core.importer.IliImportService;
 import ch.so.agi.duckdbili.core.logging.IliLogger;
 import ch.so.agi.duckdbili.core.model.IliModelService;
 import ch.so.agi.duckdbili.core.validation.IliValidatorService;
+import ch.so.agi.duckdbili.core.validation.ValidationExecutionException;
 import ch.so.agi.duckdbili.core.validation.ValidationMessage;
 import ch.so.agi.duckdbili.core.validation.ValidationProfile;
 import ch.so.agi.duckdbili.core.validation.ValidationResult;
@@ -61,19 +62,18 @@ class RegressionTest {
     }
 
     @Test
-    @DisplayName("REGRESSION: Missing XTF file returns validation error message, not DuckDB error")
-    void missingFileReturnsValidationMessage() {
-        // BUG: file-not-found is returned as an ERROR-level validation message,
-        // not as a technical DuckDB error. The caller cannot distinguish
+    @DisplayName("REGRESSION-FIXED: Missing XTF file throws technical exception instead of disguised validation message")
+    void missingFileThrowsTechnicalException() {
+        // FIX: file-not-found is now a technical error (ValidationExecutionException),
+        // not an ERROR-level validation message. The caller can distinguish
         // "file not found" from "XTF has errors".
         IliValidatorService svc = new IliValidatorService();
         Path nonexistent = SIMPLE_DIR.resolve("does_not_exist.xtf");
-        ValidationResult result = svc.validate(nonexistent, SIMPLE_DIR.toString());
 
-        assertFalse(result.isValid());
-        assertEquals(1, result.getErrorCount());
-        // Currently: message contains "not found" - returned as validation data
-        // Phase 6 should consider: should file-not-found be a technical error?
+        ValidationExecutionException ex = assertThrows(ValidationExecutionException.class,
+                () -> svc.validate(nonexistent, SIMPLE_DIR.toString()));
+        assertEquals(NativeStatus.IO_ERROR, ex.nativeErrorCode());
+        assertTrue(ex.getMessage().contains("not found"));
     }
 
     // -----------------------------------------------------------------------

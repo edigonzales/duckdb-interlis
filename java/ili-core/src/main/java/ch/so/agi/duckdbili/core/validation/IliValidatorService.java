@@ -30,12 +30,7 @@ public class IliValidatorService {
         long startNanos = System.nanoTime();
 
         if (!Files.isRegularFile(xtfFile)) {
-            return new ValidationResult(List.of(
-                new ValidationMessage.Builder()
-                    .severity("ERROR")
-                    .message("File not found: " + xtfFile)
-                    .fileName(xtfFile.toString())
-                    .build()));
+            throw ValidationExecutionException.forFileNotFound(xtfFile);
         }
 
         long xtfFileSize = -1;
@@ -53,11 +48,7 @@ public class IliValidatorService {
             tempDir = Files.createTempDirectory("ilival-");
             csvLog = tempDir.resolve("log.csv");
         } catch (IOException e) {
-            return new ValidationResult(List.of(
-                new ValidationMessage.Builder()
-                    .severity("ERROR")
-                    .message("Failed to create temp directory: " + e.getMessage())
-                    .build()));
+            throw ValidationExecutionException.forTempDirFailure(e);
         }
 
         try {
@@ -99,14 +90,10 @@ public class IliValidatorService {
 
             return result;
 
+        } catch (ValidationExecutionException | ValidationOutputException e) {
+            throw e;
         } catch (Exception e) {
-            return new ValidationResult(List.of(
-                new ValidationMessage.Builder()
-                    .severity("ERROR")
-                    .message("Validation error: " + e.getMessage())
-                    .fileName(xtfFile.toString())
-                    .raw(e.toString())
-                    .build()));
+            throw ValidationExecutionException.forValidatorException(e, xtfFile);
         } finally {
             deleteRecursive(tempDir);
         }
@@ -128,7 +115,7 @@ public class IliValidatorService {
         List<ValidationMessage> messages = new ArrayList<>();
 
         if (!Files.isRegularFile(csvLog)) {
-            return new ValidationResult(messages);
+            throw ValidationOutputException.forMissingCsvLog(csvLog);
         }
 
         try (BufferedReader reader = Files.newBufferedReader(csvLog, StandardCharsets.UTF_8)) {
@@ -187,7 +174,7 @@ public class IliValidatorService {
                         .build());
             }
         } catch (IOException e) {
-            // non-fatal
+            throw ValidationOutputException.forReadError(csvLog, e);
         }
 
         return new ValidationResult(messages);

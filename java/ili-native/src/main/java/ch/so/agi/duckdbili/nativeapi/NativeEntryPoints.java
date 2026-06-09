@@ -18,7 +18,9 @@ import ch.so.agi.duckdbili.core.NativeStatus;
 import ch.so.agi.duckdbili.core.importer.IliImportService;
 import ch.so.agi.duckdbili.core.model.IliModelService;
 import ch.so.agi.duckdbili.core.validation.IliValidatorService;
+import ch.so.agi.duckdbili.core.validation.ValidationExecutionException;
 import ch.so.agi.duckdbili.core.validation.ValidationMessage;
+import ch.so.agi.duckdbili.core.validation.ValidationOutputException;
 import ch.so.agi.duckdbili.core.validation.ValidationProfile;
 import ch.so.agi.duckdbili.core.validation.ValidationResult;
 import ch.so.agi.duckdbili.core.xtf.XtfObjectReader;
@@ -169,6 +171,22 @@ public class NativeEntryPoints {
 
             outPayload.write(allocCString(json.toString()));
             return NativeStatus.OK;
+        } catch (ValidationExecutionException e) {
+            String detail = e.getCause() != null ? e.getCause().toString() : e.getMessage();
+            NativeError err = switch (e.nativeErrorCode()) {
+                case NativeStatus.IO_ERROR ->
+                    NativeError.ioError("validate", e.getMessage(), detail, e.path());
+                case NativeStatus.MODEL_ERROR ->
+                    NativeError.modelError("validate", e.getMessage(), detail, e.path());
+                default ->
+                    NativeError.internalError("validate", e);
+            };
+            outPayload.write(allocCString(err.toJson()));
+            return err.status();
+        } catch (ValidationOutputException e) {
+            NativeError err = NativeError.internalError("validate", e);
+            outPayload.write(allocCString(err.toJson()));
+            return NativeStatus.INTERNAL_ERROR;
         } catch (Exception e) {
             NativeError err = NativeError.internalError("validate", e);
             outPayload.write(allocCString(err.toJson()));
@@ -221,6 +239,22 @@ public class NativeEntryPoints {
 
             outPayload.write(allocCString(tsv.toString()));
             return NativeStatus.OK;
+        } catch (ValidationExecutionException e) {
+            String detail = e.getCause() != null ? e.getCause().toString() : e.getMessage();
+            NativeError err = switch (e.nativeErrorCode()) {
+                case NativeStatus.IO_ERROR ->
+                    NativeError.ioError("validate_tsv", e.getMessage(), detail, e.path());
+                case NativeStatus.MODEL_ERROR ->
+                    NativeError.modelError("validate_tsv", e.getMessage(), detail, e.path());
+                default ->
+                    NativeError.internalError("validate_tsv", e);
+            };
+            outPayload.write(allocCString(err.toJson()));
+            return err.status();
+        } catch (ValidationOutputException e) {
+            NativeError err = NativeError.internalError("validate_tsv", e);
+            outPayload.write(allocCString(err.toJson()));
+            return NativeStatus.INTERNAL_ERROR;
         } catch (Exception e) {
             NativeError err = NativeError.internalError("validate_tsv", e);
             outPayload.write(allocCString(err.toJson()));

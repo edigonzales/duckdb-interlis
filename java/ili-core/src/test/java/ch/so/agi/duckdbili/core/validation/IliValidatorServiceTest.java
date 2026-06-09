@@ -1,8 +1,11 @@
 package ch.so.agi.duckdbili.core.validation;
 
+import ch.so.agi.duckdbili.core.NativeStatus;
+
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
@@ -68,15 +71,15 @@ class IliValidatorServiceTest {
     }
 
     @Test
-    void fileNotFoundProducesError() {
+    void fileNotFoundThrowsException() {
         Path xtfFile = TESTDATA.resolve("does_not_exist.xtf");
         String modelDir = TESTDATA.toAbsolutePath().toString();
 
-        ValidationResult result = service.validate(xtfFile, modelDir);
-
-        assertFalse(result.isValid());
-        assertEquals(1, result.getErrorCount());
-        assertTrue(result.getMessages().get(0).getMessage().contains("not found"));
+        ValidationExecutionException ex = assertThrows(ValidationExecutionException.class,
+                () -> service.validate(xtfFile, modelDir));
+        assertEquals(NativeStatus.IO_ERROR, ex.nativeErrorCode());
+        assertTrue(ex.getMessage().contains("not found"));
+        assertEquals(xtfFile.toAbsolutePath().toString(), ex.path());
     }
 
     @Test
@@ -246,5 +249,66 @@ class IliValidatorServiceTest {
         assertNotNull(result);
         assertTrue(result.getMessages().size() <= 1,
             "maxMessages=1 should limit to at most 1 message, got " + result.getMessages().size());
+    }
+
+    // -----------------------------------------------------------------------
+    // ValidationExecutionException tests
+    // -----------------------------------------------------------------------
+
+    @Test
+    void executionExceptionForFileNotFound() {
+        Path file = Path.of("/nonexistent/file.xtf");
+        ValidationExecutionException ex = ValidationExecutionException.forFileNotFound(file);
+
+        assertEquals(NativeStatus.IO_ERROR, ex.nativeErrorCode());
+        assertEquals(file.toAbsolutePath().toString(), ex.path());
+        assertTrue(ex.getMessage().contains("File not found"));
+        assertNull(ex.getCause());
+    }
+
+    @Test
+    void executionExceptionForTempDirFailure() {
+        IOException cause = new IOException("disk full");
+        ValidationExecutionException ex = ValidationExecutionException.forTempDirFailure(cause);
+
+        assertEquals(NativeStatus.IO_ERROR, ex.nativeErrorCode());
+        assertSame(cause, ex.getCause());
+        assertTrue(ex.getMessage().contains("disk full"));
+        assertNull(ex.path());
+    }
+
+    @Test
+    void executionExceptionForValidatorException() {
+        RuntimeException cause = new RuntimeException("validator crash");
+        Path xtf = Path.of("/data/test.xtf");
+        ValidationExecutionException ex = ValidationExecutionException.forValidatorException(cause, xtf);
+
+        assertEquals(NativeStatus.INTERNAL_ERROR, ex.nativeErrorCode());
+        assertSame(cause, ex.getCause());
+        assertEquals(xtf.toAbsolutePath().toString(), ex.path());
+    }
+
+    // -----------------------------------------------------------------------
+    // ValidationOutputException tests
+    // -----------------------------------------------------------------------
+
+    @Test
+    void outputExceptionForMissingCsvLog() {
+        Path csvLog = Path.of("/tmp/missing.csv");
+        ValidationOutputException ex = ValidationOutputException.forMissingCsvLog(csvLog);
+
+        assertTrue(ex.getMessage().contains("CSV log not found"));
+        assertEquals(csvLog.toAbsolutePath().toString(), ex.path());
+    }
+
+    @Test
+    void outputExceptionForReadError() {
+        Path csvLog = Path.of("/tmp/unreadable.csv");
+        IOException cause = new IOException("permission denied");
+        ValidationOutputException ex = ValidationOutputException.forReadError(csvLog, cause);
+
+        assertTrue(ex.getMessage().contains("Failed to read CSV log"));
+        assertSame(cause, ex.getCause());
+        assertEquals(csvLog.toAbsolutePath().toString(), ex.path());
     }
 }
