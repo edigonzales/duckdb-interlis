@@ -65,6 +65,7 @@ set(DUCKDB_CAPI_DIR "${CMAKE_SOURCE_DIR}/src/include")
 set(EXTENSION_SOURCES
     src/interlis_extension.c
     src/sha256.c
+    src/ili_duckdb_utils.c
 )
 
 # ---------------------------------------------------------------------------

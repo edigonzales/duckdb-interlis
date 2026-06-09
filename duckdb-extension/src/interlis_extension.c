@@ -2,6 +2,7 @@
 #include "graal_isolate_dynamic.h"
 #include "ili_request.h"
 #include "ili_sync.h"
+#include "ili_duckdb_utils.h"
 #include "sha256.h"
 #include <string.h>
 #include <errno.h>
@@ -1233,40 +1234,26 @@ static void ili_validate_bind(duckdb_bind_info info) {
     duckdb_bind_add_result_column(info, "attribute_name", varchar_type);
     duckdb_bind_add_result_column(info, "raw", varchar_type);
 
-    // Extract parameter values
-    duckdb_value input_val = duckdb_bind_get_parameter(info, 0);
-    char *input_str = input_val ? duckdb_get_varchar(input_val) : NULL;
-
-    duckdb_value modeldir_val = duckdb_bind_get_named_parameter(info, "modeldir");
-    char *modeldir_str = modeldir_val ? duckdb_get_varchar(modeldir_val) : NULL;
-
-    duckdb_value profile_val = duckdb_bind_get_named_parameter(info, "profile");
-    char *profile_str = profile_val ? duckdb_get_varchar(profile_val) : NULL;
-
-    duckdb_value max_messages_val = duckdb_bind_get_named_parameter(info, "max_messages");
+    // Extract parameter values (helpers manage DuckDB lifecycle)
+    char *input_str = ili_bind_copy_parameter_varchar(info, 0);
+    char *modeldir_str = ili_bind_copy_named_varchar(info, "modeldir");
+    char *profile_str = ili_bind_copy_named_varchar(info, "profile");
     int max_messages = -1;
-    if (max_messages_val) {
-        max_messages = duckdb_get_int32(max_messages_val);
-    }
+    ili_bind_get_named_int32(info, "max_messages", &max_messages);
 
-    // Store in bind data
+    // Store in bind data (helpers already returned C-owned copies)
     ili_validate_bind_data *bd = ili_calloc_or_error_bind(info, 1, sizeof(*bd), "ili_validate_bind_data");
     if (!bd) {
-        if (input_str) free(input_str);
-        if (modeldir_str) free(modeldir_str);
-        if (profile_str) free(profile_str);
+        free(input_str);
+        free(modeldir_str);
+        free(profile_str);
         return;
     }
-    bd->input = input_str ? strdup(input_str) : NULL;
-    bd->modeldir = modeldir_str ? strdup(modeldir_str) : NULL;
-    bd->profile = profile_str ? strdup(profile_str) : NULL;
+    bd->input = input_str;
+    bd->modeldir = modeldir_str;
+    bd->profile = profile_str;
     bd->max_messages = max_messages;
     duckdb_bind_set_bind_data(info, bd, bind_data_destroy);
-
-    if (input_val) duckdb_destroy_value(&input_val);
-    if (modeldir_val) duckdb_destroy_value(&modeldir_val);
-    if (profile_val) duckdb_destroy_value(&profile_val);
-    if (max_messages_val) duckdb_destroy_value(&max_messages_val);
 }
 
 static void ili_validate_init(duckdb_init_info info) {
@@ -1463,24 +1450,20 @@ static void mi_bind(duckdb_bind_info info, const char *cmd, int ncols,
     for (int i = 0; i < ncols; i++)
         duckdb_bind_add_result_column(info, colnames[i], vt);
 
-    duckdb_value dv = duckdb_bind_get_parameter(info, 0);
-    char *modeldir = (dv && !duckdb_is_null_value(dv)) ? duckdb_get_varchar(dv) : NULL;
-
-    dv = duckdb_bind_get_named_parameter(info, "model");
-    char *model = dv ? duckdb_get_varchar(dv) : NULL;
-
-    dv = duckdb_bind_get_named_parameter(info, "class");
-    char *cls = dv ? duckdb_get_varchar(dv) : NULL;
+    char *modeldir = ili_bind_copy_parameter_varchar(info, 0);
+    char *model = ili_bind_copy_named_varchar(info, "model");
+    char *cls = ili_bind_copy_named_varchar(info, "class");
 
     mi_bind_data *bd = ili_calloc_or_error_bind(info, 1, sizeof(*bd), "mi_bind_data");
-    if (!bd) { if (dv) duckdb_destroy_value(&dv); return; }
+    if (!bd) {
+        free(modeldir); free(model); free(cls);
+        return;
+    }
     bd->cmd = strdup(cmd);
-    bd->modeldir = modeldir ? strdup(modeldir) : NULL;
-    bd->model = model ? strdup(model) : NULL;
-    bd->class = cls ? strdup(cls) : NULL;
+    bd->modeldir = modeldir;
+    bd->model = model;
+    bd->class = cls;
     duckdb_bind_set_bind_data(info, bd, mi_bind_destroy);
-
-    if (dv) duckdb_destroy_value(&dv);
 }
 
 static void mi_init(duckdb_init_info info) {
@@ -1622,23 +1605,20 @@ static void xtf_objects_bind(duckdb_bind_info info) {
         duckdb_bind_add_result_column(info, cols[i], vt);
     duckdb_destroy_logical_type(&vt);
 
-    duckdb_value dv = duckdb_bind_get_parameter(info, 0);
-    char *input = dv ? duckdb_get_varchar(dv) : NULL;
-
-    dv = duckdb_bind_get_named_parameter(info, "modeldir");
-    char *modeldir = dv ? duckdb_get_varchar(dv) : NULL;
-
-    dv = duckdb_bind_get_named_parameter(info, "models");
-    char *models = dv ? duckdb_get_varchar(dv) : NULL;
+    char *input = ili_bind_copy_parameter_varchar(info, 0);
+    char *modeldir = ili_bind_copy_named_varchar(info, "modeldir");
+    char *models = ili_bind_copy_named_varchar(info, "models");
 
     mi_bind_data *bd = ili_calloc_or_error_bind(info, 1, sizeof(*bd), "mi_bind_data");
-    if (!bd) return;
+    if (!bd) {
+        free(input); free(modeldir); free(models);
+        return;
+    }
     bd->cmd = strdup("xtf");
-    bd->modeldir = modeldir ? strdup(modeldir) : NULL;
-    bd->model = input ? strdup(input) : NULL;
-    bd->class = models ? strdup(models) : NULL;
+    bd->modeldir = modeldir;
+    bd->model = input;
+    bd->class = models;
     duckdb_bind_set_bind_data(info, bd, mi_bind_destroy);
-    if (dv) duckdb_destroy_value(&dv);
 }
 
 static void xtf_objects_init(duckdb_init_info info) {
@@ -1707,22 +1687,20 @@ static void xtf_class_bind_destroy(void *d) {
 }
 
 static void xtf_class_bind(duckdb_bind_info info) {
-    duckdb_value dv = duckdb_bind_get_parameter(info, 0);
-    char *input = dv ? duckdb_get_varchar(dv) : NULL;
-    dv = duckdb_bind_get_named_parameter(info, "class");
-    char *cls = dv ? duckdb_get_varchar(dv) : NULL;
-    dv = duckdb_bind_get_named_parameter(info, "modeldir");
-    char *modeldir = dv ? duckdb_get_varchar(dv) : NULL;
-    dv = duckdb_bind_get_named_parameter(info, "nested");
-    char *nested = dv ? duckdb_get_varchar(dv) : NULL;
-    if (dv) duckdb_destroy_value(&dv);
+    char *input = ili_bind_copy_parameter_varchar(info, 0);
+    char *cls = ili_bind_copy_named_varchar(info, "class");
+    char *modeldir = ili_bind_copy_named_varchar(info, "modeldir");
+    char *nested = ili_bind_copy_named_varchar(info, "nested");
 
     xtf_class_bind_data *bd = ili_calloc_or_error_bind(info, 1, sizeof(*bd), "xtf_class_bind_data");
-    if (!bd) return;
-    bd->input = input ? strdup(input) : NULL;
-    bd->class_name = cls ? strdup(cls) : NULL;
-    bd->modeldir = modeldir ? strdup(modeldir) : NULL;
-    bd->nested = nested ? strdup(nested) : NULL;
+    if (!bd) {
+        free(input); free(cls); free(modeldir); free(nested);
+        return;
+    }
+    bd->input = input;
+    bd->class_name = cls;
+    bd->modeldir = modeldir;
+    bd->nested = nested;
 
     // Call native to get column schema
     if (!ensure_native_ready()) {
@@ -1846,19 +1824,19 @@ static void xtf_structures_bind_destroy(void *d) {
 }
 
 static void xtf_structures_bind(duckdb_bind_info info) {
-    duckdb_value dv = duckdb_bind_get_named_parameter(info, "class");
-    char *cls = dv ? duckdb_get_varchar(dv) : NULL;
-    dv = duckdb_bind_get_named_parameter(info, "modeldir");
-    char *modeldir = dv ? duckdb_get_varchar(dv) : NULL;
-    if (dv) duckdb_destroy_value(&dv);
+    char *cls = ili_bind_copy_named_varchar(info, "class");
+    char *modeldir = ili_bind_copy_named_varchar(info, "modeldir");
 
     static const char *fixed_cols[] = {"structure_name", "attr_name", "attr_type", "card_min", "card_max"};
     static const int n_fixed = 5;
 
     xtf_structures_bind_data *bd = ili_calloc_or_error_bind(info, 1, sizeof(*bd), "xtf_structures_bind_data");
-    if (!bd) return;
-    bd->class_name = cls ? strdup(cls) : NULL;
-    bd->modeldir = modeldir ? strdup(modeldir) : NULL;
+    if (!bd) {
+        free(cls); free(modeldir);
+        return;
+    }
+    bd->class_name = cls;
+    bd->modeldir = modeldir;
     bd->col_count = n_fixed;
     bd->col_names = malloc(n_fixed * sizeof(char*));
     for (int i = 0; i < n_fixed; i++) bd->col_names[i] = strdup(fixed_cols[i]);
@@ -1941,19 +1919,18 @@ static void xtf_assoc_bind_destroy(void *d) {
 }
 
 static void xtf_assoc_bind(duckdb_bind_info info) {
-    duckdb_value dv = duckdb_bind_get_parameter(info, 0);
-    char *input = dv ? duckdb_get_varchar(dv) : NULL;
-    dv = duckdb_bind_get_named_parameter(info, "association");
-    char *assoc = dv ? duckdb_get_varchar(dv) : NULL;
-    dv = duckdb_bind_get_named_parameter(info, "modeldir");
-    char *modeldir = dv ? duckdb_get_varchar(dv) : NULL;
-    if (dv) duckdb_destroy_value(&dv);
+    char *input = ili_bind_copy_parameter_varchar(info, 0);
+    char *assoc = ili_bind_copy_named_varchar(info, "association");
+    char *modeldir = ili_bind_copy_named_varchar(info, "modeldir");
 
     xtf_assoc_bind_data *bd = ili_calloc_or_error_bind(info, 1, sizeof(*bd), "xtf_assoc_bind_data");
-    if (!bd) return;
-    bd->input = input ? strdup(input) : NULL;
-    bd->association_name = assoc ? strdup(assoc) : NULL;
-    bd->modeldir = modeldir ? strdup(modeldir) : NULL;
+    if (!bd) {
+        free(input); free(assoc); free(modeldir);
+        return;
+    }
+    bd->input = input;
+    bd->association_name = assoc;
+    bd->modeldir = modeldir;
 
     if (!ensure_native_ready()) {
         duckdb_bind_set_error(info, get_init_error());
@@ -2064,37 +2041,27 @@ static void gen_sql_init_destroy(void *d) {
 }
 
 static void gen_sql_bind(duckdb_bind_info info) {
-    // Store bind data in the standard model info pattern
     duckdb_logical_type vt = duckdb_create_logical_type(DUCKDB_TYPE_VARCHAR);
     duckdb_bind_add_result_column(info, "sql_statement", vt);
     duckdb_destroy_logical_type(&vt);
 
-    duckdb_value dv = duckdb_bind_get_parameter(info, 0);
-    char *input = dv ? duckdb_get_varchar(dv) : NULL;
-
-    dv = duckdb_bind_get_named_parameter(info, "schema");
-    char *schema_name = dv ? duckdb_get_varchar(dv) : NULL;
-
-    dv = duckdb_bind_get_named_parameter(info, "modeldir");
-    char *modeldir = dv ? duckdb_get_varchar(dv) : NULL;
-
-    dv = duckdb_bind_get_named_parameter(info, "mapping");
-    char *mapping = dv ? duckdb_get_varchar(dv) : NULL;
-    if (dv) duckdb_destroy_value(&dv);
-
-    dv = duckdb_bind_get_named_parameter(info, "mode");
-    char *mode = dv ? duckdb_get_varchar(dv) : NULL;
-    if (dv) duckdb_destroy_value(&dv);
+    char *input = ili_bind_copy_parameter_varchar(info, 0);
+    char *schema_name = ili_bind_copy_named_varchar(info, "schema");
+    char *modeldir = ili_bind_copy_named_varchar(info, "modeldir");
+    char *mapping = ili_bind_copy_named_varchar(info, "mapping");
+    char *mode = ili_bind_copy_named_varchar(info, "mode");
 
     mi_bind_data *bd = ili_calloc_or_error_bind(info, 1, sizeof(*bd), "mi_bind_data");
-    if (!bd) return;
+    if (!bd) {
+        free(input); free(schema_name); free(modeldir); free(mapping); free(mode);
+        return;
+    }
     bd->cmd = strdup("import");
-    bd->modeldir = modeldir ? strdup(modeldir) : NULL;
-    // abuse model to hold input, class to hold schema
-    bd->model = input ? strdup(input) : NULL;
-    bd->class = schema_name ? strdup(schema_name) : NULL;
-    bd->mapping = mapping ? strdup(mapping) : NULL;
-    bd->mode = mode ? strdup(mode) : NULL;
+    bd->modeldir = modeldir;
+    bd->model = input;
+    bd->class = schema_name;
+    bd->mapping = mapping;
+    bd->mode = mode;
     duckdb_bind_set_bind_data(info, bd, mi_bind_destroy);
 }
 
