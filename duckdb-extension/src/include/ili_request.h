@@ -91,6 +91,10 @@ typedef struct ili_request {
 #ifdef __cplusplus
 static_assert(sizeof(ili_request) == ILI_REQUEST_STRUCT_SIZE,
     "ILI_REQUEST_STRUCT_SIZE does not match sizeof(ili_request)");
+#elif defined(_MSC_VER)
+/* MSVC supports static_assert in C mode but not _Static_assert */
+static_assert(sizeof(ili_request) == ILI_REQUEST_STRUCT_SIZE,
+    "ILI_REQUEST_STRUCT_SIZE does not match sizeof(ili_request)");
 #else
 _Static_assert(sizeof(ili_request) == ILI_REQUEST_STRUCT_SIZE,
     "ILI_REQUEST_STRUCT_SIZE does not match sizeof(ili_request)");
