@@ -923,6 +923,18 @@ static void ili_report_error(duckdb_init_info info, int status, char *payload, c
     free(payload);
 }
 
+// Report a failed native schema/bind call to DuckDB. Payload is C-allocated (must free()).
+static void ili_report_bind_error(duckdb_bind_info info, int status, char *payload, const char *fallback) {
+    if (payload) {
+        char *msg = extract_error_message(payload);
+        duckdb_bind_set_error(info, msg ? msg : payload);
+        free(msg);
+    } else {
+        duckdb_bind_set_error(info, fallback);
+    }
+    free(payload);
+}
+
 // ---------------------------------------------------------------------------
 // Safe calloc helpers — return NULL and set DuckDB error on OOM
 // ---------------------------------------------------------------------------
@@ -1721,52 +1733,56 @@ static void xtf_class_bind(duckdb_bind_info info) {
     bd->modeldir = modeldir;
     bd->nested = nested;
 
-    // Call native to get column schema
+    duckdb_bind_set_bind_data(info, bd, xtf_class_bind_destroy);
+
     if (!ensure_native_ready()) {
         duckdb_bind_set_error(info, get_init_error());
-    } else if (g_native_read_xtf_class_schema && bd->class_name) {
-        ili_request req;
-        memset(&req, 0, sizeof(req));
-        req.struct_size = sizeof(req);
-        req.class_name = bd->class_name;
-        req.modeldir = bd->modeldir;
-        req.nested = bd->nested ? bd->nested : "json";
-        req.max_messages = -1;
-
-        int status = -1;
-        char *schema_result = ili_call_struct_str(g_native_read_xtf_class_schema, &req, &status);
-        if (status == 0 && schema_result) {
-            // Count columns
-            bd->col_count = 0;
-            for (char *p = schema_result; *p; p++) if (*p == '\t') bd->col_count++;
-            bd->col_count++; // last column
-
-            bd->col_names = malloc(bd->col_count * sizeof(char*));
-            char *h = schema_result;
-            for (int i = 0; i < bd->col_count; i++) {
-                char *tab = strchr(h, '\t');
-                idx_t len = tab ? (idx_t)(tab - h) : strlen(h);
-                bd->col_names[i] = malloc(len + 1);
-                memcpy(bd->col_names[i], h, len);
-                bd->col_names[i][len] = '\0';
-                h = tab ? tab + 1 : h + len;
-            }
-        }
-        free(schema_result);
+        return;
     }
+    if (!g_native_read_xtf_class_schema) {
+        duckdb_bind_set_error(info, "Native function read_xtf_class_schema not available");
+        return;
+    }
+    if (!bd->class_name || bd->class_name[0] == '\0') {
+        duckdb_bind_set_error(info, "Missing required parameter: class");
+        return;
+    }
+
+    ili_request req;
+    memset(&req, 0, sizeof(req));
+    req.struct_size = sizeof(req);
+    req.class_name = bd->class_name;
+    req.modeldir = bd->modeldir;
+    req.nested = bd->nested ? bd->nested : "json";
+    req.max_messages = -1;
+
+    int status = -1;
+    char *schema_result = ili_call_struct_str(g_native_read_xtf_class_schema, &req, &status);
+    if (status != 0 || !schema_result || schema_result[0] == '\0') {
+        ili_report_bind_error(info, status, schema_result, "XTF class schema read failed");
+        return;
+    }
+
+    bd->col_count = 0;
+    for (char *p = schema_result; *p; p++) if (*p == '\t') bd->col_count++;
+    bd->col_count++;
+
+    bd->col_names = malloc(bd->col_count * sizeof(char*));
+    char *h = schema_result;
+    for (int i = 0; i < bd->col_count; i++) {
+        char *tab = strchr(h, '\t');
+        idx_t len = tab ? (idx_t)(tab - h) : strlen(h);
+        bd->col_names[i] = malloc(len + 1);
+        memcpy(bd->col_names[i], h, len);
+        bd->col_names[i][len] = '\0';
+        h = tab ? tab + 1 : h + len;
+    }
+    free(schema_result);
 
     duckdb_logical_type vt = duckdb_create_logical_type(DUCKDB_TYPE_VARCHAR);
-    if (bd->col_count > 0) {
-        for (int i = 0; i < bd->col_count; i++)
-            duckdb_bind_add_result_column(info, bd->col_names[i], vt);
-    } else {
-        // fallback columns
-        duckdb_bind_add_result_column(info, "xtf_bid", vt);
-        duckdb_bind_add_result_column(info, "xtf_tid", vt);
-        duckdb_bind_add_result_column(info, "xtf_class", vt);
-    }
+    for (int i = 0; i < bd->col_count; i++)
+        duckdb_bind_add_result_column(info, bd->col_names[i], vt);
     duckdb_destroy_logical_type(&vt);
-    duckdb_bind_set_bind_data(info, bd, xtf_class_bind_destroy);
 }
 
 static void xtf_class_init(duckdb_init_info info) {
@@ -1951,47 +1967,54 @@ static void xtf_assoc_bind(duckdb_bind_info info) {
     bd->association_name = assoc;
     bd->modeldir = modeldir;
 
+    duckdb_bind_set_bind_data(info, bd, xtf_assoc_bind_destroy);
+
     if (!ensure_native_ready()) {
         duckdb_bind_set_error(info, get_init_error());
-    } else if (g_native_read_xtf_association_schema && bd->association_name) {
-        ili_request req;
-        memset(&req, 0, sizeof(req));
-        req.struct_size = sizeof(req);
-        req.association = bd->association_name;
-        req.modeldir = bd->modeldir;
-        req.max_messages = -1;
-
-        int status = -1;
-        char *schema_result = ili_call_struct_str(g_native_read_xtf_association_schema, &req, &status);
-        if (status == 0 && schema_result) {
-            bd->col_count = 0;
-            for (char *p = schema_result; *p; p++) if (*p == '\t') bd->col_count++;
-            bd->col_count++;
-            bd->col_names = malloc(bd->col_count * sizeof(char*));
-            char *h = schema_result;
-            for (int i = 0; i < bd->col_count; i++) {
-                char *tab = strchr(h, '\t');
-                idx_t len = tab ? (idx_t)(tab - h) : strlen(h);
-                bd->col_names[i] = malloc(len + 1);
-                memcpy(bd->col_names[i], h, len);
-                bd->col_names[i][len] = '\0';
-                h = tab ? tab + 1 : h + len;
-            }
-        }
-        free(schema_result);
+        return;
     }
+    if (!g_native_read_xtf_association_schema) {
+        duckdb_bind_set_error(info, "Native function read_xtf_association_schema not available");
+        return;
+    }
+    if (!bd->association_name || bd->association_name[0] == '\0') {
+        duckdb_bind_set_error(info, "Missing required parameter: association");
+        return;
+    }
+
+    ili_request req;
+    memset(&req, 0, sizeof(req));
+    req.struct_size = sizeof(req);
+    req.association = bd->association_name;
+    req.modeldir = bd->modeldir;
+    req.max_messages = -1;
+
+    int status = -1;
+    char *schema_result = ili_call_struct_str(g_native_read_xtf_association_schema, &req, &status);
+    if (status != 0 || !schema_result || schema_result[0] == '\0') {
+        ili_report_bind_error(info, status, schema_result, "XTF association schema read failed");
+        return;
+    }
+
+    bd->col_count = 0;
+    for (char *p = schema_result; *p; p++) if (*p == '\t') bd->col_count++;
+    bd->col_count++;
+    bd->col_names = malloc(bd->col_count * sizeof(char*));
+    char *h = schema_result;
+    for (int i = 0; i < bd->col_count; i++) {
+        char *tab = strchr(h, '\t');
+        idx_t len = tab ? (idx_t)(tab - h) : strlen(h);
+        bd->col_names[i] = malloc(len + 1);
+        memcpy(bd->col_names[i], h, len);
+        bd->col_names[i][len] = '\0';
+        h = tab ? tab + 1 : h + len;
+    }
+    free(schema_result);
 
     duckdb_logical_type vt = duckdb_create_logical_type(DUCKDB_TYPE_VARCHAR);
-    if (bd->col_count > 0) {
-        for (int i = 0; i < bd->col_count; i++)
-            duckdb_bind_add_result_column(info, bd->col_names[i], vt);
-    } else {
-        duckdb_bind_add_result_column(info, "xtf_bid", vt);
-        duckdb_bind_add_result_column(info, "xtf_tid", vt);
-        duckdb_bind_add_result_column(info, "xtf_class", vt);
-    }
+    for (int i = 0; i < bd->col_count; i++)
+        duckdb_bind_add_result_column(info, bd->col_names[i], vt);
     duckdb_destroy_logical_type(&vt);
-    duckdb_bind_set_bind_data(info, bd, xtf_assoc_bind_destroy);
 }
 
 static void xtf_assoc_init(duckdb_init_info info) {
