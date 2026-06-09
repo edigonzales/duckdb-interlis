@@ -904,6 +904,37 @@ static void ili_report_error(duckdb_init_info info, int status, char *payload, c
 }
 
 // ---------------------------------------------------------------------------
+// Safe calloc helpers — return NULL and set DuckDB error on OOM
+// ---------------------------------------------------------------------------
+static void *ili_calloc_or_error_bind(
+        duckdb_bind_info info,
+        size_t count,
+        size_t size,
+        const char *what) {
+    void *p = calloc(count, size);
+    if (!p) {
+        char buf[256];
+        snprintf(buf, sizeof(buf), "Out of memory allocating %s", what);
+        duckdb_bind_set_error(info, buf);
+    }
+    return p;
+}
+
+static void *ili_calloc_or_error_init(
+        duckdb_init_info info,
+        size_t count,
+        size_t size,
+        const char *what) {
+    void *p = calloc(count, size);
+    if (!p) {
+        char buf[256];
+        snprintf(buf, sizeof(buf), "Out of memory allocating %s", what);
+        duckdb_init_set_error(info, buf);
+    }
+    return p;
+}
+
+// ---------------------------------------------------------------------------
 // SQL function: ili_extension_version()
 // ---------------------------------------------------------------------------
 static void ili_extension_version_fn(duckdb_function_info info, duckdb_data_chunk input, duckdb_vector output) {
@@ -1219,7 +1250,13 @@ static void ili_validate_bind(duckdb_bind_info info) {
     }
 
     // Store in bind data
-    ili_validate_bind_data *bd = malloc(sizeof(ili_validate_bind_data));
+    ili_validate_bind_data *bd = ili_calloc_or_error_bind(info, 1, sizeof(*bd), "ili_validate_bind_data");
+    if (!bd) {
+        if (input_str) free(input_str);
+        if (modeldir_str) free(modeldir_str);
+        if (profile_str) free(profile_str);
+        return;
+    }
     bd->input = input_str ? strdup(input_str) : NULL;
     bd->modeldir = modeldir_str ? strdup(modeldir_str) : NULL;
     bd->profile = profile_str ? strdup(profile_str) : NULL;
@@ -1264,8 +1301,8 @@ static void ili_validate_init(duckdb_init_info info) {
     ILI_DEBUG_LOG("Validation result payload: %zu bytes", payload_size);
 
     // Parse TSV result
-    ili_validate_init_data *id = malloc(sizeof(ili_validate_init_data));
-    memset(id, 0, sizeof(*id));
+    ili_validate_init_data *id = ili_calloc_or_error_init(info, 1, sizeof(*id), "ili_validate_init_data");
+    if (!id) { free(result); return; }
 
     // Parse header line: errorCount\twarningCount\tinfoCount\n
     const char *p = result;
@@ -1435,7 +1472,8 @@ static void mi_bind(duckdb_bind_info info, const char *cmd, int ncols,
     dv = duckdb_bind_get_named_parameter(info, "class");
     char *cls = dv ? duckdb_get_varchar(dv) : NULL;
 
-    mi_bind_data *bd = malloc(sizeof(mi_bind_data));
+    mi_bind_data *bd = ili_calloc_or_error_bind(info, 1, sizeof(*bd), "mi_bind_data");
+    if (!bd) { if (dv) duckdb_destroy_value(&dv); return; }
     bd->cmd = strdup(cmd);
     bd->modeldir = modeldir ? strdup(modeldir) : NULL;
     bd->model = model ? strdup(model) : NULL;
@@ -1472,8 +1510,8 @@ static void mi_init(duckdb_init_info info) {
         return;
     }
 
-    mi_init_data *id = malloc(sizeof(mi_init_data));
-    memset(id, 0, sizeof(*id));
+    mi_init_data *id = ili_calloc_or_error_init(info, 1, sizeof(*id), "mi_init_data");
+    if (!id) { free(result); return; }
 
     // Count rows
     const char *p = result;
@@ -1593,7 +1631,8 @@ static void xtf_objects_bind(duckdb_bind_info info) {
     dv = duckdb_bind_get_named_parameter(info, "models");
     char *models = dv ? duckdb_get_varchar(dv) : NULL;
 
-    mi_bind_data *bd = malloc(sizeof(mi_bind_data));
+    mi_bind_data *bd = ili_calloc_or_error_bind(info, 1, sizeof(*bd), "mi_bind_data");
+    if (!bd) return;
     bd->cmd = strdup("xtf");
     bd->modeldir = modeldir ? strdup(modeldir) : NULL;
     bd->model = input ? strdup(input) : NULL;
@@ -1628,8 +1667,8 @@ static void xtf_objects_init(duckdb_init_info info) {
         return;
     }
 
-    mi_init_data *id = malloc(sizeof(mi_init_data));
-    memset(id, 0, sizeof(*id));
+    mi_init_data *id = ili_calloc_or_error_init(info, 1, sizeof(*id), "mi_init_data");
+    if (!id) { free(result); return; }
 
     const char *p = result;
     while (*p) { id->row_count++; while (*p && *p != '\n') p++; if (*p == '\n') p++; }
@@ -1678,8 +1717,8 @@ static void xtf_class_bind(duckdb_bind_info info) {
     char *nested = dv ? duckdb_get_varchar(dv) : NULL;
     if (dv) duckdb_destroy_value(&dv);
 
-    xtf_class_bind_data *bd = malloc(sizeof(xtf_class_bind_data));
-    memset(bd, 0, sizeof(*bd));
+    xtf_class_bind_data *bd = ili_calloc_or_error_bind(info, 1, sizeof(*bd), "xtf_class_bind_data");
+    if (!bd) return;
     bd->input = input ? strdup(input) : NULL;
     bd->class_name = cls ? strdup(cls) : NULL;
     bd->modeldir = modeldir ? strdup(modeldir) : NULL;
@@ -1760,8 +1799,8 @@ static void xtf_class_init(duckdb_init_info info) {
         return;
     }
 
-    mi_init_data *id = malloc(sizeof(mi_init_data));
-    memset(id, 0, sizeof(*id));
+    mi_init_data *id = ili_calloc_or_error_init(info, 1, sizeof(*id), "mi_init_data");
+    if (!id) { free(result); return; }
 
     // Skip header line
     const char *p = result;
@@ -1816,8 +1855,8 @@ static void xtf_structures_bind(duckdb_bind_info info) {
     static const char *fixed_cols[] = {"structure_name", "attr_name", "attr_type", "card_min", "card_max"};
     static const int n_fixed = 5;
 
-    xtf_structures_bind_data *bd = malloc(sizeof(xtf_structures_bind_data));
-    memset(bd, 0, sizeof(*bd));
+    xtf_structures_bind_data *bd = ili_calloc_or_error_bind(info, 1, sizeof(*bd), "xtf_structures_bind_data");
+    if (!bd) return;
     bd->class_name = cls ? strdup(cls) : NULL;
     bd->modeldir = modeldir ? strdup(modeldir) : NULL;
     bd->col_count = n_fixed;
@@ -1856,8 +1895,8 @@ static void xtf_structures_init(duckdb_init_info info) {
         return;
     }
 
-    mi_init_data *id = malloc(sizeof(mi_init_data));
-    memset(id, 0, sizeof(*id));
+    mi_init_data *id = ili_calloc_or_error_init(info, 1, sizeof(*id), "mi_init_data");
+    if (!id) { free(result); return; }
 
     const char *p = result;
     while (*p && *p != '\n') p++;
@@ -1910,8 +1949,8 @@ static void xtf_assoc_bind(duckdb_bind_info info) {
     char *modeldir = dv ? duckdb_get_varchar(dv) : NULL;
     if (dv) duckdb_destroy_value(&dv);
 
-    xtf_assoc_bind_data *bd = malloc(sizeof(xtf_assoc_bind_data));
-    memset(bd, 0, sizeof(*bd));
+    xtf_assoc_bind_data *bd = ili_calloc_or_error_bind(info, 1, sizeof(*bd), "xtf_assoc_bind_data");
+    if (!bd) return;
     bd->input = input ? strdup(input) : NULL;
     bd->association_name = assoc ? strdup(assoc) : NULL;
     bd->modeldir = modeldir ? strdup(modeldir) : NULL;
@@ -1985,8 +2024,8 @@ static void xtf_assoc_init(duckdb_init_info info) {
         return;
     }
 
-    mi_init_data *id = malloc(sizeof(mi_init_data));
-    memset(id, 0, sizeof(*id));
+    mi_init_data *id = ili_calloc_or_error_init(info, 1, sizeof(*id), "mi_init_data");
+    if (!id) { free(result); return; }
 
     const char *p = result;
     while (*p && *p != '\n') p++;
@@ -2047,8 +2086,8 @@ static void gen_sql_bind(duckdb_bind_info info) {
     char *mode = dv ? duckdb_get_varchar(dv) : NULL;
     if (dv) duckdb_destroy_value(&dv);
 
-    mi_bind_data *bd = malloc(sizeof(mi_bind_data));
-    memset(bd, 0, sizeof(*bd));
+    mi_bind_data *bd = ili_calloc_or_error_bind(info, 1, sizeof(*bd), "mi_bind_data");
+    if (!bd) return;
     bd->cmd = strdup("import");
     bd->modeldir = modeldir ? strdup(modeldir) : NULL;
     // abuse model to hold input, class to hold schema
@@ -2089,7 +2128,8 @@ static void gen_sql_init_func(duckdb_init_info info) {
 
     ILI_DEBUG_LOG("Import SQL payload: %zu bytes", strlen(result));
 
-    gen_sql_init_data *id = malloc(sizeof(gen_sql_init_data));
+    gen_sql_init_data *id = ili_calloc_or_error_init(info, 1, sizeof(*id), "gen_sql_init_data");
+    if (!id) { free(result); return; }
     id->sql_script = result;  // Already C-allocated by ili_call_struct_str (strdup)
     id->cursor = id->sql_script;
     duckdb_init_set_init_data(info, id, gen_sql_init_destroy);
