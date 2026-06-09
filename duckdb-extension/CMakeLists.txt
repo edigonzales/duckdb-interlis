@@ -163,3 +163,34 @@ endif()
 set(CMAKE_C_VISIBILITY_PRESET hidden)
 set(CMAKE_CXX_VISIBILITY_PRESET hidden)
 set(VISIBILITY_INLINES_HIDDEN ON)
+
+# ---------------------------------------------------------------------------
+# Optional: Sanitizer test executables (compile-check only, run via script)
+# ---------------------------------------------------------------------------
+# The tests dlopen libduckdb at runtime and do not link against it.
+# Build them optionally for compile-time verification.
+option(BUILD_SANITIZER_TESTS "Build sanitizer test executables" OFF)
+
+if(BUILD_SANITIZER_TESTS)
+    # Smoke test (requires DuckDB C API header only)
+    add_executable(duckdb_extension_smoke_test
+        test/duckdb_extension_smoke_test.c
+    )
+    target_include_directories(duckdb_extension_smoke_test PRIVATE ${DUCKDB_CAPI_DIR})
+    if(APPLE)
+        target_link_libraries(duckdb_extension_smoke_test PRIVATE dl pthread)
+    elseif(NOT WIN32)
+        target_link_libraries(duckdb_extension_smoke_test PRIVATE dl pthread)
+    endif()
+
+    # Concurrency test (requires DuckDB C API header + pthread)
+    add_executable(duckdb_extension_concurrency_test
+        test/duckdb_extension_concurrency_test.c
+    )
+    target_include_directories(duckdb_extension_concurrency_test PRIVATE ${DUCKDB_CAPI_DIR})
+    if(APPLE)
+        target_link_libraries(duckdb_extension_concurrency_test PRIVATE dl pthread)
+    elseif(NOT WIN32)
+        target_link_libraries(duckdb_extension_concurrency_test PRIVATE dl pthread)
+    endif()
+endif()

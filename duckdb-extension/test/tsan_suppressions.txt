@@ -1,0 +1,11 @@
+# ThreadSanitizer suppressions for DuckDB extension tests.
+# DuckDB itself is not TSan-instrumented; its internal threading may
+# produce false positives. Suppress races originating from libduckdb.
+#
+# Usage:
+#   TSAN_OPTIONS="suppressions=duckdb-extension/test/tsan_suppressions.txt" \
+#     duckdb-extension/test/duckdb_extension_concurrency_test
+
+# DuckDB internal threading (non-instrumented)
+race:libduckdb*
+race:duckdb*

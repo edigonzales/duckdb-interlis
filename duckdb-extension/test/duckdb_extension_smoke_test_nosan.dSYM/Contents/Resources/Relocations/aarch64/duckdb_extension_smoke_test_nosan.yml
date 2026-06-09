@@ -1,0 +1,5 @@
+---
+triple:          'arm64-apple-darwin'
+binary-path:     'duckdb-extension/test/duckdb_extension_smoke_test_nosan'
+relocations:     []
+...
