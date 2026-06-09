@@ -22,6 +22,7 @@ import ch.so.agi.duckdbili.core.validation.ValidationExecutionException;
 import ch.so.agi.duckdbili.core.validation.ValidationMessage;
 import ch.so.agi.duckdbili.core.validation.ValidationOutputException;
 import ch.so.agi.duckdbili.core.validation.ValidationProfile;
+import ch.so.agi.duckdbili.core.transport.TsvCodec;
 import ch.so.agi.duckdbili.core.validation.ValidationResult;
 import ch.so.agi.duckdbili.core.xtf.XtfObjectReader;
 
@@ -238,19 +239,19 @@ public class NativeEntryPoints {
             tsv.append(result.getInfoCount()).append('\n');
 
             for (ValidationMessage msg : result.getMessages()) {
-                tsv.append(escapeTsv(msg.getSeverity())).append('\t');
-                tsv.append(escapeTsv(msg.getCode())).append('\t');
-                tsv.append(escapeTsv(msg.getMessage())).append('\t');
-                tsv.append(escapeTsv(msg.getFileName())).append('\t');
+                tsv.append(TsvCodec.encodeNullable(msg.getSeverity())).append('\t');
+                tsv.append(TsvCodec.encodeNullable(msg.getCode())).append('\t');
+                tsv.append(TsvCodec.encodeNullable(msg.getMessage())).append('\t');
+                tsv.append(TsvCodec.encodeNullable(msg.getFileName())).append('\t');
                 tsv.append(msg.getLine() == null ? "" : String.valueOf(msg.getLine())).append('\t');
                 tsv.append("").append('\t');
-                tsv.append(escapeTsv(msg.getXtfTid())).append('\t');
-                tsv.append(escapeTsv(null)).append('\t');
-                tsv.append(escapeTsv(msg.getModel())).append('\t');
-                tsv.append(escapeTsv(msg.getTopic())).append('\t');
-                tsv.append(escapeTsv(msg.getClassName())).append('\t');
-                tsv.append(escapeTsv(msg.getAttributeName())).append('\t');
-                tsv.append(escapeTsv(msg.getRaw())).append('\n');
+                tsv.append(TsvCodec.encodeNullable(msg.getXtfTid())).append('\t');
+                tsv.append(TsvCodec.encodeNullable(null)).append('\t');
+                tsv.append(TsvCodec.encodeNullable(msg.getModel())).append('\t');
+                tsv.append(TsvCodec.encodeNullable(msg.getTopic())).append('\t');
+                tsv.append(TsvCodec.encodeNullable(msg.getClassName())).append('\t');
+                tsv.append(TsvCodec.encodeNullable(msg.getAttributeName())).append('\t');
+                tsv.append(TsvCodec.encodeNullable(msg.getRaw())).append('\n');
             }
 
             outPayload.write(allocCString(tsv.toString()));
@@ -646,14 +647,6 @@ public class NativeEntryPoints {
             return null;
         }
         return CTypeConversion.toJavaString(ptr);
-    }
-
-    private static String escapeTsv(String s) {
-        if (s == null) return "";
-        return s.replace("\\", "\\\\")
-                .replace("\t", "\\t")
-                .replace("\n", "\\n")
-                .replace("\r", "\\r");
     }
 
     private static String quoteOrNull(String s) {

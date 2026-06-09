@@ -13,6 +13,7 @@ import ch.interlis.iom_j.xtf.Xtf24Reader;
 import ch.interlis.iox_j.IoxIliReader;
 import ch.interlis.iox_j.utility.ReaderFactory;
 import ch.so.agi.duckdbili.core.logging.IliLogger;
+import ch.so.agi.duckdbili.core.transport.TsvCodec;
 import ch.so.agi.duckdbili.core.model.ModelCache;
 
 import java.io.File;
@@ -72,13 +73,13 @@ public class XtfObjectReader {
             ViewableTransferElement vte = (ViewableTransferElement) ait.next();
             if (vte.obj instanceof AttributeDef ad) {
                 if (isGeometryDomain(ad) || isMultiGeometryDomain(ad))
-                    sb.append('\t').append(e(ad.getName() + "_wkb"));
+                    sb.append('\t').append(TsvCodec.encodeNullable(ad.getName() + "_wkb"));
                 else if (isStructureDomain(ad) || isCompositionDomain(ad))
-                    sb.append('\t').append(e(ad.getName() + colSuffix));
+                    sb.append('\t').append(TsvCodec.encodeNullable(ad.getName() + colSuffix));
                 else
-                    sb.append('\t').append(e(ad.getName()));
+                    sb.append('\t').append(TsvCodec.encodeNullable(ad.getName()));
             } else if (vte.obj instanceof RoleDef rd) {
-                sb.append('\t').append(e(rd.getName() + "_ref"));
+                sb.append('\t').append(TsvCodec.encodeNullable(rd.getName() + "_ref"));
             }
         }
         sb.append("\tunsupported_json");
@@ -154,11 +155,11 @@ public class XtfObjectReader {
         // Header for class-specific mode
         if (className != null) {
             sb.append("xtf_bid\txtf_tid\txtf_class");
-            for (String an : scalarAttrs) sb.append('\t').append(e(an));
-            for (String an : geomAttrs) sb.append('\t').append(e(an + "_wkb"));
-            for (String an : structureAttrs) sb.append('\t').append(e(an + colSuffix));
-            for (String an : bagAttrs) sb.append('\t').append(e(an + colSuffix));
-            for (String rn : roleRefs) sb.append('\t').append(e(rn + "_ref"));
+            for (String an : scalarAttrs) sb.append('\t').append(TsvCodec.encodeNullable(an));
+            for (String an : geomAttrs) sb.append('\t').append(TsvCodec.encodeNullable(an + "_wkb"));
+            for (String an : structureAttrs) sb.append('\t').append(TsvCodec.encodeNullable(an + colSuffix));
+            for (String an : bagAttrs) sb.append('\t').append(TsvCodec.encodeNullable(an + colSuffix));
+            for (String rn : roleRefs) sb.append('\t').append(TsvCodec.encodeNullable(rn + "_ref"));
             sb.append("\tunsupported_json\n");
         }
 
@@ -191,28 +192,28 @@ public class XtfObjectReader {
 
                     if (className != null) {
                         // Class-specific output
-                        sb.append(e(currentBid)).append('\t').append(e(tid)).append('\t').append(e(cn));
+                        sb.append(TsvCodec.encodeNullable(currentBid)).append('\t').append(TsvCodec.encodeNullable(tid)).append('\t').append(TsvCodec.encodeNullable(cn));
                         for (String an : scalarAttrs)
-                            sb.append('\t').append(e(obj.getattrvalue(an)));
+                            sb.append('\t').append(TsvCodec.encodeNullable(obj.getattrvalue(an)));
                         for (String an : geomAttrs)
-                            sb.append('\t').append(e(buildGeometryWkb(obj, an)));
+                            sb.append('\t').append(TsvCodec.encodeNullable(buildGeometryWkb(obj, an)));
                         for (String an : structureAttrs)
-                            sb.append('\t').append(e(buildSingleStructureJson(obj, an)));
+                            sb.append('\t').append(TsvCodec.encodeNullable(buildSingleStructureJson(obj, an)));
                         for (String an : bagAttrs)
-                            sb.append('\t').append(e(buildBagStructureJson(obj, an)));
+                            sb.append('\t').append(TsvCodec.encodeNullable(buildBagStructureJson(obj, an)));
                         for (String rn : roleRefs)
-                            sb.append('\t').append(e(getRoleRef(obj, rn)));
-                        sb.append('\t').append(e(buildUnsupported(obj, attrNames))).append('\n');
+                            sb.append('\t').append(TsvCodec.encodeNullable(getRoleRef(obj, rn)));
+                        sb.append('\t').append(TsvCodec.encodeNullable(buildUnsupported(obj, attrNames))).append('\n');
                     } else {
                         // Generic object stream output
                         int op = obj.getobjectoperation();
                         String operation = op == 1 ? "UPDATE" : op == 2 ? "DELETE" : "INSERT";
                         String modelName = tag.contains(".") ? tag.substring(0, tag.indexOf('.')) : "";
-                        sb.append(e(currentBid)).append('\t').append(e(currentTopic)).append('\t');
-                        sb.append(e(cn)).append('\t').append(e(tag)).append('\t').append(e(tid)).append('\t');
-                        sb.append(e(operation)).append('\t').append(e(modelName)).append('\t');
-                        sb.append(e(buildAttrs(obj))).append('\t').append(e(buildRefs(obj))).append('\t');
-                        sb.append(e(buildGeom(obj))).append('\t').append(e(buildRaw(obj))).append('\n');
+                        sb.append(TsvCodec.encodeNullable(currentBid)).append('\t').append(TsvCodec.encodeNullable(currentTopic)).append('\t');
+                        sb.append(TsvCodec.encodeNullable(cn)).append('\t').append(TsvCodec.encodeNullable(tag)).append('\t').append(TsvCodec.encodeNullable(tid)).append('\t');
+                        sb.append(TsvCodec.encodeNullable(operation)).append('\t').append(TsvCodec.encodeNullable(modelName)).append('\t');
+                        sb.append(TsvCodec.encodeNullable(buildAttrs(obj))).append('\t').append(TsvCodec.encodeNullable(buildRefs(obj))).append('\t');
+                        sb.append(TsvCodec.encodeNullable(buildGeom(obj))).append('\t').append(TsvCodec.encodeNullable(buildRaw(obj))).append('\n');
                     }
                 }
             }
@@ -413,11 +414,6 @@ public class XtfObjectReader {
             escJson(obj.getobjectoid()) + "\",\"attr_count\":" + obj.getattrcount() + "}";
     }
 
-    private static String e(String s) {
-        if (s == null) return "\\N";
-        return s.replace("\\","\\\\").replace("\t","\\t").replace("\n","\\n").replace("\r","\\r");
-    }
-
     private static String escJson(String s) {
         if (s == null) return "";
         StringBuilder sb = new StringBuilder(s.length());
@@ -560,14 +556,14 @@ public class XtfObjectReader {
                     for (Iterator<?> eit = consolidated.getElements(); eit.hasNext(); ) {
                         if (!first) etb.append(", ");
                         first = false;
-                        etb.append(e(((ch.interlis.ili2c.metamodel.Enumeration.Element) eit.next()).getName()));
+                        etb.append(TsvCodec.encodeNullable(((ch.interlis.ili2c.metamodel.Enumeration.Element) eit.next()).getName()));
                     }
                     etb.append(")");
                     typeName = etb.toString();
                 }
-                sb.append(e(structTable.getName())).append('\t');
-                sb.append(e(sad.getName())).append('\t');
-                sb.append(e(typeName)).append('\t');
+                sb.append(TsvCodec.encodeNullable(structTable.getName())).append('\t');
+                sb.append(TsvCodec.encodeNullable(sad.getName())).append('\t');
+                sb.append(TsvCodec.encodeNullable(typeName)).append('\t');
                 sb.append(card != null ? String.valueOf(card.getMinimum()) : "0").append('\t');
                 sb.append(card != null ? String.valueOf(card.getMaximum()) : "1").append('\n');
             }
@@ -674,9 +670,9 @@ public class XtfObjectReader {
         while (ait.hasNext()) {
             ViewableTransferElement vte = (ViewableTransferElement) ait.next();
             if (vte.obj instanceof RoleDef rd) {
-                sb.append('\t').append(e(rd.getName() + "_ref"));
+                sb.append('\t').append(TsvCodec.encodeNullable(rd.getName() + "_ref"));
             } else if (vte.obj instanceof AttributeDef ad) {
-                sb.append('\t').append(e(ad.getName()));
+                sb.append('\t').append(TsvCodec.encodeNullable(ad.getName()));
             }
         }
         sb.append("\tunsupported_json");
@@ -717,8 +713,8 @@ public class XtfObjectReader {
 
         StringBuilder sb = new StringBuilder();
         sb.append("xtf_bid\txtf_tid\txtf_class");
-        for (String rn : roleNames) sb.append('\t').append(e(rn + "_ref"));
-        for (String an : attrNames) sb.append('\t').append(e(an));
+        for (String rn : roleNames) sb.append('\t').append(TsvCodec.encodeNullable(rn + "_ref"));
+        for (String an : attrNames) sb.append('\t').append(TsvCodec.encodeNullable(an));
         sb.append("\tunsupported_json\n");
 
         IoxReader reader = null;
@@ -743,12 +739,12 @@ public class XtfObjectReader {
                     String tid = obj.getobjectoid();
                     if (tid == null) tid = "";
 
-                    sb.append(e(currentBid)).append('\t').append(e(tid)).append('\t').append(e(cn));
+                    sb.append(TsvCodec.encodeNullable(currentBid)).append('\t').append(TsvCodec.encodeNullable(tid)).append('\t').append(TsvCodec.encodeNullable(cn));
                     for (String rn : roleNames)
-                        sb.append('\t').append(e(getRoleRef(obj, rn)));
+                        sb.append('\t').append(TsvCodec.encodeNullable(getRoleRef(obj, rn)));
                     for (String an : attrNames)
-                        sb.append('\t').append(e(obj.getattrvalue(an)));
-                    sb.append('\t').append(e(buildUnsupported(obj, allNames))).append('\n');
+                        sb.append('\t').append(TsvCodec.encodeNullable(obj.getattrvalue(an)));
+                    sb.append('\t').append(TsvCodec.encodeNullable(buildUnsupported(obj, allNames))).append('\n');
                 }
             }
         } catch (Exception ex) {

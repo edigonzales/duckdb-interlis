@@ -6,6 +6,7 @@ import ch.interlis.ili2c.config.Configuration;
 import ch.interlis.ili2c.metamodel.*;
 import ch.interlis.ilirepository.IliManager;
 import ch.so.agi.duckdbili.core.logging.IliLogger;
+import ch.so.agi.duckdbili.core.transport.TsvCodec;
 
 import java.io.IOException;
 import java.nio.file.*;
@@ -79,9 +80,9 @@ public class IliModelService {
         for (Iterator<Model> it = td.iterator(); it.hasNext(); ) {
             Model m = it.next();
             if (isBaseModel(m.getName())) continue;
-            sb.append(e(m.getName())).append('\t').append(e(m.getModelVersion())).append('\t');
-            sb.append(e(m.getIssuer())).append('\t').append(e(m.getLanguage())).append('\t');
-            sb.append(e(m.getIliVersion())).append('\n');
+            sb.append(TsvCodec.encodeNullable(m.getName())).append('\t').append(TsvCodec.encodeNullable(m.getModelVersion())).append('\t');
+            sb.append(TsvCodec.encodeNullable(m.getIssuer())).append('\t').append(TsvCodec.encodeNullable(m.getLanguage())).append('\t');
+            sb.append(TsvCodec.encodeNullable(m.getIliVersion())).append('\n');
         }
         return sb.toString();
     }
@@ -94,7 +95,7 @@ public class IliModelService {
             if (modelName != null && !modelName.equals(m.getName())) continue;
             for (Iterator<Element> eit = m.iterator(); eit.hasNext(); ) {
                 if (eit.next() instanceof Topic t) {
-                    sb.append(e(m.getName())).append('\t').append(e(t.getName())).append('\t');
+                    sb.append(TsvCodec.encodeNullable(m.getName())).append('\t').append(TsvCodec.encodeNullable(t.getName())).append('\t');
                     sb.append(t.isViewTopic() ? "VIEW" : "TABLE").append('\n');
                 }
             }
@@ -117,11 +118,11 @@ public class IliModelService {
                         if (tel instanceof AbstractClassDef c && !(tel instanceof AssociationDef)) {
                             String kind = tel instanceof Table ? "TABLE" : "CLASS";
                             String base = c.getExtending() != null ? c.getExtending().getScopedName(null) : "";
-                            sb.append(e(m.getName())).append('\t').append(e(t.getName())).append('\t');
-                            sb.append(e(c.getName())).append('\t').append(kind).append('\t');
+                            sb.append(TsvCodec.encodeNullable(m.getName())).append('\t').append(TsvCodec.encodeNullable(t.getName())).append('\t');
+                            sb.append(TsvCodec.encodeNullable(c.getName())).append('\t').append(kind).append('\t');
                             sb.append(c.isAbstract() ? "true" : "false").append('\t');
                             sb.append(c.getExtending() != null ? "true" : "false").append('\t');
-                            sb.append(e(base)).append('\n');
+                            sb.append(TsvCodec.encodeNullable(base)).append('\n');
                         }
                     }
                 }
@@ -188,9 +189,9 @@ public class IliModelService {
                                     Cardinality cd = rd.getCardinality();
                                     if (cd != null) { cm = (int)cd.getMinimum(); cx = (int)cd.getMaximum(); }
                                 } else continue;
-                                sb.append(e(m.getName())).append('\t').append(e(t.getName())).append('\t');
-                                sb.append(e(c.getName())).append('\t').append(e(an)).append('\t');
-                                sb.append(e(tn)).append('\t').append(kd).append('\t');
+                                sb.append(TsvCodec.encodeNullable(m.getName())).append('\t').append(TsvCodec.encodeNullable(t.getName())).append('\t');
+                                sb.append(TsvCodec.encodeNullable(c.getName())).append('\t').append(TsvCodec.encodeNullable(an)).append('\t');
+                                sb.append(TsvCodec.encodeNullable(tn)).append('\t').append(kd).append('\t');
                                 sb.append(man ? "true" : "false").append('\t');
                                 sb.append(cm).append('\t').append(cx).append('\n');
                             }
@@ -260,8 +261,8 @@ public class IliModelService {
         if (en == null) return;
         for (Iterator<ch.interlis.ili2c.metamodel.Enumeration.Element> eit = en.getElements(); eit.hasNext(); ) {
             ch.interlis.ili2c.metamodel.Enumeration.Element ee = eit.next();
-            sb.append(e(mn)).append('\t').append(e(tn)).append('\t');
-            sb.append(e(ename)).append('\t').append(e(ee.getName())).append('\t');
+            sb.append(TsvCodec.encodeNullable(mn)).append('\t').append(TsvCodec.encodeNullable(tn)).append('\t');
+            sb.append(TsvCodec.encodeNullable(ename)).append('\t').append(TsvCodec.encodeNullable(ee.getName())).append('\t');
             sb.append(ee.getSourceLine()).append('\n');
         }
     }
@@ -269,7 +270,7 @@ public class IliModelService {
     private static String formatEnumType(EnumerationType et) {
         ch.interlis.ili2c.metamodel.Enumeration en = et.getConsolidatedEnumeration();
         if (en == null) en = et.getEnumeration();
-        if (en == null) return e(et.getName());
+        if (en == null) return TsvCodec.encodeNullable(et.getName());
         StringBuilder sb = new StringBuilder("(");
         boolean first = true;
         for (Iterator<ch.interlis.ili2c.metamodel.Enumeration.Element> it = en.getElements(); it.hasNext(); ) {
@@ -280,9 +281,5 @@ public class IliModelService {
         sb.append(")");
         return sb.toString();
     }
-
-    private static String e(Object s) {
-        if (s == null) return "";
-        return s.toString().replace("\\", "\\\\").replace("\t", "\\t").replace("\n", "\\n").replace("\r", "\\r");
-    }
 }
+

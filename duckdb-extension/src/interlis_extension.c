@@ -3,6 +3,7 @@
 #include "ili_request.h"
 #include "ili_sync.h"
 #include "ili_duckdb_utils.h"
+#include "ili_tsv.h"
 #include "sha256.h"
 #include <string.h>
 #include <errno.h>
@@ -1210,41 +1211,21 @@ static void init_data_destroy(void *data) {
 }
 
 static char *parse_tsv_field(const char **p) {
-    if (!*p || !**p) return NULL;
-    const char *start = *p;
-    size_t len = 0;
-    while (**p && **p != '\t' && **p != '\n') { (*p)++; len++; }
-    char *result = malloc(len + 1);
-    if (!result) return NULL;
-    const char *s = start;
-    char *d = result;
-    while (s < *p) {
-        if (*s == '\\' && (s + 1) < *p) {
-            switch (s[1]) {
-                case 't': *d++ = '\t'; s += 2; break;
-                case 'n': *d++ = '\n'; s += 2; break;
-                case 'r': *d++ = '\r'; s += 2; break;
-                case '\\': *d++ = '\\'; s += 2; break;
-                default: *d++ = *s++; break;
-            }
-        } else {
-            *d++ = *s++;
-        }
-    }
-    *d = '\0';
-    if (**p == '\t') (*p)++;
-    return result;
+    if (!p || !*p || !**p) return NULL;
+    const char *end = *p + strlen(*p);
+    ili_tsv_field field;
+    if (!ili_tsv_next_field(p, end, &field)) return NULL;
+    return ili_tsv_unescape_copy(&field);
 }
 
 static int parse_tsv_int(const char **p) {
-    int val = 0;
-    if (**p == '\t' || **p == '\n') { (*p)++; return 0; }
-    bool neg = false;
-    if (**p == '-') { neg = true; (*p)++; }
-    while (**p >= '0' && **p <= '9') { val = val * 10 + (**p - '0'); (*p)++; }
-    if (**p == '\t') (*p)++;
-    if (**p == '\n') (*p)++;
-    return neg ? -val : val;
+    if (!p || !*p) return 0;
+    const char *end = *p + strlen(*p);
+    ili_tsv_field field;
+    if (!ili_tsv_next_field(p, end, &field)) return 0;
+    int32_t val = 0;
+    ili_tsv_parse_nullable_int32(&field, &val);
+    return (int)val;
 }
 
 static void ili_validate_bind(duckdb_bind_info info) {
@@ -1557,19 +1538,18 @@ static void mi_function(duckdb_function_info tfinfo, duckdb_data_chunk output) {
 
     for (idx_t i = 0; i < count; i++) {
         char *row = id->rows[id->current_row + i];
-        char *r = row;
-        for (idx_t c = 0; c < col_count; c++) {
-            char *tab = strchr(r, '\t');
-            idx_t len = tab ? (idx_t)(tab - r) : strlen(r);
+        const char *end = row + strlen(row);
+        const char *cursor = row;
+        ili_tsv_field field;
+        for (idx_t c = 0; c < col_count && ili_tsv_next_field(&cursor, end, &field); c++) {
             duckdb_vector vec = duckdb_data_chunk_get_vector(output, c);
-            if (len == 2 && r[0] == '\\' && r[1] == 'N') {
+            if (field.is_null) {
                 duckdb_vector_ensure_validity_writable(vec);
                 uint64_t *validity = duckdb_vector_get_validity(vec);
                 duckdb_validity_set_row_invalid(validity, i);
             } else {
-                duckdb_vector_assign_string_element_len(vec, i, r, len);
+                duckdb_vector_assign_string_element_len(vec, i, field.data, field.length);
             }
-            r = tab ? tab + 1 : r + len;
         }
     }
     duckdb_data_chunk_set_size(output, count);

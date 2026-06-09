@@ -66,6 +66,7 @@ set(EXTENSION_SOURCES
     src/interlis_extension.c
     src/sha256.c
     src/ili_duckdb_utils.c
+    src/ili_tsv.c
 )
 
 # ---------------------------------------------------------------------------
