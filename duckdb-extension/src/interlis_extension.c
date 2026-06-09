@@ -517,6 +517,15 @@ static bool init_native_library_locked(void) {
 
     // Also resolve free_string early so we can free the ABI payload
     g_native_free = (native_free_fn)dlsym(g_native_handle, "ili_free_string");
+    if (!g_native_free) {
+        size_t len = strlen(lib_path) + 128;
+        g_init_error = malloc(len);
+        snprintf(g_init_error, len,
+            "Native library '%s' is incompatible (missing ili_free_string)", lib_path);
+        dlclose(g_native_handle);
+        g_native_handle = NULL;
+        return false;
+    }
     if (!get_api) {
         size_t len = strlen(lib_path) + 128;
         g_init_error = malloc(len);
@@ -564,15 +573,23 @@ static bool init_native_library_locked(void) {
         return false;
     }
 
-    // Parse ABI payload: {"abi_version":1,"capabilities":4095}
+    // Parse ABI payload with toleration for whitespace and field order.
+    // Expected format: {"abi_version":1,"capabilities":4095}
     {
-        const char *v = strstr(abi_payload, "\"abi_version\":");
-        const char *c = strstr(abi_payload, "\"capabilities\":");
-        if (!v || !c) {
+        int parsed_version = 0;
+        unsigned long long parsed_caps = 0;
+        int n = 0;
+
+        int n_matched = sscanf(abi_payload,
+            " {\"abi_version\": %d ,\"capabilities\": %llu }%n",
+            &parsed_version, &parsed_caps, &n);
+
+        if (n_matched != 2 || parsed_version < 1 || n == 0) {
             size_t len = strlen(abi_payload) + 256;
             g_init_error = malloc(len);
             snprintf(g_init_error, len,
-                "ABI handshake returned invalid payload: %.480s", abi_payload);
+                "ABI handshake returned malformed payload (matched=%d, n=%d): %.480s",
+                n_matched, n, abi_payload);
             g_native_free(init_thread, abi_payload);
             g_tear_down(init_thread);
             g_isolate = NULL;
@@ -580,8 +597,8 @@ static bool init_native_library_locked(void) {
             g_native_handle = NULL;
             return false;
         }
-        g_handshake.abi_version = (uint32_t)atoi(v + 14);
-        g_handshake.capabilities = (uint64_t)strtoull(c + 15, NULL, 10);
+        g_handshake.abi_version = (uint32_t)parsed_version;
+        g_handshake.capabilities = (uint64_t)parsed_caps;
         g_native_free(init_thread, abi_payload);
     }
 
@@ -623,7 +640,9 @@ static bool init_native_library_locked(void) {
     g_native_free = (native_free_fn)dlsym(g_native_handle, "ili_free_string");
 
     if (!g_native_version || !g_native_validate || !g_native_validate_tsv || !g_native_model_info
-        || !g_native_read_xtf || !g_native_read_xtf_class || !g_native_read_xtf_class_schema || !g_native_free) {
+        || !g_native_read_xtf || !g_native_read_xtf_class || !g_native_read_xtf_class_schema
+        || !g_native_read_xtf_structures || !g_native_read_xtf_association
+        || !g_native_read_xtf_association_schema || !g_native_generate_import_sql || !g_native_free) {
         size_t len = strlen(lib_path) + 128;
         g_init_error = malloc(len);
         snprintf(g_init_error, len,

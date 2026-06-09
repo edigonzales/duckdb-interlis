@@ -98,6 +98,18 @@ int main(void) {
         } else { failed++; }
     }
 
+    /* A4: ili_free_string symbol present */
+    fprintf(stderr, "\nTest A4: ili_free_string available\n");
+    {
+        void *sym = dlsym(handle, "ili_free_string");
+        if (sym != NULL) {
+            fprintf(stderr, "  PASS (symbol found)\n"); passed++;
+        } else {
+            fprintf(stderr, "  FAIL (ili_free_string not found: %s)\n", dlerror());
+            failed++;
+        }
+    }
+
     /* Create isolate for functional tests */
     graal_isolatethread_t *thread = NULL;
     graal_isolate_t *isolate = NULL;
@@ -258,6 +270,65 @@ int main(void) {
         else { fprintf(stderr, "  FAIL\n"); failed++; }
         if (r) free_string(thread, r);
     }
+
+    /* ===== ABI Struct Size Hardening Tests ===== */
+    fprintf(stderr, "\n=== ABI Struct Size Tests ===\n");
+
+    /* L5: struct_size=8 (only first pointer field valid) */
+    fprintf(stderr, "\nTest L5: struct_size=8\n");
+    {
+        ili_request req; memset(&req, 0, sizeof(req)); req.struct_size = 8;
+        char *r = NULL;
+        int rc = native_validate(thread, &req, &r);
+        if (rc != 0 && r && strstr(r, "INVALID_ARGUMENT")) {
+            fprintf(stderr, "  PASS\n"); passed++;
+        } else { fprintf(stderr, "  FAIL (rc=%d)\n", rc); failed++; }
+        if (r) free_string(thread, r);
+    }
+
+    /* L6: struct_size=64 (partial struct, missing several fields) */
+    fprintf(stderr, "\nTest L6: struct_size=64\n");
+    {
+        ili_request req; memset(&req, 0, sizeof(req)); req.struct_size = 64;
+        char *r = NULL;
+        int rc = native_validate(thread, &req, &r);
+        if (rc != 0 && r && strstr(r, "INVALID_ARGUMENT")) {
+            fprintf(stderr, "  PASS\n"); passed++;
+        } else { fprintf(stderr, "  FAIL (rc=%d)\n", rc); failed++; }
+        if (r) free_string(thread, r);
+    }
+
+    /* L7: correct struct_size=112 (exact match) */
+    fprintf(stderr, "\nTest L7: struct_size=112 (correct)\n");
+    if (native_validate) {
+        ili_request req; memset(&req, 0, sizeof(req));
+        req.struct_size = ILI_REQUEST_STRUCT_SIZE;
+        req.max_messages = -1;
+        req.input = "testdata/synthetic/simple/valid.xtf";
+        req.modeldir = "testdata/synthetic/simple";
+        char *r = NULL;
+        int rc = native_validate(thread, &req, &r);
+        if (rc == 0 && r && strstr(r, "\"valid\":true")) {
+            fprintf(stderr, "  PASS\n"); passed++;
+        } else { fprintf(stderr, "  FAIL (rc=%d)\n", rc); failed++; }
+        if (r) free_string(thread, r);
+    } else { failed++; }
+
+    /* L8: struct_size larger than needed (forward-compat) */
+    fprintf(stderr, "\nTest L8: struct_size=200 (forward-compat)\n");
+    if (native_validate) {
+        ili_request req; memset(&req, 0, sizeof(req));
+        req.struct_size = 200;
+        req.max_messages = -1;
+        req.input = "testdata/synthetic/simple/valid.xtf";
+        req.modeldir = "testdata/synthetic/simple";
+        char *r = NULL;
+        int rc = native_validate(thread, &req, &r);
+        if (rc == 0 && r && strstr(r, "\"valid\":true")) {
+            fprintf(stderr, "  PASS\n"); passed++;
+        } else { fprintf(stderr, "  FAIL (rc=%d)\n", rc); failed++; }
+        if (r) free_string(thread, r);
+    } else { failed++; }
 
     /* L3: max_messages=0 */
     fprintf(stderr, "\nTest L3: max_messages=0\n");

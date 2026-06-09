@@ -78,8 +78,9 @@ The embedded native library is extracted with full integrity guarantees:
 
 ### Symbol Resolution
 
-4 GraalVM lifecycle symbols + 12 API symbols are resolved with `dlsym`.  
-4 of the 12 API symbols are **not validated** in the null-check (structures, both association variants, import).
+4 GraalVM lifecycle symbols + 12 API symbols are resolved with `dlsym`.
+All 12 API symbols are validated (non-NULL checked) after ABI handshake.
+Additionally, `ili_free_string` is validated before the handshake.
 
 ## 3. GraalVM Isolate Lifecycle (Phase 4)
 
@@ -444,56 +445,77 @@ All requests are JSON objects built manually with `snprintf` in C and parsed wit
 
 ## 10. ABI Versioning
 
-### Implemented (Phase 9)
+### Implemented (Phase 9, Hardened Phase 5.5)
 
-The ABI handshake has been implemented. The extension and native library negotiate
-compatibility through a single entry point, `ili_get_api()`. Individual `dlsym` calls
-for API functions have been replaced by a function pointer table.
+The ABI handshake negotiates compatibility between the C extension and the GraalVM
+native library through a single entry point, `ili_get_api()`, which returns a JSON
+payload with ABI version and capability bitmask. Individual API functions are then
+resolved via `dlsym` using the negotiated capabilities for validation.
 
-**Header:** `duckdb-extension/src/include/ili_api.h`
+**Header:** `duckdb-extension/src/include/ili_request.h`
 
 ```c
 #define ILI_NATIVE_ABI_VERSION 1
+#define ILI_REQUEST_STRUCT_SIZE 112  /* sizeof(ili_request) on LP64 */
 
 typedef struct ili_api_v1 {
     uint32_t struct_size;   // sizeof(ili_api_v1), set by caller
     uint32_t abi_version;   // populated by callee: ILI_NATIVE_ABI_VERSION
     uint64_t capabilities;  // bitmask of ILI_CAP_* flags
-
-    int  (*version)(graal_isolatethread_t*, char**);
-    int  (*validate)(graal_isolatethread_t*, ili_request*, char**);
-    int  (*validate_tsv)(graal_isolatethread_t*, ili_request*, char**);
-    int  (*model_info)(graal_isolatethread_t*, ili_request*, char**);
-    int  (*read_xtf)(graal_isolatethread_t*, ili_request*, char**);
-    int  (*read_xtf_class)(graal_isolatethread_t*, ili_request*, char**);
-    int  (*read_xtf_class_schema)(graal_isolatethread_t*, ili_request*, char**);
-    int  (*read_xtf_structures)(graal_isolatethread_t*, ili_request*, char**);
-    int  (*read_xtf_association)(graal_isolatethread_t*, ili_request*, char**);
-    int  (*read_xtf_association_schema)(graal_isolatethread_t*, ili_request*, char**);
-    int  (*generate_import_sql)(graal_isolatethread_t*, ili_request*, char**);
-    void (*free_string)(graal_isolatethread_t*, char*);
 } ili_api_v1;
 
-int ili_get_api(uint32_t requested_abi_version, ili_api_v1 *out_api);
+int ili_get_api(uint32_t requested_abi_version, char **out_payload);
+```
+
+**ABI payload format (JSON):**
+```json
+{"abi_version":1,"capabilities":4095}
 ```
 
 **Initialization flow:**
 
 1. `dlopen(lib)` → resolve `graal_create_isolate`, `graal_attach_thread`,
-   `graal_detach_thread`, `graal_tear_down_isolate`, and `ili_get_api` (5 symbols)
-2. `create_isolate` → get init_thread
-3. Set `out_api->struct_size = sizeof(ili_api_v1)`
-4. Call `ili_get_api(init_thread, ILI_NATIVE_ABI_VERSION, &out_api)`
-5. Validate: `struct_size`, `abi_version`, `capabilities`, function pointers
-6. Store `ili_api_v1` and use function pointers from the table
-7. `detach_thread(init_thread)`
+   `graal_detach_thread`, `graal_tear_down_isolate`, `ili_free_string`, and `ili_get_api` (6 symbols)
+2. Verify `ili_free_string` is non-NULL (required for freeing ABI error payloads)
+3. `create_isolate` → get init_thread
+4. Call `ili_get_api(init_thread, ILI_NATIVE_ABI_VERSION, &abi_payload)`
+5. Parse JSON payload: `abi_version` and `capabilities`
+6. Validate: `abi_version`, `capabilities` against `ILI_CAP_REQUIRED_MASK`
+7. Resolve all 12 API function pointers via individual `dlsym` calls
+8. Null-check all 12 function pointers (all mandatory for ABI v1)
+9. `detach_thread(init_thread)`
+
+### Request struct_size validation (Java side)
+
+Every `@CEntryPoint` method that accepts an `IliRequest` validates the struct
+before dereferencing any fields. Validation is centralized in
+`NativeRequestValidator`:
+
+```java
+// java/ili-native/.../nativeapi/NativeRequestValidator.java
+public final class NativeRequestValidator {
+    public static final long EXPECTED_STRUCT_SIZE = 112L;
+
+    public static NativeError requireRequest(
+        IliRequest request, long minimumStructSize, String operation);
+
+    public static NativeError requireField(
+        String value, String fieldName, String operation);
+}
+```
+
+**Checks performed:**
+- `request.isNull()` → `INTERNAL_ERROR` (NULL pointer rejected)
+- `request.struct_size() < minimumStructSize` → `INVALID_ARGUMENT`
+- Required fields (where applicable) checked via `requireField`
 
 **Validation checks (C extension):**
 
-- `struct_size >= sizeof(ili_api_v1)` — truncated struct rejected
+- `ili_free_string` must be resolvable before the ABI handshake
 - `abi_version == ILI_NATIVE_ABI_VERSION` — version match required
-- `(ILI_CAP_REQUIRED_MASK & ~capabilities) == 0` — all required caps present
-- Each declared capability's function pointer is non-NULL
+- `(ILI_CAP_REQUIRED_MASK & ~capabilities) == 0` — all 12 capabilities required
+- All 12 function pointers must be non-NULL after `dlsym`
+- JSON parsing uses `sscanf` for robustness against whitespace variations
 
 **Capability bits:**
 
@@ -512,28 +534,31 @@ int ili_get_api(uint32_t requested_abi_version, ili_api_v1 *out_api);
 | 10 | `ILI_CAP_IMPORT_XTF` | `generate_import_sql` |
 | 11 | `ILI_CAP_FREE_STRING` | `free_string` |
 
-**Required capabilities (C extension minimum):**
-`ILI_CAP_VERSION | ILI_CAP_VALIDATE | ILI_CAP_VALIDATE_TSV | ILI_CAP_MODEL_INFO | ILI_CAP_READ_XTF | ILI_CAP_READ_XTF_CLASS | ILI_CAP_READ_XTF_CLASS_SCHEMA | ILI_CAP_FREE_STRING`
+**Required capabilities (ABI v1 — all 12 mandatory):**
+`ILI_CAP_VERSION | ILI_CAP_VALIDATE | ILI_CAP_VALIDATE_TSV | ILI_CAP_MODEL_INFO | ILI_CAP_READ_XTF | ILI_CAP_READ_XTF_CLASS | ILI_CAP_READ_XTF_CLASS_SCHEMA | ILI_CAP_READ_XTF_STRUCTURES | ILI_CAP_READ_XTF_ASSOCIATION | ILI_CAP_READ_XTF_ASSOC_SCHEMA | ILI_CAP_IMPORT_XTF | ILI_CAP_FREE_STRING`
 
 **Backward/forward compatibility:**
 
-- New function pointers appended at the end of `ili_api_v1`
-- Older callers with smaller `struct_size` see only the prefix
-- Newer native libraries can serve older callers (subset of pointers)
-- Capability bits declare which function pointers are valid
+- `struct_size` in `ili_request` allows forward-compatible field additions. Clients
+  pass the actual struct size; the callee rejects sizes smaller than its known minimum
+  but tolerates larger sizes (future extension).
+- New capabilities appended at higher bit positions.
+- Clients verify required capabilities are present before using associated functions.
 
 ### Acceptance tests (native_smoke_test.c)
 
 | Test | Description |
 |------|-------------|
-| A1 | Matching ABI — happy path, all fields populated |
-| A2 | Truncated struct (`struct_size=8`) |
-| A3 | Implausible struct_size (`0xDEAD`) |
-| A4 | Too-old ABI version (request `v0`) |
-| A5 | Too-new ABI version (request `v99`) |
-| Func 1-8 | Functional tests using API table instead of individual dlsym |
-| Func 9 | Required capabilities present |
-| Func 10 | All declared function pointers non-NULL |
+| A1 | Matching ABI — all required capabilities present |
+| A2 | ABI v0 rejected |
+| A3 | ABI v99 rejected |
+| A4 | `ili_free_string` symbol present and non-NULL |
+| L1 | `struct_size=0` → INVALID_ARGUMENT |
+| L2 | `struct_size=4` → INVALID_ARGUMENT |
+| L5 | `struct_size=8` → INVALID_ARGUMENT |
+| L6 | `struct_size=64` → INVALID_ARGUMENT (partial struct) |
+| L7 | `struct_size=112` → OK (exact match, operation succeeds) |
+| L8 | `struct_size=200` → OK (larger, forward-compatible) |
 
 ## 11. Platform Constants
 

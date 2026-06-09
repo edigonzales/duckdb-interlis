@@ -69,11 +69,23 @@ typedef struct ili_request {
 #define ILI_CAP_IMPORT_XTF            (1ULL << 10)
 #define ILI_CAP_FREE_STRING           (1ULL << 11)
 
-/* All capabilities required for the core ILI extension functionality */
+/*
+ * All capabilities required for the core ILI extension functionality.
+ * ABI v1 treats all 12 public API functions as mandatory.
+ * Bits 0-11 must all be present.
+ */
 #define ILI_CAP_REQUIRED_MASK \
     (ILI_CAP_VERSION | ILI_CAP_VALIDATE | ILI_CAP_VALIDATE_TSV | \
      ILI_CAP_MODEL_INFO | ILI_CAP_READ_XTF | ILI_CAP_READ_XTF_CLASS | \
-     ILI_CAP_READ_XTF_CLASS_SCHEMA | ILI_CAP_FREE_STRING)
+     ILI_CAP_READ_XTF_CLASS_SCHEMA | ILI_CAP_READ_XTF_STRUCTURES | \
+     ILI_CAP_READ_XTF_ASSOCIATION | ILI_CAP_READ_XTF_ASSOC_SCHEMA | \
+     ILI_CAP_IMPORT_XTF | ILI_CAP_FREE_STRING)
+
+/*
+ * Expected struct sizes for ABI validation.
+ * Used by both C extension and Java NativeRequestValidator.
+ */
+#define ILI_REQUEST_STRUCT_SIZE 112  /* sizeof(ili_request) on LP64 */
 
 typedef struct ili_api_v1 {
     uint32_t struct_size;

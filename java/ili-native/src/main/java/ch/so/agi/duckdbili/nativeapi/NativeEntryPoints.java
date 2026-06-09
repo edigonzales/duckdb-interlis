@@ -125,15 +125,21 @@ public class NativeEntryPoints {
             IliRequest request,
             CCharPointerPointer outPayload) {
 
+        NativeError verr = NativeRequestValidator.requireRequest(request, NativeRequestValidator.EXPECTED_STRUCT_SIZE, "validate");
+        if (verr != null) {
+            outPayload.write(allocCString(verr.toJson()));
+            return verr.status();
+        }
+
         String input = getField(request.input());
         String modelDir = getField(request.modeldir());
         int maxMessages = request.max_messages();
         String profileStr = getField(request.profile());
 
-        if (input == null || input.isBlank()) {
-            NativeError err = NativeError.invalidArgument("validate", "Missing required field", "input");
-            outPayload.write(allocCString(err.toJson()));
-            return NativeStatus.INVALID_ARGUMENT;
+        verr = NativeRequestValidator.requireField(input, "input", "validate");
+        if (verr != null) {
+            outPayload.write(allocCString(verr.toJson()));
+            return verr.status();
         }
 
         try {
@@ -204,15 +210,21 @@ public class NativeEntryPoints {
             IliRequest request,
             CCharPointerPointer outPayload) {
 
+        NativeError verr = NativeRequestValidator.requireRequest(request, NativeRequestValidator.EXPECTED_STRUCT_SIZE, "validate_tsv");
+        if (verr != null) {
+            outPayload.write(allocCString(verr.toJson()));
+            return verr.status();
+        }
+
         String input = getField(request.input());
         String modelDir = getField(request.modeldir());
         int maxMessages = request.max_messages();
         String profileStr = getField(request.profile());
 
-        if (input == null || input.isBlank()) {
-            NativeError err = NativeError.invalidArgument("validate_tsv", "Missing required field", "input");
-            outPayload.write(allocCString(err.toJson()));
-            return NativeStatus.INVALID_ARGUMENT;
+        verr = NativeRequestValidator.requireField(input, "input", "validate_tsv");
+        if (verr != null) {
+            outPayload.write(allocCString(verr.toJson()));
+            return verr.status();
         }
 
         try {
@@ -280,6 +292,12 @@ public class NativeEntryPoints {
             IliRequest request,
             CCharPointerPointer outPayload) {
 
+        NativeError verr = NativeRequestValidator.requireRequest(request, NativeRequestValidator.EXPECTED_STRUCT_SIZE, "model_info");
+        if (verr != null) {
+            outPayload.write(allocCString(verr.toJson()));
+            return verr.status();
+        }
+
         String cmd = getField(request.cmd());
         String modelDir = getField(request.modeldir());
         String modelName = getField(request.model());
@@ -321,14 +339,20 @@ public class NativeEntryPoints {
             IliRequest request,
             CCharPointerPointer outPayload) {
 
+        NativeError verr = NativeRequestValidator.requireRequest(request, NativeRequestValidator.EXPECTED_STRUCT_SIZE, "read_xtf");
+        if (verr != null) {
+            outPayload.write(allocCString(verr.toJson()));
+            return verr.status();
+        }
+
         String input = getField(request.input());
         String modelDir = getField(request.modeldir());
         String modelNames = getField(request.models());
 
-        if (input == null || input.isBlank()) {
-            NativeError err = NativeError.invalidArgument("read_xtf", "Missing required field", "input");
-            outPayload.write(allocCString(err.toJson()));
-            return NativeStatus.INVALID_ARGUMENT;
+        verr = NativeRequestValidator.requireField(input, "input", "read_xtf");
+        if (verr != null) {
+            outPayload.write(allocCString(verr.toJson()));
+            return verr.status();
         }
 
         try {
@@ -349,6 +373,12 @@ public class NativeEntryPoints {
             IsolateThread thread,
             IliRequest request,
             CCharPointerPointer outPayload) {
+
+        NativeError verr = NativeRequestValidator.requireRequest(request, NativeRequestValidator.EXPECTED_STRUCT_SIZE, "read_xtf_class");
+        if (verr != null) {
+            outPayload.write(allocCString(verr.toJson()));
+            return verr.status();
+        }
 
         String input = getField(request.input());
         String className = getField(request.class_name());
@@ -380,6 +410,12 @@ public class NativeEntryPoints {
             IliRequest request,
             CCharPointerPointer outPayload) {
 
+        NativeError verr = NativeRequestValidator.requireRequest(request, NativeRequestValidator.EXPECTED_STRUCT_SIZE, "read_xtf_class_schema");
+        if (verr != null) {
+            outPayload.write(allocCString(verr.toJson()));
+            return verr.status();
+        }
+
         String className = getField(request.class_name());
         String modelDir = getField(request.modeldir());
         String nested = getField(request.nested());
@@ -408,6 +444,12 @@ public class NativeEntryPoints {
             IliRequest request,
             CCharPointerPointer outPayload) {
 
+        NativeError verr = NativeRequestValidator.requireRequest(request, NativeRequestValidator.EXPECTED_STRUCT_SIZE, "read_xtf_structures");
+        if (verr != null) {
+            outPayload.write(allocCString(verr.toJson()));
+            return verr.status();
+        }
+
         String className = getField(request.class_name());
         String modelDir = getField(request.modeldir());
 
@@ -434,6 +476,12 @@ public class NativeEntryPoints {
             IsolateThread thread,
             IliRequest request,
             CCharPointerPointer outPayload) {
+
+        NativeError verr = NativeRequestValidator.requireRequest(request, NativeRequestValidator.EXPECTED_STRUCT_SIZE, "read_xtf_association");
+        if (verr != null) {
+            outPayload.write(allocCString(verr.toJson()));
+            return verr.status();
+        }
 
         String input = getField(request.input());
         String associationName = getField(request.association());
@@ -463,6 +511,12 @@ public class NativeEntryPoints {
             IsolateThread thread,
             IliRequest request,
             CCharPointerPointer outPayload) {
+
+        NativeError verr = NativeRequestValidator.requireRequest(request, NativeRequestValidator.EXPECTED_STRUCT_SIZE, "read_xtf_association_schema");
+        if (verr != null) {
+            outPayload.write(allocCString(verr.toJson()));
+            return verr.status();
+        }
 
         String associationName = getField(request.association());
         String modelDir = getField(request.modeldir());
@@ -495,6 +549,12 @@ public class NativeEntryPoints {
             IsolateThread thread,
             IliRequest request,
             CCharPointerPointer outPayload) {
+
+        NativeError verr = NativeRequestValidator.requireRequest(request, NativeRequestValidator.EXPECTED_STRUCT_SIZE, "import_xtf");
+        if (verr != null) {
+            outPayload.write(allocCString(verr.toJson()));
+            return verr.status();
+        }
 
         String input = getField(request.input());
         String modelDir = getField(request.modeldir());
