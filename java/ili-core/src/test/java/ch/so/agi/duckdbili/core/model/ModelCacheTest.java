@@ -244,6 +244,53 @@ class ModelCacheTest {
         assertTrue(cache.size() >= 1, "Cache should have entries");
     }
 
+    @Test
+    @DisplayName("Concurrent cache miss compiles exactly once")
+    void concurrentMissCompilesExactlyOnce() throws Exception {
+        ModelCache cache = ModelCache.getInstance();
+        String modelDir = TEST_ILI.getParent().toString();
+        String fingerprint = ModelCache.computeFingerprint(modelDir);
+        ModelCache.CacheKey key = new ModelCache.CacheKey(modelDir, emptySet(), fingerprint);
+
+        int threads = 20;
+        CountDownLatch readyLatch = new CountDownLatch(threads);
+        CountDownLatch startLatch = new CountDownLatch(1);
+        AtomicInteger compileCalls = new AtomicInteger();
+        AtomicReference<Exception> error = new AtomicReference<>();
+
+        for (int t = 0; t < threads; t++) {
+            new Thread(() -> {
+                try {
+                    readyLatch.countDown();
+                    startLatch.await();
+                    var td = cache.getOrCompile(key, () -> {
+                        compileCalls.incrementAndGet();
+                        try {
+                            Thread.sleep(100);
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                        }
+                        IliModelService svc = new IliModelService();
+                        return callPrivateCompile(svc, modelDir);
+                    });
+                    assertNotNull(td);
+                } catch (Exception e) {
+                    error.compareAndSet(null, e);
+                }
+            }).start();
+        }
+
+        readyLatch.await();
+        startLatch.countDown();
+        Thread.sleep(5000); // give all threads time to complete
+
+        assertNull(error.get(), "No concurrent miss exceptions: " +
+                (error.get() != null ? error.get().getMessage() : ""));
+        assertEquals(1, compileCalls.get(),
+                "Compiler should be called exactly once across " + threads + " parallel misses");
+        assertEquals(1, cache.size());
+    }
+
     // ---------------------------------------------------------------
     // Metrics
     // ---------------------------------------------------------------

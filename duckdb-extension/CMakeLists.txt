@@ -173,29 +173,39 @@ set(VISIBILITY_INLINES_HIDDEN ON)
 option(BUILD_SANITIZER_TESTS "Build sanitizer test executables" OFF)
 
 if(BUILD_SANITIZER_TESTS)
-    # TSV unit test (no DuckDB dependency, standalone)
+    # Sanitizer flags for host programs (asan/ubsan for smoke, tsan for concurrency)
+    set(ASAN_UBSAN_FLAGS -fsanitize=address,undefined -fno-omit-frame-pointer -g)
+    set(TSAN_FLAGS -fsanitize=thread -fno-omit-frame-pointer -g)
+
+    # TSV unit test (no DuckDB dependency, standalone; asan+ubsan)
     add_executable(ili_tsv_test
         test/ili_tsv_test.c
         src/ili_tsv.c
     )
     target_include_directories(ili_tsv_test PRIVATE ${DUCKDB_CAPI_DIR})
+    target_compile_options(ili_tsv_test PRIVATE ${ASAN_UBSAN_FLAGS})
+    target_link_options(ili_tsv_test PRIVATE ${ASAN_UBSAN_FLAGS})
 
-    # Smoke test (requires DuckDB C API header only)
+    # Smoke test (requires DuckDB C API header only; asan+ubsan)
     add_executable(duckdb_extension_smoke_test
         test/duckdb_extension_smoke_test.c
     )
     target_include_directories(duckdb_extension_smoke_test PRIVATE ${DUCKDB_CAPI_DIR})
+    target_compile_options(duckdb_extension_smoke_test PRIVATE ${ASAN_UBSAN_FLAGS})
+    target_link_options(duckdb_extension_smoke_test PRIVATE ${ASAN_UBSAN_FLAGS})
     if(APPLE)
         target_link_libraries(duckdb_extension_smoke_test PRIVATE dl pthread)
     elseif(NOT WIN32)
         target_link_libraries(duckdb_extension_smoke_test PRIVATE dl pthread)
     endif()
 
-    # Concurrency test (requires DuckDB C API header + pthread)
+    # Concurrency test (requires DuckDB C API header + pthread; tsan)
     add_executable(duckdb_extension_concurrency_test
         test/duckdb_extension_concurrency_test.c
     )
     target_include_directories(duckdb_extension_concurrency_test PRIVATE ${DUCKDB_CAPI_DIR})
+    target_compile_options(duckdb_extension_concurrency_test PRIVATE ${TSAN_FLAGS})
+    target_link_options(duckdb_extension_concurrency_test PRIVATE ${TSAN_FLAGS})
     if(APPLE)
         target_link_libraries(duckdb_extension_concurrency_test PRIVATE dl pthread)
     elseif(NOT WIN32)

@@ -89,29 +89,32 @@ static void *thread_func(void *arg) {
 
     barrier_wait();
 
-    duckdb_connection conn = NULL;
-    if (p_connect(g_db, &conn) != DuckDBSuccess) {
-        fprintf(stderr, "[T%d] FAIL: duckdb_connect\n", tid);
-        thread_errors[tid] = 1;
-        return NULL;
-    }
-
     int q_start = (tid * 3) % NUM_QUERIES;
     int q_count = 3;
 
-    for (int i = 0; i < q_count; i++) {
-        int qi = (q_start + i) % NUM_QUERIES;
-        duckdb_result r;
-        if (p_query(conn, queries[qi], &r) != DuckDBSuccess) {
-            const char *err = p_result_error(&r);
-            fprintf(stderr, "[T%d] FAIL query %d: %s\n", tid, qi,
-                    err ? err : "unknown");
+    /* repeated rounds (13.5): 50 rounds, own connection per round */
+    for (int round = 0; round < 50; round++) {
+        duckdb_connection conn = NULL;
+        if (p_connect(g_db, &conn) != DuckDBSuccess) {
+            fprintf(stderr, "[T%d] FAIL: duckdb_connect round %d\n", tid, round);
             thread_errors[tid]++;
+            return NULL;
         }
-        p_destroy_result(&r);
-    }
 
-    p_disconnect(&conn);
+        for (int i = 0; i < q_count; i++) {
+            int qi = (q_start + i) % NUM_QUERIES;
+            duckdb_result r;
+            if (p_query(conn, queries[qi], &r) != DuckDBSuccess) {
+                const char *err = p_result_error(&r);
+                fprintf(stderr, "[T%d] FAIL query %d round %d: %s\n", tid, qi,
+                        round, err ? err : "unknown");
+                thread_errors[tid]++;
+            }
+            p_destroy_result(&r);
+        }
+
+        p_disconnect(&conn);
+    }
     return NULL;
 }
 

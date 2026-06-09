@@ -24,7 +24,17 @@ import ch.ehi.basics.logging.StdListener;
  * Unlike previous versions, this class no longer redirects
  * {@code System.err}. That was a global operation affecting all
  * threads in the JVM. The listener-based approach is safe for
- * concurrent operations.
+ * concurrent operations within this extension because the native
+ * bridge serializes all Java calls through a global mutex
+ * ({@code g_java_lock}).
+ * <p>
+ * <b>Important:</b> The listener mutation in {@link #suppress()}
+ * and {@link #restore()} is process-global because {@link EhiLogger}
+ * is a singleton. Calls originating from the DuckDB extension are
+ * currently serialized by the native bridge, which prevents overlapping
+ * INTERLIS operations inside this extension. However, unrelated code
+ * in the same process using {@link EhiLogger} can still observe the
+ * temporary listener configuration.
  * <p>
  * Usage in service code (try/finally pattern):
  * <pre>{@code
@@ -68,7 +78,12 @@ public final class IliLogger {
      * the first call, and is only restored by the matching {@link #restore()}
      * call.
      * <p>
-     * This method is thread-safe and does not affect other threads.
+     * This method is thread-safe (synchronized) but the listener mutation is
+     * process-global because {@link EhiLogger} is a singleton. Calls originating
+     * from the DuckDB extension are currently serialized by the native bridge.
+     * This prevents overlapping INTERLIS operations inside this extension,
+     * but unrelated code in the same process using {@link EhiLogger} can still
+     * observe the temporary listener configuration.
      */
     public static synchronized void suppress() {
         if (DEBUG) return;
@@ -87,7 +102,8 @@ public final class IliLogger {
      * only when the outermost nested {@code suppress()}/{@code restore()}
      * pair is closed.
      * <p>
-     * This method is thread-safe.
+     * This method is thread-safe (synchronized) but the listener mutation is
+     * process-global. See {@link #suppress()} for details on thread isolation.
      */
     public static synchronized void restore() {
         if (DEBUG) return;

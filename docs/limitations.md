@@ -1,30 +1,20 @@
 # Known Limitations
 
-## File Size
+> **Current state (pre-Milestone B):** The extension materializes complete result sets in memory before returning them to DuckDB. Java calls are globally serialized through a single mutex. Streaming / incremental delivery is planned for Milestone B.
 
-This extension is designed for **small and medium** INTERLIS/XTF files. It has not been optimized for large files (hundreds of megabytes or more).
+## Current Materialization Behavior
 
-## Materialization
+| Operation | Materialization |
+|---|---|
+| XTF reading (`read_xtf_class`, `read_xtf_association`, `read_xtf_objects`) | Full object graph materialized |
+| Validation (`ili_validate`) | Full validation result (all messages + counters) |
+| Model metadata (`ili_models`, `ili_topics`, `ili_classes`) | Full TransferDescription result |
+| Import SQL generation (`ili_generate_import_sql`) | Full DDL/DML as a single string |
+| Java calls | Globally serialized via `g_java_lock` |
 
-All results are **fully materialized in memory** before being returned to DuckDB. There is no streaming or incremental result delivery. The current data flow is:
+## Suitability
 
-```
-Java StringBuilder
-  → Java UTF-8 byte[]
-    → unmanaged Native buffer
-      → C string copies
-        → DuckDB strings
-```
-
-This means memory usage is proportional to the total result size, not the batch size.
-
-## Memory Usage
-
-Large XTF files can cause **high memory consumption** because:
-- The entire XTF file is parsed in one pass
-- All objects are held in memory during reading
-- Validation results are fully materialized
-- Generated import SQL is built as a single string
+The extension is suitable for **small and medium** INTERLIS/XTF files in production. For large files, streaming support will be added in Milestone B.
 
 ## Parallelism
 
@@ -62,7 +52,3 @@ INTERLIS numeric types with decimal places are mapped to DuckDB `DOUBLE`, which 
 ## Identifier Quoting
 
 Table and column names use the `topic__class` pattern with lowercase sanitization. Very long names may be truncated or cause collisions. Always verify generated SQL before executing in production.
-
-## Batching and Streaming
-
-Streaming / incremental reading is **not yet implemented**. Phase 14 of the implementation spec addresses batching as a future optimization. See the implementation specification for details.

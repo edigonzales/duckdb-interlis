@@ -464,8 +464,10 @@ typedef struct ili_api_v1 {
     uint64_t capabilities;  // bitmask of ILI_CAP_* flags
 } ili_api_v1;
 
-int ili_get_api(uint32_t requested_abi_version, char **out_payload);
+int ili_get_api(graal_isolatethread_t *thread, uint32_t requested_abi_version, char **out_payload);
 ```
+
+**Compile-time struct size assertion:** The C header enforces that `ILI_REQUEST_STRUCT_SIZE` matches `sizeof(ili_request)` at compile time via `_Static_assert` (C11) or `static_assert` (C++). This prevents the hard-coded constant from drifting out of sync with the actual struct layout.
 
 **ABI payload format (JSON):**
 ```json

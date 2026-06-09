@@ -10,8 +10,11 @@ import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedDeque;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.function.Supplier;
 
@@ -20,7 +23,7 @@ public final class ModelCache {
     private static final ModelCache INSTANCE = new ModelCache();
     private static final int DEFAULT_MAX_SIZE = 64;
 
-    private final ConcurrentHashMap<CacheKey, TransferDescription> map;
+    private final ConcurrentHashMap<CacheKey, CompletableFuture<TransferDescription>> map;
     private final ConcurrentLinkedDeque<CacheKey> accessOrder;
     private final int maxSize;
 
@@ -50,30 +53,53 @@ public final class ModelCache {
     }
 
     public TransferDescription getOrCompile(CacheKey key, Supplier<TransferDescription> compiler) {
-        TransferDescription td = map.get(key);
-        if (td != null) {
-            hits.increment();
-            touchAccessOrder(key);
-            return td;
-        }
-        misses.increment();
-        long start = System.currentTimeMillis();
-        td = compiler.get();
-        long elapsed = System.currentTimeMillis() - start;
-        TransferDescription existing = map.putIfAbsent(key, td);
-        if (existing != null) {
-            td = existing;
+        AtomicBoolean created = new AtomicBoolean(false);
+
+        CompletableFuture<TransferDescription> future = map.computeIfAbsent(
+                key,
+                ignored -> {
+                    created.set(true);
+                    return new CompletableFuture<>();
+                }
+        );
+
+        if (created.get()) {
+            misses.increment();
+            long start = System.currentTimeMillis();
+
+            try {
+                TransferDescription td = compiler.get();
+                future.complete(td);
+
+                long elapsed = System.currentTimeMillis() - start;
+                if (DEBUG) compileTimesMs.put(key, elapsed);
+
+                addAccessOrder(key);
+                evictIfNeeded();
+            } catch (Throwable throwable) {
+                future.completeExceptionally(throwable);
+                map.remove(key, future);
+                throw throwable;
+            }
         } else {
-            addAccessOrder(key);
-            evictIfNeeded();
+            hits.increment();
         }
-        if (DEBUG) compileTimesMs.put(key, elapsed);
-        return td;
+
+        try {
+            return future.join();
+        } catch (CompletionException e) {
+            Throwable cause = e.getCause();
+            if (cause instanceof RuntimeException runtime) {
+                throw runtime;
+            }
+            throw new RuntimeException(cause);
+        }
     }
 
     public void invalidateAll() {
         map.clear();
         accessOrder.clear();
+        compileTimesMs.clear();
     }
 
     public void invalidate(String modelDirPrefix) {
@@ -155,11 +181,6 @@ public final class ModelCache {
     // ---------------------------------------------------------------
     // LRU eviction (approximate)
     // ---------------------------------------------------------------
-
-    private void touchAccessOrder(CacheKey key) {
-        accessOrder.remove(key);
-        accessOrder.addFirst(key);
-    }
 
     private void addAccessOrder(CacheKey key) {
         accessOrder.addFirst(key);

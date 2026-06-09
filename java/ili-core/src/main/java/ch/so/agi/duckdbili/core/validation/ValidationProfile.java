@@ -1,5 +1,7 @@
 package ch.so.agi.duckdbili.core.validation;
 
+import java.util.Locale;
+
 public enum ValidationProfile {
 
     FULL("full"),
@@ -20,7 +22,7 @@ public enum ValidationProfile {
         if (s == null || s.isBlank()) {
             return FULL;
         }
-        return switch (s.trim().toLowerCase()) {
+        return switch (s.trim().toLowerCase(Locale.ROOT)) {
             case "full" -> FULL;
             case "structural" -> STRUCTURAL;
             case "fast" -> FAST;

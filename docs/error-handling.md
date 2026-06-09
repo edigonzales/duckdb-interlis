@@ -30,6 +30,35 @@ Every native call returns a status code and, on failure, a structured JSON error
 
 ## Error Visibility in DuckDB
 
+### Two Categories of Errors
+
+It is critical to distinguish between two fundamentally different error categories:
+
+**1. Semantic validation errors (data is invalid):**
+- An XTF file that contains INTERLIS constraint violations, multiplicity errors, or other semantic issues.
+- The validation query **succeeds** (returns rows).
+- The result contains `ERROR` rows with severity, message, line, column, etc.
+- `valid = false` in the summary, `errorCount > 0`.
+- This is normal operation — the validator did its job and found problems in the data.
+
+**2. Technical/infrastructure errors (validation itself failed):**
+- Missing model directory, corrupted XTF file, missing native library, ABI mismatch.
+- The query **fails** with a DuckDB error message.
+- No result rows are returned.
+- The error message contains a status code (e.g., `IO_ERROR`, `MODEL_ERROR`, `INVALID_ARGUMENT`).
+- Partial results are never returned as success.
+
+```
+Fachlich ungültige XTF:
+  → Query erfolgreich
+  → ERROR-Zeilen
+  → valid = false
+
+Technischer Validatorfehler:
+  → Query schlägt fehl
+  → DuckDB error message
+```
+
 ### Table Functions
 
 When a table function (e.g., `ili_validate`, `read_xtf_class`) encounters an error, DuckDB reports it immediately:

@@ -46,14 +46,14 @@ END AS status;
 ili_native_version() → VARCHAR
 ```
 
-**Description:** Returns JSON with version info of the GraalVM native library: `nativeVersion`, `coreVersion`, `graalvmVersion`, `platform`, `nativeLibName`.
+**Description:** Returns JSON with version info of the GraalVM native library: `native_version`, `core_version`, `graalvm_version`, `platform`, `native_lib`.
 
 **Examples:**
 
 ```sql
 -- 1. Show full native version JSON
 SELECT ili_native_version();
--- => {"nativeVersion":"0.1.0","core_version":"0.1.0","graalvm_version":"...","platform":"darwin-aarch64","nativeLibName":"libduckdb_ili_native.dylib"}
+-- => {"native_version":"0.1.0","core_version":"0.1.0","graalvm_version":"...","platform":"darwin-aarch64","native_lib":"libduckdb_ili_native.dylib"}
 ```
 
 ```sql
@@ -135,17 +135,23 @@ Return result sets usable in `FROM` clauses.
 **Signature:**
 
 ```sql
-ili_validate(path VARCHAR, modeldir => VARCHAR) → TABLE(...)
+ili_validate(path VARCHAR, [modeldir => VARCHAR], [profile => VARCHAR], [max_messages => INTEGER]) → TABLE(...)
 ```
 
-**Description:** Validates an XTF file and returns one row per validation message.
+**Description:** Validates an XTF file and returns one row per validation message. The total error/warning/info counts always reflect the complete validation result regardless of `max_messages`.
 
 **Parameters:**
 
-| # | Name | Kind | Type | Erforderlich | Beschreibung |
+| # | Name | Kind | Type | Required | Description |
 |---|---|---|---|---|---|
-| 1 | `path` | positional | VARCHAR | Ja | Pfad zur XTF-Datei |
-| 2 | `modeldir` | named | VARCHAR | Nein | Verzeichnis mit ILI-Modelldateien oder semikolon-getrennte URLs. Default: Verzeichnis der XTF-Datei + `https://models.interlis.ch`, überschreibbar via `ILI_DEFAULT_MODELDIR` |
+| 1 | `path` | positional | VARCHAR | Yes | Path to the XTF file |
+| 2 | `modeldir` | named | VARCHAR | No | Directory with ILI model files or semicolon-separated URLs. Default: directory of the XTF file + `https://models.interlis.ch`, overridable via `ILI_DEFAULT_MODELDIR` |
+| 3 | `profile` | named | VARCHAR | No | Validation profile: `full` (default), `structural`, or `fast`. Controls which checks are performed. |
+| 4 | `max_messages` | named | INTEGER | No | Maximum number of detail message rows returned. Does NOT affect validity or the total error/warning/info counts. Use `-1` or omit for unlimited. |
+
+**NULL semantics:** Missing integer values (e.g., `line`, `column`) are SQL `NULL`. Missing string values (e.g., `xtf_tid`, `xtf_bid`) are SQL `NULL`. Empty strings remain empty strings. `0` is a genuine value, distinct from `NULL`.
+
+**Error behavior:** Technical validator errors (e.g., missing model, corrupted file) produce a DuckDB query error. Validation messages from a valid/invalid XTF produce normal data rows — the query succeeds even if the file is semantically invalid.
 
 **Return columns:**
 
