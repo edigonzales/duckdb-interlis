@@ -243,10 +243,10 @@ public class NativeEntryPoints {
                 tsv.append(TsvCodec.encodeNullable(msg.getCode())).append('\t');
                 tsv.append(TsvCodec.encodeNullable(msg.getMessage())).append('\t');
                 tsv.append(TsvCodec.encodeNullable(msg.getFileName())).append('\t');
-                tsv.append(msg.getLine() == null ? "" : String.valueOf(msg.getLine())).append('\t');
-                tsv.append("").append('\t');
+                tsv.append(TsvCodec.encodeNullableInteger(msg.getLine())).append('\t');
+                tsv.append(TsvCodec.encodeNullableInteger(msg.getColumn())).append('\t');
                 tsv.append(TsvCodec.encodeNullable(msg.getXtfTid())).append('\t');
-                tsv.append(TsvCodec.encodeNullable(null)).append('\t');
+                tsv.append(TsvCodec.encodeNullable(msg.getXtfBid())).append('\t');
                 tsv.append(TsvCodec.encodeNullable(msg.getModel())).append('\t');
                 tsv.append(TsvCodec.encodeNullable(msg.getTopic())).append('\t');
                 tsv.append(TsvCodec.encodeNullable(msg.getClassName())).append('\t');

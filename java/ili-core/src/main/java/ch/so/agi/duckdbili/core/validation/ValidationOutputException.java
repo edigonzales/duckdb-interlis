@@ -29,4 +29,11 @@ public class ValidationOutputException extends RuntimeException {
                 "Failed to read CSV log: " + csvLog.toAbsolutePath(),
                 cause, csvLog.toAbsolutePath().toString());
     }
+
+    public static ValidationOutputException forMalformedCsv(Path csvLog, long recordNumber, String detail) {
+        return new ValidationOutputException(
+                "Malformed validator CSV log at record " + recordNumber + ": " + detail,
+                null,
+                csvLog.toAbsolutePath().toString());
+    }
 }

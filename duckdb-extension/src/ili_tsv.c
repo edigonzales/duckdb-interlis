@@ -2,6 +2,62 @@
 #include <stdlib.h>
 #include <string.h>
 
+void ili_tsv_reader_init(
+        ili_tsv_reader *reader,
+        const char *data,
+        size_t length) {
+
+    if (!reader || !data) return;
+    reader->cursor = data;
+    reader->end = data + length;
+    reader->pending_trailing_empty = false;
+}
+
+bool ili_tsv_reader_next(
+        ili_tsv_reader *reader,
+        ili_tsv_field *out) {
+
+    if (!reader || !out) {
+        return false;
+    }
+
+    if (reader->pending_trailing_empty) {
+        reader->pending_trailing_empty = false;
+        out->data = reader->end;
+        out->length = 0;
+        out->is_null = false;
+        return true;
+    }
+
+    if (reader->cursor >= reader->end) {
+        return false;
+    }
+
+    const char *start = reader->cursor;
+    const char *p = start;
+
+    while (p < reader->end && *p != '\t') {
+        p++;
+    }
+
+    out->data = start;
+    out->length = (size_t)(p - start);
+    out->is_null =
+        out->length == 2
+        && start[0] == '\\'
+        && start[1] == 'N';
+
+    if (p < reader->end && *p == '\t') {
+        p++;
+        if (p == reader->end) {
+            reader->pending_trailing_empty = true;
+        }
+    }
+
+    reader->cursor = p;
+    return true;
+}
+
 bool ili_tsv_next_field(
     const char **cursor,
     const char *end,
@@ -58,14 +114,17 @@ char *ili_tsv_unescape_copy(
     return result;
 }
 
-bool ili_tsv_parse_nullable_int32(
+ili_tsv_int_status ili_tsv_parse_nullable_int32(
     const ili_tsv_field *field,
     int32_t *out_value
 ) {
-    if (!field || !out_value) return false;
+    if (!field || !out_value) return ILI_TSV_INT_INVALID;
     if (field->is_null) {
-        *out_value = 0;
-        return false;
+        return ILI_TSV_INT_NULL;
+    }
+
+    if (field->length == 0) {
+        return ILI_TSV_INT_INVALID;
     }
 
     const char *s = field->data;
@@ -78,22 +137,22 @@ bool ili_tsv_parse_nullable_int32(
         s++;
     }
 
-    if (s >= end) return false;
+    if (s >= end) return ILI_TSV_INT_INVALID;
 
     while (s < end && *s >= '0' && *s <= '9') {
         int32_t digit = *s - '0';
         if (neg) {
-            if (val < (INT32_MIN + digit) / 10) return false;
+            if (val < (INT32_MIN + digit) / 10) return ILI_TSV_INT_INVALID;
             val = val * 10 - digit;
         } else {
-            if (val > (INT32_MAX - digit) / 10) return false;
+            if (val > (INT32_MAX - digit) / 10) return ILI_TSV_INT_INVALID;
             val = val * 10 + digit;
         }
         s++;
     }
 
-    if (s != end) return false;
+    if (s != end) return ILI_TSV_INT_INVALID;
 
     *out_value = val;
-    return true;
+    return ILI_TSV_INT_OK;
 }

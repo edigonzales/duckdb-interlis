@@ -258,6 +258,39 @@ class IliValidatorServiceTest {
             "maxMessages=1 should limit to at most 1 message, got " + result.getMessages().size());
     }
 
+    @Test
+    void maxMessagesDoesNotChangeValidity() {
+        Path xtfFile = TESTDATA.resolve("invalid.xtf");
+        String modelDir = TESTDATA.toAbsolutePath().toString();
+
+        ValidationResult unlimited = service.validate(xtfFile, modelDir, -1, ValidationProfile.FULL);
+        ValidationResult limited = service.validate(xtfFile, modelDir, 1, ValidationProfile.FULL);
+
+        assertEquals(unlimited.isValid(), limited.isValid(),
+                "validity must not change when max_messages limits output");
+        assertFalse(limited.isValid(),
+                "invalid file must remain invalid even when max_messages=1");
+    }
+
+    @Test
+    void maxMessagesDoesNotChangeCounts() {
+        Path xtfFile = TESTDATA.resolve("invalid.xtf");
+        String modelDir = TESTDATA.toAbsolutePath().toString();
+
+        ValidationResult unlimited = service.validate(xtfFile, modelDir, -1, ValidationProfile.FULL);
+        ValidationResult limited = service.validate(xtfFile, modelDir, 1, ValidationProfile.FULL);
+
+        assertEquals(unlimited.getErrorCount(), limited.getErrorCount(),
+                "error count must be identical regardless of max_messages");
+        assertEquals(unlimited.getWarningCount(), limited.getWarningCount(),
+                "warning count must be identical regardless of max_messages");
+        assertEquals(unlimited.getInfoCount(), limited.getInfoCount(),
+                "info count must be identical regardless of max_messages");
+
+        assertTrue(limited.getMessages().size() <= 1,
+                "max_messages=1 should limit messages but not counts, got " + limited.getMessages().size());
+    }
+
     // -----------------------------------------------------------------------
     // ValidationExecutionException tests
     // -----------------------------------------------------------------------

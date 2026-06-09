@@ -114,6 +114,10 @@ public class IliValidatorService {
     private ValidationResult parseCsv(Path csvLog, Path xtfFile, int maxMessages) {
         List<ValidationMessage> messages = new ArrayList<>();
 
+        int totalErrors = 0;
+        int totalWarnings = 0;
+        int totalInfos = 0;
+
         if (!Files.isRegularFile(csvLog)) {
             throw ValidationOutputException.forMissingCsvLog(csvLog);
         }
@@ -129,7 +133,7 @@ public class IliValidatorService {
                 if (line.charAt(0) == '\uFEFF') line = line.substring(1);
                 if (first) { first = false; continue; }
 
-                if (maxMessages > 0 && messages.size() >= maxMessages) break;
+                boolean retainMessage = maxMessages <= 0 || messages.size() < maxMessages;
 
                 List<String> fields = parseCsvLine(line);
                 if (fields.size() < 2) continue;
@@ -143,6 +147,14 @@ public class IliValidatorService {
 
                 String severity = type.equalsIgnoreCase("Error") ? "ERROR"
                         : type.equalsIgnoreCase("Warning") ? "WARNING" : "INFO";
+
+                switch (severity) {
+                    case "ERROR" -> totalErrors++;
+                    case "WARNING" -> totalWarnings++;
+                    case "INFO" -> totalInfos++;
+                    default -> throw ValidationOutputException.forMalformedCsv(csvLog, rowIdx,
+                            "Unknown severity/type: " + type);
+                }
 
                 Integer csvLineNo = null;
                 if (!lineStr.isBlank()) {
@@ -159,25 +171,27 @@ public class IliValidatorService {
                     if (parts.length >= 4) attrName = parts[3];
                 }
 
-                messages.add(new ValidationMessage.Builder()
-                        .severity(severity)
-                        .code("")
-                        .message(message)
-                        .fileName(dataSource.isBlank() ? xtfFile.toString() : dataSource)
-                        .line(csvLineNo)
-                        .xtfTid(tid.isBlank() ? null : tid)
-                        .model(model)
-                        .topic(topic)
-                        .className(className)
-                        .attributeName(attrName)
-                        .raw(line)
-                        .build());
+                if (retainMessage) {
+                    messages.add(new ValidationMessage.Builder()
+                            .severity(severity)
+                            .code("")
+                            .message(message)
+                            .fileName(dataSource.isBlank() ? xtfFile.toString() : dataSource)
+                            .line(csvLineNo)
+                            .xtfTid(tid.isBlank() ? null : tid)
+                            .model(model)
+                            .topic(topic)
+                            .className(className)
+                            .attributeName(attrName)
+                            .raw(line)
+                            .build());
+                }
             }
         } catch (IOException e) {
             throw ValidationOutputException.forReadError(csvLog, e);
         }
 
-        return new ValidationResult(messages);
+        return new ValidationResult(messages, totalErrors, totalWarnings, totalInfos);
     }
 
     static List<String> parseCsvLine(String line) {

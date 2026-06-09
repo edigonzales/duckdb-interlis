@@ -67,6 +67,7 @@ set(EXTENSION_SOURCES
     src/sha256.c
     src/ili_duckdb_utils.c
     src/ili_tsv.c
+    src/ili_duckdb_tsv.c
 )
 
 # ---------------------------------------------------------------------------
@@ -172,6 +173,13 @@ set(VISIBILITY_INLINES_HIDDEN ON)
 option(BUILD_SANITIZER_TESTS "Build sanitizer test executables" OFF)
 
 if(BUILD_SANITIZER_TESTS)
+    # TSV unit test (no DuckDB dependency, standalone)
+    add_executable(ili_tsv_test
+        test/ili_tsv_test.c
+        src/ili_tsv.c
+    )
+    target_include_directories(ili_tsv_test PRIVATE ${DUCKDB_CAPI_DIR})
+
     # Smoke test (requires DuckDB C API header only)
     add_executable(duckdb_extension_smoke_test
         test/duckdb_extension_smoke_test.c

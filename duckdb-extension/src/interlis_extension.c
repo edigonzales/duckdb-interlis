@@ -4,6 +4,7 @@
 #include "ili_sync.h"
 #include "ili_duckdb_utils.h"
 #include "ili_tsv.h"
+#include "ili_duckdb_tsv.h"
 #include "sha256.h"
 #include <string.h>
 #include <errno.h>
@@ -1159,8 +1160,10 @@ typedef struct {
     char *code;
     char *message;
     char *filename;
-    int line;
-    int column;
+    int32_t line;
+    bool line_valid;
+    int32_t column;
+    bool column_valid;
     char *xtf_tid;
     char *xtf_bid;
     char *model;
@@ -1224,8 +1227,29 @@ static int parse_tsv_int(const char **p) {
     ili_tsv_field field;
     if (!ili_tsv_next_field(p, end, &field)) return 0;
     int32_t val = 0;
-    ili_tsv_parse_nullable_int32(&field, &val);
-    return (int)val;
+    ili_tsv_int_status s = ili_tsv_parse_nullable_int32(&field, &val);
+    if (s == ILI_TSV_INT_OK) return (int)val;
+    return 0;
+}
+
+static ili_tsv_int_status parse_tsv_int32_status(const char **p, int32_t *out_value) {
+    if (!p || !*p || !out_value) return ILI_TSV_INT_INVALID;
+    const char *end = *p + strlen(*p);
+    ili_tsv_field field;
+    if (!ili_tsv_next_field(p, end, &field)) return ILI_TSV_INT_INVALID;
+    return ili_tsv_parse_nullable_int32(&field, out_value);
+}
+
+static void assign_nullable_string(duckdb_vector vector, idx_t row, const char *value) {
+    if (!value) {
+        duckdb_vector_ensure_validity_writable(vector);
+        duckdb_validity_set_row_invalid(
+            duckdb_vector_get_validity(vector),
+            row
+        );
+        return;
+    }
+    duckdb_vector_assign_string_element(vector, row, value);
 }
 
 static void ili_validate_bind(duckdb_bind_info info) {
@@ -1329,8 +1353,25 @@ static void ili_validate_init(duckdb_init_info info) {
         row->code = parse_tsv_field(&p);             // 1
         row->message = parse_tsv_field(&p);          // 2
         row->filename = parse_tsv_field(&p);         // 3
-        row->line = parse_tsv_int(&p);              // 4
-        row->column = parse_tsv_int(&p);            // 5
+        row->line = 0;
+        ili_tsv_int_status line_s = parse_tsv_int32_status(&p, &row->line);
+        if (line_s == ILI_TSV_INT_INVALID) {
+            duckdb_init_set_error(info, "Invalid integer in validator TSV column 'line'");
+            free(result);
+            init_data_destroy(id);
+            return;
+        }
+        row->line_valid = (line_s == ILI_TSV_INT_OK);
+
+        row->column = 0;
+        ili_tsv_int_status col_s = parse_tsv_int32_status(&p, &row->column);
+        if (col_s == ILI_TSV_INT_INVALID) {
+            duckdb_init_set_error(info, "Invalid integer in validator TSV column 'column'");
+            free(result);
+            init_data_destroy(id);
+            return;
+        }
+        row->column_valid = (col_s == ILI_TSV_INT_OK);
         row->xtf_tid = parse_tsv_field(&p);          // 6
         row->xtf_bid = parse_tsv_field(&p);          // 7
         row->model = parse_tsv_field(&p);            // 8
@@ -1383,19 +1424,36 @@ static void ili_validate_function(duckdb_function_info tfinfo, duckdb_data_chunk
     for (idx_t i = 0; i < count; i++) {
         ili_validate_row *row = &id->rows[id->current_row + i];
 
-        duckdb_vector_assign_string_element(severity_vec, i, row->severity ? row->severity : "");
-        duckdb_vector_assign_string_element(code_vec, i, row->code ? row->code : "");
-        duckdb_vector_assign_string_element(message_vec, i, row->message ? row->message : "");
-        duckdb_vector_assign_string_element(filename_vec, i, row->filename ? row->filename : "");
-        ((int32_t *)duckdb_vector_get_data(line_vec))[i] = row->line;
-        ((int32_t *)duckdb_vector_get_data(column_vec))[i] = row->column;
-        duckdb_vector_assign_string_element(xtf_tid_vec, i, row->xtf_tid ? row->xtf_tid : "");
-        duckdb_vector_assign_string_element(xtf_bid_vec, i, row->xtf_bid ? row->xtf_bid : "");
-        duckdb_vector_assign_string_element(model_vec, i, row->model ? row->model : "");
-        duckdb_vector_assign_string_element(topic_vec, i, row->topic ? row->topic : "");
-        duckdb_vector_assign_string_element(class_name_vec, i, row->class_name ? row->class_name : "");
-        duckdb_vector_assign_string_element(attribute_name_vec, i, row->attribute_name ? row->attribute_name : "");
-        duckdb_vector_assign_string_element(raw_vec, i, row->raw ? row->raw : "");
+        assign_nullable_string(severity_vec, i, row->severity);
+        assign_nullable_string(code_vec, i, row->code);
+        assign_nullable_string(message_vec, i, row->message);
+        assign_nullable_string(filename_vec, i, row->filename);
+
+        int32_t *line_data = (int32_t *)duckdb_vector_get_data(line_vec);
+        if (row->line_valid) {
+            line_data[i] = row->line;
+        } else {
+            duckdb_vector_ensure_validity_writable(line_vec);
+            uint64_t *lv = duckdb_vector_get_validity(line_vec);
+            duckdb_validity_set_row_invalid(lv, i);
+        }
+
+        int32_t *col_data = (int32_t *)duckdb_vector_get_data(column_vec);
+        if (row->column_valid) {
+            col_data[i] = row->column;
+        } else {
+            duckdb_vector_ensure_validity_writable(column_vec);
+            uint64_t *cv = duckdb_vector_get_validity(column_vec);
+            duckdb_validity_set_row_invalid(cv, i);
+        }
+
+        assign_nullable_string(xtf_tid_vec, i, row->xtf_tid);
+        assign_nullable_string(xtf_bid_vec, i, row->xtf_bid);
+        assign_nullable_string(model_vec, i, row->model);
+        assign_nullable_string(topic_vec, i, row->topic);
+        assign_nullable_string(class_name_vec, i, row->class_name);
+        assign_nullable_string(attribute_name_vec, i, row->attribute_name);
+        assign_nullable_string(raw_vec, i, row->raw);
     }
 
     duckdb_data_chunk_set_size(output, count);
@@ -1543,12 +1601,10 @@ static void mi_function(duckdb_function_info tfinfo, duckdb_data_chunk output) {
         ili_tsv_field field;
         for (idx_t c = 0; c < col_count && ili_tsv_next_field(&cursor, end, &field); c++) {
             duckdb_vector vec = duckdb_data_chunk_get_vector(output, c);
-            if (field.is_null) {
-                duckdb_vector_ensure_validity_writable(vec);
-                uint64_t *validity = duckdb_vector_get_validity(vec);
-                duckdb_validity_set_row_invalid(validity, i);
-            } else {
-                duckdb_vector_assign_string_element_len(vec, i, field.data, field.length);
+            if (!ili_tsv_assign_varchar(vec, i, &field)) {
+                duckdb_function_set_error(tfinfo, "Failed to decode TSV field");
+                duckdb_data_chunk_set_size(output, 0);
+                return;
             }
         }
     }
