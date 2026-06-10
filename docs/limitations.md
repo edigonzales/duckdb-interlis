@@ -123,7 +123,14 @@ For `read_xtf_objects(...)` the `geom_json` column now contains a JSON object pe
 
 ## Native `GEOMETRY` Column Type
 
-DuckDB v1.5+ supports `GEOMETRY` as a built-in type, but the **DuckDB C API (v1.5.3) does not expose a function to populate `GEOMETRY` vectors from an extension**. Our PoC experiment confirmed that `duckdb_vector_assign_string_element()` on a `DUCKDB_TYPE_GEOMETRY` vector fails with `Unsupported byte order 80 in WKB` because GEOMETRY internally stores little-endian WKB, not WKT strings. There is no `duckdb_vector_assign_geometry`, `duckdb_vector_assign_blob`, or documented way to write binary WKB into a GEOMETRY vector.
+DuckDB v1.5+ supports `GEOMETRY` as a built-in type, but the **DuckDB C API (v1.5.3) does not expose a function to populate `GEOMETRY` vectors from an extension**. Two PoC experiments were conducted:
+
+| Attempt | Method | Result |
+|---|---|---|
+| **PoC v1:** WKT via `duckdb_vector_assign_string_element` | Wrote `"POINT (30 10)"` to a `DUCKDB_TYPE_GEOMETRY` vector | `Invalid Input Error: Unsupported byte order 80 in WKB` — GEOMETRY expects binary WKB, not WKT |
+| **PoC v2:** Binary WKB via `duckdb_vector_assign_string_element_len` | Wrote 21-byte little-endian WKB to a `DUCKDB_TYPE_GEOMETRY` vector | **DuckDB hangs** — the internal GEOMETRY storage format (confirmed by DuckDB's C++ `geometry.hpp`) uses a `string_t` blob but with a header/layer beyond raw WKB (see `GeometryStorageType`, `Geometry::FromBinary`/`ToBinary`). Raw WKB bytes cannot be written directly. |
+
+There is no `duckdb_vector_assign_geometry`, `duckdb_vector_assign_blob`, or any C API function to create GEOMETRY values for table function vectors.
 
 Consequence: `read_xtf_class(...)` returns geometry attributes as `VARCHAR` (WKT) with the `_geom` suffix. Users must cast to `GEOMETRY` explicitly:
 
@@ -131,4 +138,4 @@ Consequence: `read_xtf_class(...)` returns geometry attributes as `VARCHAR` (WKT
 SELECT Lage_geom::GEOMETRY FROM read_xtf_class(...);
 ```
 
-Future DuckDB C API versions may add GEOMETRY vector assignment, at which point the extension can register geometry columns as native `GEOMETRY` without requiring an explicit cast.
+Future DuckDB C API versions may add `duckdb_create_geometry_value` or GEOMETRY vector assignment, at which point the extension can register geometry columns as native `GEOMETRY` without requiring an explicit cast.
