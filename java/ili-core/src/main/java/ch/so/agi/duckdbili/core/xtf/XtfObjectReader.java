@@ -433,13 +433,29 @@ public class XtfObjectReader {
     }
 
     private String buildGeom(IomObject obj) {
-        int n = obj.getxmlelecount();
+        StringBuilder sb = new StringBuilder("{");
+        boolean first = true;
+        int n = obj.getattrcount();
         for (int i = 0; i < n; i++) {
-            String tag = obj.getxmleleattrname(i);
-            if (tag != null && (tag.contains("COORD") || tag.contains("Surface") || tag.contains("Polyline")))
-                return "{\"_has_geometry\":true}";
+            String an = obj.getattrname(i);
+            int cnt = obj.getattrvaluecount(an);
+            if (cnt == 0) continue;
+            IomObject geom = obj.getattrobj(an, 0);
+            if (geom == null) continue;
+            String tag = geom.getobjecttag();
+            if (tag == null) continue;
+            // Detect geometry tags by INTERLIS geometry namespace or known tags
+            boolean isGeom = tag.contains("coord") || tag.contains("polyline")
+                          || tag.contains("surface") || tag.contains("multi")
+                          || tag.contains("geom:");
+            if (!isGeom) continue;
+
+            if (!first) sb.append(",");
+            first = false;
+            sb.append("\"").append(escJson(an)).append("\":{\"tag\":\"").append(escJson(tag)).append("\"}");
         }
-        return "{}";
+        sb.append("}");
+        return first ? "{}" : sb.toString();
     }
 
     private String buildRaw(IomObject obj) {

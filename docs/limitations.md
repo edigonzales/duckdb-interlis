@@ -65,10 +65,52 @@ SELECT ST_GeomFromHEXWKB(Lage_wkb) AS geom FROM read_xtf_class(...);
 
 Using `ST_GeomFromWKB(...)` on a `_wkb` column will fail because `ST_GeomFromWKB` expects binary data, not a hex string.
 
-## Coordinate Reference System (CRS)
+## Supported Geometry Types
 
-There is **no automatic CRS detection or inference** from coordinate values. The extension does not embed an SRID into the WKB output, nor does it guess the coordinate system (e.g. EPSG:2056). CRS metadata can be provided explicitly via the `ILI_GEOMETRY_CRS_MAP` environment variable or properties file; otherwise CRS columns remain `NULL`.
+The following OGC geometry types are supported via INTERLIS mapping:
+
+| INTERLIS Type | OGC Equivalent | Status |
+|---|---|---|
+| COORD | POINT | ✅ Supported |
+| MULTICOORD | MULTIPOINT | ✅ Supported |
+| POLYLINE | LINESTRING | ✅ Supported |
+| MULTIPOLYLINE | MULTILINESTRING | ✅ Supported |
+| SURFACE | POLYGON | ✅ Supported (exterior + interior rings) |
+| MULTISURFACE | MULTIPOLYGON | ✅ Supported |
+| AREA | POLYGON | ✅ Converted via `surface2hexwkb` |
+| MULTIAREA | MULTIPOLYGON | ✅ Converted via `multisurface2hexwkb` |
 
 ## 3D / Z Coordinate Handling
 
-The 3D preservation of Z coordinates is not explicitly guaranteed in the current release. Whether Z values survive the `INTERLIS → WKB` conversion depends on the underlying `iox-ili` library behaviour. If your model declares 3D coordinates, verify the result with `ST_HasZ(ST_GeomFromHEXWKB(...))` until this is explicitly tested and documented.
+**Verified behaviour:** The underlying `iox-ili` library (JTS 1.14.0 `Iox2jtsext.coord2hexwkb`) produces **2D WKB** even when the INTERLIS model declares 3D coordinates (`C3`/`Z`). By default (`preserveZ=true`), the encoder throws `UnsupportedGeometryException` when a 3D attribute results in 2D WKB output, so the error is never silent. Set `preserveZ=false` to allow 2D output for 3D-declared attributes.
+
+```sql
+-- Will return a JSON error marker in the _wkb cell for 3D geometry:
+-- {"_geometry_error":"Geometry conversion failed: ... 3D coordinate declared but WKB output is 2D ..."}
+```
+
+Future work may use JTS `WKBWriter(3)` for true 3D support.
+
+## ARC (Circular Arc) Handling
+
+INTERLIS `POLYLINE` with circular arcs (`ARC` segments) is dispatched to `Iox2jtsext.polyline2hexwkb` with `strokeTolerance=0`. The exact XTF XML structure required by `iox-ili` for ARC linearization is non-trivial to produce manually; automatic tests for ARC are therefore disabled. The encoder accepts both:
+- **Successful linearization** by `iox-ili` (produces multiple vertices), or
+- **Failure** with an explicit exception (not silent ignoring).
+
+## MANDATORY / NOT NULL Constraints
+
+The DuckDB 1.5.3 C API does not provide `duckdb_bind_set_column_not_null` or equivalent for table function result columns. Therefore, `MANDATORY` INTERLIS attributes produce `VARCHAR` columns that are **nullable** in DuckDB, even though the model declares them mandatory. Applications should enforce constraints downstream if needed.
+
+Future DuckDB versions may add this capability.
+
+## Coordinate Reference System (CRS)
+
+There is **no automatic CRS detection or inference** from coordinate values. The extension does not embed an SRID into the WKB output, nor does it guess the coordinate system (e.g. EPSG:2056). CRS metadata can be provided explicitly via:
+- Environment variable `ILI_GEOMETRY_CRS_MAP='DomainFqn=AUTH:CODE'`
+- Or file via `ILI_GEOMETRY_CRS_FILE=/path/to/crs.properties`
+
+Otherwise CRS columns in `ili_geometry_attributes(...)` remain `NULL`.
+
+## Generic Reader `geom_json`
+
+For `read_xtf_objects(...)` the `geom_json` column now contains a JSON object per row mapping geometry attribute names to their tag types (e.g. `{"Lage":{"tag":"geom:coord"}}`). This is richer than the previous `{"_has_geometry":true}` flag but does not contain the full WKB (which is only available in `read_xtf_class(...)` mode due to schema knowledge requirements).
