@@ -5,6 +5,7 @@ AT "https://models.interlis.ch"
 VERSION "2026-06-05" =
   DOMAIN
     Koord = COORD 2460000.000 .. 2870000.000, 1045000.000 .. 1310000.000;
+    Koord3d = COORD 2460000.000 .. 2870000.000, 1045000.000 .. 1310000.000, 0.000 .. 5000.000;
   TOPIC Topic =
 
     CLASS PunktObjekt =
@@ -22,6 +23,11 @@ VERSION "2026-06-05" =
       Verlauf : POLYLINE WITH (STRAIGHTS) VERTEX Koord WITHOUT OVERLAPS > 0.001;
     END LinienObjekt;
 
+    CLASS LinienObjektArc =
+      Name : MANDATORY TEXT*60;
+      Verlauf : POLYLINE WITH (STRAIGHTS, ARCS) VERTEX Koord WITHOUT OVERLAPS > 0.001;
+    END LinienObjektArc;
+
     CLASS MultiLinienObjekt =
       Name : MANDATORY TEXT*60;
       Verlaeufe : MULTIPOLYLINE WITH (STRAIGHTS) VERTEX Koord WITHOUT OVERLAPS > 0.001;
@@ -32,10 +38,46 @@ VERSION "2026-06-05" =
       Flaeche : SURFACE WITH (STRAIGHTS) VERTEX Koord WITHOUT OVERLAPS > 0.001;
     END FlaechenObjekt;
 
+    CLASS FlaechenObjektLoch =
+      Name : MANDATORY TEXT*60;
+      Flaeche : SURFACE WITH (STRAIGHTS) VERTEX Koord WITHOUT OVERLAPS > 0.001;
+    END FlaechenObjektLoch;
+
+    CLASS AreaObjekt =
+      Name : MANDATORY TEXT*60;
+      Flaeche : AREA WITH (STRAIGHTS) VERTEX Koord WITHOUT OVERLAPS > 0.001;
+    END AreaObjekt;
+
     CLASS MultiFlaechenObjekt =
       Name : MANDATORY TEXT*60;
       Flaechen : MULTISURFACE WITH (STRAIGHTS) VERTEX Koord WITHOUT OVERLAPS > 0.001;
     END MultiFlaechenObjekt;
+
+    CLASS MultiAreaObjekt =
+      Name : MANDATORY TEXT*60;
+      Flaechen : MULTIAREA WITH (STRAIGHTS) VERTEX Koord WITHOUT OVERLAPS > 0.001;
+    END MultiAreaObjekt;
+
+    CLASS Punkt3dObjekt =
+      Name : MANDATORY TEXT*60;
+      Lage3d : Koord3d;
+    END Punkt3dObjekt;
+
+    CLASS MehrfachGeomObjekt =
+      Name : MANDATORY TEXT*60;
+      Lage : Koord;
+      Flaeche : SURFACE WITH (STRAIGHTS) VERTEX Koord WITHOUT OVERLAPS > 0.001;
+    END MehrfachGeomObjekt;
+
+    STRUCTURE Adresse =
+      Strasse : TEXT*60;
+      Lage : Koord;
+    END Adresse;
+
+    CLASS StrukturPunktObjekt =
+      Name : MANDATORY TEXT*60;
+      Adresse : Adresse;
+    END StrukturPunktObjekt;
 
   END Topic;
 END SO_AGI_Geometries_20260605.
