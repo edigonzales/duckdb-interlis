@@ -44,32 +44,32 @@ INTERLIS IomObject
 → Iox2jts / Iox2jtsext
 → JTS Geometry
 → OGC WKB
-→ HEX-String
+→ WKT-String
 → TSV
 → DuckDB VARCHAR
-→ optional ST_GeomFromHEXWKB()
+→ ::GEOMETRY
 ```
 
-Aktuell werden in `XtfObjectReader` Geometrieattribute erkannt und als Spalten mit Suffix `_wkb` ausgegeben.
+Aktuell werden in `XtfObjectReader` Geometrieattribute erkannt und als Spalten mit Suffix `_geom` ausgegeben.
 
-Diese Spalten enthalten jedoch kein binäres WKB, sondern einen hexadezimalen WKB-String.
+Diese Spalten enthalten WKT als `VARCHAR`.
 
 Beispiel:
 
 ```text
-Lage_wkb VARCHAR
+Lage_geom VARCHAR
 ```
 
-In DuckDB Spatial muss derzeit verwendet werden:
+In DuckDB Spatial kann verwendet werden:
 
 ```sql
-ST_GeomFromHEXWKB(Lage_wkb)
+Lage_geom::GEOMETRY
 ```
 
 Nicht korrekt ist:
 
 ```sql
-ST_GeomFromWKB(Lage_wkb)
+ST_GeomFromWKB(Lage_geom)
 ```
 
 weil `ST_GeomFromWKB()` einen binären BLOB beziehungsweise WKB-BLOB erwartet.
@@ -80,7 +80,7 @@ weil `ST_GeomFromWKB()` einen binären BLOB beziehungsweise WKB-BLOB erwartet.
 
 ## 3.1 Missverständliche Datentypen
 
-Die Spalten heissen `_wkb`, enthalten aber HEX-WKB als `VARCHAR`.
+Die Spalten heissen `_geom`, enthalten WKT als `VARCHAR`.
 
 Das ist technisch nutzbar, aber semantisch unklar.
 
@@ -91,7 +91,7 @@ Die vorhandenen Geometrie-Testdaten decken mehrere Grundtypen ab, aber es fehlt 
 ```sql
 INSTALL spatial;
 LOAD spatial;
-ST_GeomFromHEXWKB(...)
+ST_GeomFromText(...)
 ST_GeometryType(...)
 ST_AsText(...)
 ST_IsValid(...)
@@ -169,20 +169,20 @@ Die Extension darf nicht verlangen, dass beim Laden von `duckdb-interlis` auch `
 Die bestehenden dynamischen Geometriespalten bleiben zunächst erhalten:
 
 ```text
-<Attributname>_wkb VARCHAR
+<Attributname>_geom VARCHAR
 ```
 
 Inhalt:
 
 ```text
-uppercase hexadecimal OGC WKB
+WKT
 ```
 
 Diese Entscheidung verhindert einen sofortigen Breaking Change.
 
 Die Dokumentation muss klar sagen:
 
-> `_wkb` enthält vorerst HEX-WKB als VARCHAR.
+> `_geom` enthält WKT als VARCHAR.
 
 ## 4.3 Neue explizite Geometrie-Metadaten
 
@@ -231,10 +231,10 @@ INTERLIS Geometry Attribute
 → GeometryMetadata
 → InterlisGeometryEncoder
 → GeometryValue(byte[] WKB)
-→ HexWkbCodec
+→ WktCodec
 → TSV / Native ABI
 → DuckDB VARCHAR
-→ ST_GeomFromHEXWKB()
+→ ::GEOMETRY
 ```
 
 Später optional:
@@ -983,7 +983,7 @@ public String buildGeometryWkb(...)
 
 Die fachliche Konvertierung muss `byte[]` liefern.
 
-HEX-String erst an Transportgrenze:
+WKT-String erst an Transportgrenze:
 
 ```java
 geometryValue.hexWkb()
@@ -1389,7 +1389,7 @@ Die Funktionalität wandert in neue Geometrieklassen.
 Die bestehende Spalte bleibt:
 
 ```text
-<attribute>_wkb
+<attribute>_geom
 ```
 
 Die Metadaten dafür kommen aus `GeometryMetadata`.
@@ -1439,8 +1439,8 @@ Beispiel:
 {
   "Lage": {
     "geometry_kind": "POINT",
-    "encoding": "HEX_WKB",
-    "hex_wkb": "0101000000...",
+    "encoding": "WKT",
+    "wkt": "POINT (2605000.0 1203000.0)",
     "dimension": 2,
     "coordinate_domain": "Koord",
     "coordinate_domain_fqn": "SO_AGI_Geometries_20260605.Koord",
@@ -1507,7 +1507,7 @@ INSTALL spatial;
 LOAD spatial;
 
 SELECT
-    ST_GeomFromHEXWKB(Lage_wkb) AS geom
+    Lage_geom::GEOMETRY AS geom
 FROM read_xtf_class(...);
 ```
 
@@ -1516,8 +1516,8 @@ FROM read_xtf_class(...);
 ```sql
 CREATE VIEW punktobjekt_spatial AS
 SELECT
-    * EXCLUDE (Lage_wkb),
-    ST_GeomFromHEXWKB(Lage_wkb) AS Lage
+    * EXCLUDE (Lage_geom),
+    Lage_geom::GEOMETRY AS Lage
 FROM read_xtf_class(
     '...',
     class := 'Model.Topic.PunktObjekt',
@@ -1532,7 +1532,7 @@ Nur mit explizitem CRS:
 ```sql
 SELECT
     ST_Transform(
-        ST_GeomFromHEXWKB(Lage_wkb),
+        Lage_geom::GEOMETRY,
         'EPSG:2056',
         'EPSG:4326',
         always_xy := true
@@ -1610,26 +1610,26 @@ Der Agent soll diesen Parameter nur einführen, wenn keine unnötige Komplexitä
 Neue optionale Tabellenfunktion oder Modus:
 
 ```text
-<attribute>_wkb BLOB
+<attribute>_geom BLOB
 ```
 
 ## 22.2 Transport
 
 Da der aktuelle Native-Transport TSV ist, gibt es zwei Möglichkeiten:
 
-### Variante A – HEX im Native-Transport, Decode in C
+### Variante A – WKT im Native-Transport, Parse in C
 
 Java:
 
 ```text
-HEX-WKB in TSV
+WKT in TSV
 ```
 
 C:
 
 ```text
-Hex decode
-→ duckdb_vector BLOB
+WKT parse
+→ duckdb_vector GEOMETRY (or VARCHAR)
 ```
 
 Dies ist für eine erste BLOB-Ausgabe akzeptabel.
@@ -1815,7 +1815,7 @@ CI muss sicherstellen, dass `spatial` installierbar ist oder ein vorinstallierte
 ```sql
 SELECT
     ST_GeometryType(
-        ST_GeomFromHEXWKB(Lage_wkb)
+        Lage_geom::GEOMETRY
     ) = 'POINT'
 FROM read_xtf_class(...);
 ```
@@ -1858,7 +1858,7 @@ Die exakten Rückgabestrings von `ST_GeometryType()` sind anhand der verwendeten
 SELECT
     bool_and(
         ST_IsValid(
-            ST_GeomFromHEXWKB(geom_wkb)
+            geom_geom::GEOMETRY
         )
     )
 FROM ...;
@@ -1869,7 +1869,7 @@ FROM ...;
 ```sql
 SELECT
     ST_NumInteriorRings(
-        ST_GeomFromHEXWKB(Flaeche_wkb)
+        Flaeche_geom::GEOMETRY
     )
 FROM ...;
 ```
@@ -1885,7 +1885,7 @@ Erwartet:
 ```sql
 SELECT
     ST_HasZ(
-        ST_GeomFromHEXWKB(Lage3d_wkb)
+        Lage3d_geom::GEOMETRY
     )
 FROM ...;
 ```
@@ -1898,7 +1898,7 @@ Nur wenn CRS-Mapping konfiguriert:
 SELECT
     ST_AsText(
         ST_Transform(
-            ST_GeomFromHEXWKB(Lage_wkb),
+            Lage_geom::GEOMETRY,
             'EPSG:2056',
             'EPSG:4326',
             always_xy := true
@@ -1918,7 +1918,7 @@ Nicht auf exakten langen WKT-Text prüfen, sondern auf plausiblen Koordinatenber
 Prüfen:
 
 ```text
-Lage_wkb ist VARCHAR
+Lage_geom ist VARCHAR
 ```
 
 und nicht fälschlich BLOB.
@@ -1928,7 +1928,7 @@ und nicht fälschlich BLOB.
 Fehlende Geometrie:
 
 ```sql
-Lage_wkb IS NULL
+Lage_geom IS NULL
 ```
 
 muss `true` sein.
@@ -1960,14 +1960,14 @@ Dynamisches Schema muss jede Geometriespalte genau einmal enthalten.
 Die generierte Tabelle enthält weiterhin:
 
 ```text
-<attribute>_wkb VARCHAR
+<attribute>_geom VARCHAR
 ```
 
 ## 27.2 Dokumentation
 
 `ili_generate_import_sql()` muss klar dokumentieren:
 
-> Geometriespalten enthalten HEX-WKB als VARCHAR. Zur Nutzung mit DuckDB Spatial ist `ST_GeomFromHEXWKB()` erforderlich.
+> Geometriespalten enthalten WKT als VARCHAR. Zur Nutzung mit DuckDB Spatial ist `::GEOMETRY` erforderlich.
 
 ## 27.3 Optionaler Importmodus
 
@@ -1984,8 +1984,8 @@ Für diese Spezifikation nicht erforderlich.
 ```sql
 CREATE TABLE spatial_copy AS
 SELECT
-    * EXCLUDE (Flaeche_wkb),
-    ST_GeomFromHEXWKB(Flaeche_wkb) AS Flaeche
+    * EXCLUDE (Flaeche_geom),
+    Flaeche_geom::GEOMETRY AS Flaeche
 FROM imported.topic__flaechenobjekt;
 ```
 
@@ -1998,10 +1998,10 @@ FROM imported.topic__flaechenobjekt;
 Pflichtinhalte:
 
 1. unterstützte INTERLIS-Geometrietypen,
-2. aktuelle Ausgabe als HEX-WKB,
+2. aktuelle Ausgabe als WKT,
 3. SQL-Datentyp `VARCHAR`,
 4. Laden der Spatial-Extension,
-5. `ST_GeomFromHEXWKB`,
+5. `::GEOMETRY`,
 6. CRS-Verhalten,
 7. 3D-Verhalten,
 8. ARC-Verhalten,
@@ -2014,9 +2014,9 @@ Pflichtinhalte:
 
 Korrigieren:
 
-- `ST_GeomFromWKB` → `ST_GeomFromHEXWKB`,
+- `ST_GeomFromWKB()` und `ST_GeomFromHEXWKB()` → `::GEOMETRY`,
 - `INSTALL spatial; LOAD spatial;`,
-- `_wkb` exakt erklären,
+- `_geom` exakt erklären,
 - CRS-Beispiel,
 - Geometrietyp-Beispiele,
 - `geom_json`-Vertrag,
@@ -2028,7 +2028,7 @@ Ergänzen:
 
 - kein eingebettetes SRID,
 - keine automatische CRS-Erkennung,
-- aktueller HEX-WKB-Transport,
+- aktueller WKT-Transport,
 - ARC-Linearisierung,
 - custom line forms,
 - clipped polylines,
@@ -2086,7 +2086,7 @@ Explizit dokumentieren:
 Klassen-Javadoc aktualisieren:
 
 - Geometriepfad,
-- HEX-WKB,
+- WKT,
 - NULL,
 - keine automatische Spatial-Konvertierung.
 
@@ -2298,7 +2298,7 @@ Jeder Commit muss bauen und die betroffenen Tests bestehen.
 ## Format
 
 - [ ] intern `byte[] WKB`
-- [ ] öffentliche bestehende Ausgabe HEX-WKB
+- [ ] öffentliche bestehende Ausgabe WKT
 - [ ] Suffix und Format dokumentiert
 - [ ] NULL korrekt
 - [ ] kein stilles leeres Stringresultat
@@ -2306,7 +2306,7 @@ Jeder Commit muss bauen und die betroffenen Tests bestehen.
 ## Spatial
 
 - [ ] `LOAD spatial`
-- [ ] `ST_GeomFromHEXWKB`
+- [ ] `::GEOMETRY`
 - [ ] Geometrietyp geprüft
 - [ ] Validität geprüft
 - [ ] WKT geprüft
@@ -2356,7 +2356,7 @@ Der Agent muss am Ende liefern:
 2. Liste aller neuen Klassen.
 3. Liste unterstützter Geometrietypen.
 4. Liste explizit nicht unterstützter Geometriekonstrukte.
-5. Beschreibung des WKB-/HEX-WKB-Vertrags.
+5. Beschreibung des WKB-/WKT-Vertrags.
 6. Beschreibung des CRS-Vertrags.
 7. Beschreibung des 3D-Verhaltens.
 8. Beschreibung des ARC-Verhaltens.
