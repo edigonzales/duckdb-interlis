@@ -8,6 +8,8 @@ import ch.interlis.ilirepository.IliManager;
 import ch.so.agi.duckdbili.core.logging.IliLogger;
 import ch.so.agi.duckdbili.core.transport.TsvCodec;
 
+import ch.so.agi.duckdbili.core.geometry.*;
+
 import java.io.IOException;
 import java.nio.file.*;
 import java.util.*;
@@ -263,6 +265,43 @@ public class IliModelService {
             sb.append(TsvCodec.encodeNullable(ename)).append('\t').append(TsvCodec.encodeNullable(ee.getName())).append('\t');
             sb.append(ee.getSourceLine()).append('\n');
         }
+    }
+
+    public String getGeometryAttributes(String modelDir, String modelFilter, String classFilter) {
+        TransferDescription td = compileIli(modelDir);
+        InterlisGeometryTypeResolver typeResolver = new InterlisGeometryTypeResolver();
+        GeometryCrsResolver crsResolver = new NoopGeometryCrsResolver();
+        GeometryAttributeMetadataService service = new GeometryAttributeMetadataService(typeResolver, crsResolver);
+
+        List<GeometryMetadata> attrs = service.listGeometryAttributes(td, modelFilter, classFilter);
+
+        StringBuilder sb = new StringBuilder();
+        // No header line – columns are defined by the C extension bind callback
+
+        for (GeometryMetadata m : attrs) {
+            sb.append(TsvCodec.encodeNullable(m.modelName())).append('\t');
+            sb.append(TsvCodec.encodeNullable(m.topicName())).append('\t');
+            sb.append(TsvCodec.encodeNullable(m.className())).append('\t');
+            sb.append(TsvCodec.encodeNullable(m.modelName() + "." + m.topicName() + "." + m.className())).append('\t');
+            sb.append(TsvCodec.encodeNullable(m.attributeName())).append('\t');
+            sb.append(TsvCodec.encodeNullable(m.attributeFqn())).append('\t');
+            sb.append(TsvCodec.encodeNullable(m.geometryKind().name())).append('\t');
+            sb.append(m.dimension().coordinateDimension()).append('\t');
+            sb.append(TsvCodec.encodeNullable(m.coordinateDomainName())).append('\t');
+            sb.append(TsvCodec.encodeNullable(m.coordinateDomainFqn())).append('\t');
+            sb.append(TsvCodec.encodeNullable(m.crsAuthName())).append('\t');
+            sb.append(TsvCodec.encodeNullable(m.crsCode())).append('\t');
+            sb.append(m.srid() != null ? m.srid().toString() : "\\N").append('\t');
+            sb.append(m.mandatory() ? "true" : "false").append('\t');
+            sb.append(m.cardinalityMin()).append('\t');
+            sb.append(m.cardinalityMax()).append('\t');
+            sb.append(m.supportsArcs() ? "true" : "false").append('\t');
+            sb.append(m.isAreaType() ? "true" : "false").append('\t');
+            sb.append(m.isMultiType() ? "true" : "false").append('\t');
+            sb.append("WKT").append('\t');
+            sb.append(TsvCodec.encodeNullable("ST_GeomFromText")).append('\n');
+        }
+        return sb.toString();
     }
 
     private static String formatEnumType(EnumerationType et) {

@@ -1717,6 +1717,17 @@ static void attrs_bind(duckdb_bind_info info) {
     static const char *cols[] = {"model_name","topic_name","class_name","attr_name","type_name","kind","is_mandatory","card_min","card_max"};
     mi_bind(info, "attributes", 9, cols);
 }
+static void geometry_attrs_bind(duckdb_bind_info info) {
+    static const char *cols[] = {
+        "model_name","topic_name","class_name","class_fqn","attribute_name",
+        "attribute_fqn","geometry_kind","dimension","coordinate_domain",
+        "coordinate_domain_fqn","crs_auth_name","crs_code","srid",
+        "is_mandatory","card_min","card_max","supports_arcs",
+        "is_area_type","is_multi_type","transport_encoding","duckdb_spatial_function"
+    };
+    mi_bind(info, "geometry_attributes", 21, cols);
+}
+
 static void enums_bind(duckdb_bind_info info) {
     static const char *cols[] = {"model_name","topic_name","enum_name","element","element_line"};
     mi_bind(info, "enumerations", 5, cols);
@@ -1729,9 +1740,10 @@ static void register_model_table_functions(duckdb_connection conn) {
         {"ili_classes", classes_bind},
         {"ili_attributes", attrs_bind},
         {"ili_enumerations", enums_bind},
+        {"ili_geometry_attributes", geometry_attrs_bind},
     };
     duckdb_logical_type vt = duckdb_create_logical_type(DUCKDB_TYPE_VARCHAR);
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 6; i++) {
         duckdb_table_function fn = duckdb_create_table_function();
         duckdb_table_function_set_name(fn, fns[i].name);
         duckdb_table_function_add_parameter(fn, vt);

@@ -119,4 +119,16 @@ Otherwise CRS columns in `ili_geometry_attributes(...)` remain `NULL`.
 
 ## Generic Reader `geom_json`
 
-For `read_xtf_objects(...)` the `geom_json` column now contains a JSON object per row mapping geometry attribute names to their tag types (e.g. `{"Lage":{"tag":"geom:coord"}}`). This is richer than the previous `{"_has_geometry":true}` flag but does not contain the full WKB (which is only available in `read_xtf_class(...)` mode due to schema knowledge requirements).
+For `read_xtf_objects(...)` the `geom_json` column now contains a JSON object per row mapping geometry attribute names to their tag types (e.g. `{"Lage":{"tag":"geom:coord"}}`). This is richer than the previous `{"_has_geometry":true}` flag but does not contain the full geometry (which is only available in `read_xtf_class(...)` mode due to schema knowledge requirements).
+
+## Native `GEOMETRY` Column Type
+
+DuckDB v1.5+ supports `GEOMETRY` as a built-in type, but the **DuckDB C API (v1.5.3) does not expose a function to populate `GEOMETRY` vectors from an extension**. Our PoC experiment confirmed that `duckdb_vector_assign_string_element()` on a `DUCKDB_TYPE_GEOMETRY` vector fails with `Unsupported byte order 80 in WKB` because GEOMETRY internally stores little-endian WKB, not WKT strings. There is no `duckdb_vector_assign_geometry`, `duckdb_vector_assign_blob`, or documented way to write binary WKB into a GEOMETRY vector.
+
+Consequence: `read_xtf_class(...)` returns geometry attributes as `VARCHAR` (WKT) with the `_geom` suffix. Users must cast to `GEOMETRY` explicitly:
+
+```sql
+SELECT Lage_geom::GEOMETRY FROM read_xtf_class(...);
+```
+
+Future DuckDB C API versions may add GEOMETRY vector assignment, at which point the extension can register geometry columns as native `GEOMETRY` without requiring an explicit cast.

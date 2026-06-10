@@ -310,6 +310,7 @@ public class NativeEntryPoints {
                 case "classes" -> getModelService().getClasses(modelDir, modelName);
                 case "attributes" -> getModelService().getAttributes(modelDir, className);
                 case "enumerations" -> getModelService().getEnumerations(modelDir, modelName);
+                case "geometry_attributes" -> getModelService().getGeometryAttributes(modelDir, modelName, className);
                 default -> {
                     NativeError err = NativeError.unsupported("model_info", "Unknown command", cmd);
                     outPayload.write(allocCString(err.toJson()));
