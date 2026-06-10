@@ -115,6 +115,57 @@
         </SO_AGI_Geometries_20260605:Flaechen>
       </SO_AGI_Geometries_20260605:MultiFlaechenObjekt>
 
+      <!-- AREA (same XTF as SURFACE but model-declared AREA) -->
+      <SO_AGI_Geometries_20260605:AreaObjekt ili:tid="a1">
+        <SO_AGI_Geometries_20260605:Name>Wald</SO_AGI_Geometries_20260605:Name>
+        <SO_AGI_Geometries_20260605:Flaeche>
+          <geom:multisurface>
+            <geom:surface>
+              <geom:exterior>
+                <geom:polyline>
+                  <geom:coord><geom:c1>2606000.000</geom:c1><geom:c2>1203000.000</geom:c2></geom:coord>
+                  <geom:coord><geom:c1>2606100.000</geom:c1><geom:c2>1203000.000</geom:c2></geom:coord>
+                  <geom:coord><geom:c1>2606100.000</geom:c1><geom:c2>1203100.000</geom:c2></geom:coord>
+                  <geom:coord><geom:c1>2606000.000</geom:c1><geom:c2>1203100.000</geom:c2></geom:coord>
+                  <geom:coord><geom:c1>2606000.000</geom:c1><geom:c2>1203000.000</geom:c2></geom:coord>
+                </geom:polyline>
+              </geom:exterior>
+            </geom:surface>
+          </geom:multisurface>
+        </SO_AGI_Geometries_20260605:Flaeche>
+      </SO_AGI_Geometries_20260605:AreaObjekt>
+
+      <!-- MULTIAREA: 2 disjoint AREA surfaces -->
+      <SO_AGI_Geometries_20260605:MultiAreaObjekt ili:tid="ma1">
+        <SO_AGI_Geometries_20260605:Name>Waelder</SO_AGI_Geometries_20260605:Name>
+        <SO_AGI_Geometries_20260605:Flaechen>
+          <geom:multisurface>
+            <geom:surface>
+              <geom:exterior>
+                <geom:polyline>
+                  <geom:coord><geom:c1>2606000.000</geom:c1><geom:c2>1202000.000</geom:c2></geom:coord>
+                  <geom:coord><geom:c1>2606100.000</geom:c1><geom:c2>1202000.000</geom:c2></geom:coord>
+                  <geom:coord><geom:c1>2606100.000</geom:c1><geom:c2>1202100.000</geom:c2></geom:coord>
+                  <geom:coord><geom:c1>2606000.000</geom:c1><geom:c2>1202100.000</geom:c2></geom:coord>
+                  <geom:coord><geom:c1>2606000.000</geom:c1><geom:c2>1202000.000</geom:c2></geom:coord>
+                </geom:polyline>
+              </geom:exterior>
+            </geom:surface>
+            <geom:surface>
+              <geom:exterior>
+                <geom:polyline>
+                  <geom:coord><geom:c1>2606200.000</geom:c1><geom:c2>1202000.000</geom:c2></geom:coord>
+                  <geom:coord><geom:c1>2606250.000</geom:c1><geom:c2>1202000.000</geom:c2></geom:coord>
+                  <geom:coord><geom:c1>2606250.000</geom:c1><geom:c2>1202050.000</geom:c2></geom:coord>
+                  <geom:coord><geom:c1>2606200.000</geom:c1><geom:c2>1202050.000</geom:c2></geom:coord>
+                  <geom:coord><geom:c1>2606200.000</geom:c1><geom:c2>1202000.000</geom:c2></geom:coord>
+                </geom:polyline>
+              </geom:exterior>
+            </geom:surface>
+          </geom:multisurface>
+        </SO_AGI_Geometries_20260605:Flaechen>
+      </SO_AGI_Geometries_20260605:MultiAreaObjekt>
+
     </SO_AGI_Geometries_20260605:Topic>
   </ili:datasection>
 </ili:transfer>

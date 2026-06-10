@@ -380,7 +380,7 @@ public class XtfObjectReader {
                         sb.append(TsvCodec.encodeNullable(cn)).append('\t').append(TsvCodec.encodeNullable(tag)).append('\t').append(TsvCodec.encodeNullable(tid)).append('\t');
                         sb.append(TsvCodec.encodeNullable(operation)).append('\t').append(TsvCodec.encodeNullable(modelName)).append('\t');
                         sb.append(TsvCodec.encodeNullable(buildAttrs(obj))).append('\t').append(TsvCodec.encodeNullable(buildRefs(obj))).append('\t');
-                        sb.append(TsvCodec.encodeNullable(buildGeom(obj))).append('\t').append(TsvCodec.encodeNullable(buildRaw(obj))).append('\n');
+                        sb.append(TsvCodec.encodeNullable(buildGeom(obj, td))).append('\t').append(TsvCodec.encodeNullable(buildRaw(obj))).append('\n');
                     }
                 }
             }
@@ -557,7 +557,7 @@ public class XtfObjectReader {
         j.append("}"); return j.toString();
     }
 
-    private String buildGeom(IomObject obj) {
+    private String buildGeom(IomObject obj, TransferDescription td) {
         StringBuilder sb = new StringBuilder("{");
         boolean first = true;
         int n = obj.getattrcount();
@@ -567,20 +567,119 @@ public class XtfObjectReader {
             if (cnt == 0) continue;
             IomObject geom = obj.getattrobj(an, 0);
             if (geom == null) continue;
-            String tag = geom.getobjecttag();
-            if (tag == null) continue;
-            // Detect geometry tags by INTERLIS geometry namespace or known tags
-            boolean isGeom = tag.contains("coord") || tag.contains("polyline")
-                          || tag.contains("surface") || tag.contains("multi")
-                          || tag.contains("geom:");
-            if (!isGeom) continue;
+            String geomTag = geom.getobjecttag();
+            if (geomTag == null) continue;
+
+            // Look up class definition from the object tag
+            String objTag = obj.getobjecttag();
+            if (objTag == null) continue;
+            AbstractClassDef classDef = findClassByTag(td, objTag);
 
             if (!first) sb.append(",");
             first = false;
-            sb.append("\"").append(escJson(an)).append("\":{\"tag\":\"").append(escJson(tag)).append("\"}");
+
+            sb.append("\"").append(escJson(an)).append("\":");
+            if (classDef != null) {
+                sb.append(buildGeomValueJson(obj, an, geom, geomTag, classDef, td));
+            } else {
+                // Fallback: basic tag info
+                sb.append("{\"tag\":\"").append(escJson(geomTag)).append("\"}");
+            }
         }
         sb.append("}");
         return first ? "{}" : sb.toString();
+    }
+
+    /**
+     * Builds a detailed JSON object for a single geometry attribute, using the
+     * model-aware geometry pipeline.
+     */
+    private String buildGeomValueJson(IomObject obj, String attrName, IomObject geom,
+                                       String geomTag, AbstractClassDef classDef,
+                                       TransferDescription td) {
+        // Find the attribute definition to get model metadata
+        AttributeDef ad = null;
+        Iterator<?> ait = classDef.getAttributesAndRoles2();
+        while (ait.hasNext()) {
+            ViewableTransferElement vte = (ViewableTransferElement) ait.next();
+            if (vte.obj instanceof AttributeDef attr && attr.getName().equals(attrName)) {
+                ad = attr;
+                break;
+            }
+        }
+
+        // Fallback if attribute not found in class
+        if (ad == null || !geometryTypeResolver.isGeometryAttribute(ad)) {
+            return "{\"tag\":\"" + escJson(geomTag) + "\",\"note\":\"attribute not found in class schema\"}";
+        }
+
+        // Use the full geometry pipeline
+        String[] parts = classDef.getScopedName(null).split("\\.");
+        String modelName = parts.length > 0 ? parts[0] : "";
+        String topicName = parts.length > 1 ? parts[1] : "";
+        String className = parts.length > 2 ? parts[2] : classDef.getName();
+
+        Model model = findModel(td, modelName);
+        Topic topic = (model != null) ? findTopic(model, topicName) : null;
+        GeometryMetadata meta = geometryTypeResolver.resolveMetadata(
+                model, topic, classDef, ad);
+
+        StringBuilder sb = new StringBuilder("{");
+        sb.append("\"geometry_kind\":\"").append(escJson(meta.geometryKind().name())).append("\"");
+
+        // Encode geometry (WKT for generic reader)
+        String wkt = null;
+        String error = null;
+        try {
+            Optional<GeometryValue> val = geometryEncoder.encodeAttribute(obj, ad, meta);
+            wkt = val.map(GeometryValue::wkt).orElse(null);
+        } catch (GeometryConversionException e) {
+            error = e.getMessage();
+        } catch (Exception e) {
+            error = e.getClass().getSimpleName() + ": " + e.getMessage();
+        }
+
+        if (error != null) {
+            sb.append(",\"_geometry_error\":\"").append(escJson(error)).append("\"");
+        } else if (wkt != null) {
+            sb.append(",\"encoding\":\"WKT\"");
+            sb.append(",\"wkt\":\"").append(escJson(wkt)).append("\"");
+        }
+
+        sb.append(",\"dimension\":").append(meta.dimension() == GeometryDimension.XYZ ? 3 : 2);
+
+        if (meta.coordinateDomainName() != null) {
+            sb.append(",\"coordinate_domain\":\"").append(escJson(meta.coordinateDomainName())).append("\"");
+        }
+        if (meta.coordinateDomainFqn() != null) {
+            sb.append(",\"coordinate_domain_fqn\":\"").append(escJson(meta.coordinateDomainFqn())).append("\"");
+        }
+
+        // CRS info via centralized resolver
+        if (meta.coordinateDomainFqn() != null) {
+            GeometryMetadataContext ctx = new GeometryMetadataContext(
+                    meta.modelName(), meta.topicName(),
+                    meta.className(), meta.attributeName(),
+                    meta.coordinateDomainFqn());
+            var crs = crsResolver.resolve(ctx);
+            if (crs.isPresent()) {
+                sb.append(",\"crs_auth_name\":\"").append(escJson(crs.get().authority())).append("\"");
+                sb.append(",\"crs_code\":\"").append(escJson(crs.get().code())).append("\"");
+            }
+        }
+
+        sb.append("}");
+        return sb.toString();
+    }
+
+    /**
+     * Looks up an AbstractClassDef by the full object tag (Model.Topic.Class).
+     */
+    private AbstractClassDef findClassByTag(TransferDescription td, String tag) {
+        if (tag == null) return null;
+        String[] parts = tag.split("\\.");
+        if (parts.length < 3) return null;
+        return findClass(td, parts[0], parts[1], parts[2]);
     }
 
     private String buildRaw(IomObject obj) {

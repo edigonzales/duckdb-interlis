@@ -270,4 +270,57 @@ class XtfObjectReaderTest {
             }
         }
     }
+
+    // -------------------------------------------------------------------
+    // Generic reader geom_json tests (Gap 3)
+    // Generic reader TSV columns (fixed):
+    // 0:xtf_bid 1:xtf_topic 2:xtf_class 3:xtf_class_fqn 4:xtf_tid
+    // 5:operation 6:xtf_model 7:attributes_json 8:refs_json 9:geom_json 10:raw_event_json
+    // -------------------------------------------------------------------
+
+    @Test
+    void readObjects_geomJsonIsDetailed() {
+        String result = reader.readObjects(GEOM_XTF, GEOM_MODELDIR, null);
+        assertNotNull(result);
+        String[] lines = result.split("\n");
+        assertTrue(lines.length >= 2, "Should have header + data rows");
+
+        for (int i = 1; i < lines.length; i++) {
+            if (lines[i].isBlank()) continue;
+            String[] f = lines[i].split("\t", -1);
+            if (f.length < 10) continue;
+            String clsFqn = f[3];
+            String geomJson = f[9];
+            if (clsFqn != null && clsFqn.contains("PunktObjekt")) {
+                assertNotNull(geomJson);
+                assertFalse(geomJson.equals("{}"),
+                    "geom_json should not be empty for geometry class: " + geomJson);
+                assertTrue(geomJson.contains("geometry_kind"),
+                    "Should have geometry_kind: " + geomJson);
+                assertTrue(geomJson.contains("wkt"),
+                    "Should have wkt: " + geomJson);
+                assertTrue(geomJson.contains("dimension"),
+                    "Should have dimension: " + geomJson);
+            }
+        }
+    }
+
+    @Test
+    void readObjects_geomJsonContainsWkt() {
+        String result = reader.readObjects(GEOM_XTF, GEOM_MODELDIR, null);
+        String[] lines = result.split("\n");
+        for (int i = 1; i < lines.length; i++) {
+            if (lines[i].isBlank()) continue;
+            String[] f = lines[i].split("\t", -1);
+            if (f.length < 10) continue;
+            String clsFqn = f[3];
+            String geomJson = f[9];
+            if (clsFqn != null && clsFqn.contains("PunktObjekt")) {
+                assertTrue(geomJson.contains("POINT"),
+                    "PunktObjekt should contain POINT in geom_json: " + geomJson);
+                assertTrue(geomJson.contains("2605000"),
+                    "Should contain x coordinate: " + geomJson);
+            }
+        }
+    }
 }

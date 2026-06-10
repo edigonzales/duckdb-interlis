@@ -209,6 +209,50 @@ class InterlisGeometryEncoderTest {
         assertEquals(2, geom.getNumGeometries());
     }
 
+    @Test
+    void encodeArea() throws Exception {
+        List<IomObject> objs = readXtfObjects("valid.xtf");
+        IomObject area = findObject(objs, "AreaObjekt");
+
+        GeometryMetadata meta = new GeometryMetadata(
+                "M", "T", "C", "Flaeche", "M.T.C.Flaeche",
+                GeometryKind.AREA, GeometryDimension.XY,
+                "Koord", "M.Koord", null, null, null,
+                true, 1, 1, false, true, false);
+
+        Optional<GeometryValue> opt = encoder.encodeAttribute(area, attrDefOf(area, "Flaeche"), meta);
+        assertTrue(opt.isPresent(), "AREA should be convertible via multisurface2hexwkb");
+
+        WKBReader reader = new WKBReader();
+        Geometry geom = reader.read(opt.get().wkb());
+        assertEquals("MultiPolygon", geom.getGeometryType());
+        assertEquals(1, geom.getNumGeometries());
+        assertEquals(GeometryKind.AREA, opt.get().metadata().geometryKind());
+        assertTrue(opt.get().metadata().isAreaType());
+    }
+
+    @Test
+    void encodeMultiArea() throws Exception {
+        List<IomObject> objs = readXtfObjects("valid.xtf");
+        IomObject ma = findObject(objs, "MultiAreaObjekt");
+
+        GeometryMetadata meta = new GeometryMetadata(
+                "M", "T", "C", "Flaechen", "M.T.C.Flaechen",
+                GeometryKind.MULTIAREA, GeometryDimension.XY,
+                "Koord", "M.Koord", null, null, null,
+                true, 1, 1, false, true, true);
+
+        Optional<GeometryValue> opt = encoder.encodeAttribute(ma, attrDefOf(ma, "Flaechen"), meta);
+        assertTrue(opt.isPresent(), "MULTIAREA should be convertible via multisurface2hexwkb");
+
+        WKBReader reader = new WKBReader();
+        Geometry geom = reader.read(opt.get().wkb());
+        assertEquals("MultiPolygon", geom.getGeometryType());
+        assertEquals(2, geom.getNumGeometries());
+        assertEquals(GeometryKind.MULTIAREA, opt.get().metadata().geometryKind());
+        assertTrue(opt.get().metadata().isMultiType());
+    }
+
     // ARC test disabled: ioX requires a specific XML structure for ARC segments
     // that is non-trivial to produce manually. ARC handling is documented as a
     // limitation; the encoder dispatches to ioX with strokeTolerance=0.
@@ -262,6 +306,64 @@ class InterlisGeometryEncoderTest {
     // ------------------------------------------------------------------
     // Error / edge cases
     // ------------------------------------------------------------------
+
+    @Test
+    void clippedPolylineThrows() {
+        IomObject polyline = new ch.interlis.iom_j.Iom_jObject("geom:polyline", null);
+        polyline.setobjectconsistency(ch.interlis.iom.IomConstants.IOM_INCOMPLETE);
+
+        GeometryMetadata meta = new GeometryMetadata(
+                "M", "T", "C", "Verlauf", "M.T.C.Verlauf",
+                GeometryKind.LINESTRING, GeometryDimension.XY,
+                null, null, null, null, null,
+                true, 1, 1, false, false, false);
+
+        UnsupportedGeometryException ex = assertThrows(UnsupportedGeometryException.class,
+                () -> encoder.encodeGeometry(polyline, meta));
+        assertTrue(ex.getMessage().contains("IOM_INCOMPLETE"),
+                "Should mention IOM_INCOMPLETE: " + ex.getMessage());
+    }
+
+    @Test
+    void customLineFormThrows() {
+        IomObject polyline = new ch.interlis.iom_j.Iom_jObject("geom:polyline", null);
+        polyline.setobjectconsistency(ch.interlis.iom.IomConstants.IOM_COMPLETE);
+        // Add a non-standard sub-element
+        IomObject unknownSeg = new ch.interlis.iom_j.Iom_jObject("geom:CLOTHOID", null);
+        polyline.addattrobj("CLOTHOID", unknownSeg);
+
+        GeometryMetadata meta = new GeometryMetadata(
+                "M", "T", "C", "Verlauf", "M.T.C.Verlauf",
+                GeometryKind.LINESTRING, GeometryDimension.XY,
+                null, null, null, null, null,
+                true, 1, 1, false, false, false);
+
+        UnsupportedGeometryException ex = assertThrows(UnsupportedGeometryException.class,
+                () -> encoder.encodeGeometry(polyline, meta));
+        assertTrue(ex.getMessage().contains("Custom line form"),
+                "Should mention custom line form: " + ex.getMessage());
+    }
+
+    @Test
+    void normalLinestringWithCoordPasses() {
+        IomObject polyline = new ch.interlis.iom_j.Iom_jObject("geom:polyline", null);
+        polyline.setobjectconsistency(ch.interlis.iom.IomConstants.IOM_COMPLETE);
+        IomObject coord = new ch.interlis.iom_j.Iom_jObject("geom:coord", null);
+        coord.setattrvalue("C1", "2600000.000");
+        coord.setattrvalue("C2", "1200000.000");
+        polyline.addattrobj("coord", coord);
+
+        GeometryMetadata meta = new GeometryMetadata(
+                "M", "T", "C", "Verlauf", "M.T.C.Verlauf",
+                GeometryKind.LINESTRING, GeometryDimension.XY,
+                null, null, null, null, null,
+                true, 1, 1, false, false, false);
+
+        // Should NOT throw — normal COORD segments are valid
+        assertDoesNotThrow(() -> {
+            encoder.encodeGeometry(polyline, meta);
+        });
+    }
 
     @Test
     void missingGeometryReturnsEmpty() throws Exception {

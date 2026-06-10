@@ -110,3 +110,16 @@ SELECT
 FROM read_xtf_class('testdata/synthetic/geometries/valid.xtf',
     class := 'SO_AGI_Geometries_20260605.Topic.PunktObjekt',
     modeldir := 'testdata/synthetic/geometries');
+
+-- -----------------------------------------------------------------------
+-- Test 9: Generic reader geom_json now contains detailed geometry data
+-- -----------------------------------------------------------------------
+SELECT
+    'GEOM_JSON' AS test_case,
+    json_extract_string(geom_json, '$.Lage.geometry_kind') = 'POINT' AS kind_ok,
+    json_extract_string(geom_json, '$.Lage.wkt') LIKE 'POINT%' AS wkt_ok,
+    json_extract(geom_json, '$.Lage.dimension') = 2 AS dim_ok
+FROM read_xtf_objects('testdata/synthetic/geometries/valid.xtf',
+    modeldir := 'testdata/synthetic/geometries')
+WHERE xtf_class_fqn ILIKE '%PunktObjekt%'
+LIMIT 1;

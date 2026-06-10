@@ -1,5 +1,6 @@
 package ch.so.agi.duckdbili.core.geometry;
 
+import ch.interlis.iom.IomConstants;
 import ch.interlis.iom.IomObject;
 import ch.interlis.ili2c.metamodel.AttributeDef;
 import ch.interlis.iox_j.jts.Iox2jts;
@@ -88,18 +89,17 @@ public final class InterlisGeometryEncoder {
      */
     public byte[] encodeToWkb(IomObject geometry, GeometryKind kind) {
         validateGeometryTag(geometry.getobjecttag(), kind);
+        validateGeometryCompleteness(geometry, kind);
+        validateLineForms(geometry, kind);
 
         try {
             String hexWkb = switch (kind) {
                 case POINT -> Iox2jtsext.coord2hexwkb(geometry);
                 case LINESTRING -> Iox2jtsext.polyline2hexwkb(geometry, options.strokeTolerance());
-                case POLYGON, MULTIPOLYGON -> Iox2jts.multisurface2hexwkb(geometry, options.strokeTolerance());
+                case POLYGON, MULTIPOLYGON, AREA, MULTIAREA ->
+                    Iox2jts.multisurface2hexwkb(geometry, options.strokeTolerance());
                 case MULTIPOINT -> Iox2jts.multicoord2hexwkb(geometry);
                 case MULTILINESTRING -> Iox2jts.multipolyline2hexwkb(geometry, options.strokeTolerance());
-                case AREA, MULTIAREA -> throw new UnsupportedGeometryException(
-                        "AREA and MULTIAREA are not directly convertible. " +
-                        "Use SURFACE/MULTISURFACE representation or build topology first.",
-                        null, null, kind);
                 case UNKNOWN -> throw new UnsupportedGeometryException(
                         "Unknown geometry kind: " + kind, null, null, kind);
             };
@@ -109,6 +109,57 @@ public final class InterlisGeometryEncoder {
             throw new GeometryConversionException(
                     "IOX conversion failed: " + e.getMessage(), e,
                     attrFqn, geometry.getobjectoid(), kind);
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Completeness / edge case validation
+    // ------------------------------------------------------------------
+
+    private void validateGeometryCompleteness(IomObject geometry, GeometryKind kind) {
+        int consistency = geometry.getobjectconsistency();
+        if (consistency == IomConstants.IOM_INCOMPLETE) {
+            throw new UnsupportedGeometryException(
+                    "Clipped/incomplete geometry is not supported (IOM_INCOMPLETE). "
+                    + "The XTF file may be truncated or contain only geometry fragments.",
+                    null, geometry.getobjectoid(), kind);
+        }
+    }
+
+    private void validateLineForms(IomObject geometry, GeometryKind kind) {
+        // Only relevant for line-based geometries
+        if (kind != GeometryKind.LINESTRING && kind != GeometryKind.MULTILINESTRING) return;
+
+        // Check for custom line form sub-elements.
+        // Whitelist: COORD, ARC, SEGMENT, POLYLINE, and short tags (<=3 chars like C1, C2)
+        int attrCount = geometry.getattrcount();
+        for (int i = 0; i < attrCount; i++) {
+            String aname = geometry.getattrname(i);
+            if (aname == null) continue;
+            int cnt = geometry.getattrvaluecount(aname);
+            for (int j = 0; j < cnt; j++) {
+                IomObject sub = geometry.getattrobj(aname, j);
+                if (sub == null) continue;
+                String tag = sub.getobjecttag();
+                if (tag == null) continue;
+
+                String shortTag = tag;
+                int sep = Math.max(tag.lastIndexOf('.'), tag.lastIndexOf(':'));
+                if (sep >= 0) shortTag = tag.substring(sep + 1);
+
+                if (shortTag.length() <= 3) continue;  // coordinate axes, ioX-internal
+                if ("COORD".equalsIgnoreCase(shortTag)) continue;
+                if ("ARC".equalsIgnoreCase(shortTag)) continue;
+                if ("SEGMENT".equalsIgnoreCase(shortTag)) continue;
+                if ("POLYLINE".equalsIgnoreCase(shortTag)) continue;
+
+                // Unknown geometry segment — only flag namespaced tags
+                if (sep >= 0) {
+                    throw new UnsupportedGeometryException(
+                            "Custom line form is not supported: segment tag '" + tag + "'",
+                            null, geometry.getobjectoid(), kind);
+                }
+            }
         }
     }
 

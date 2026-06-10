@@ -83,8 +83,8 @@ The following OGC geometry types are supported via INTERLIS mapping:
 | MULTIPOLYLINE | MULTILINESTRING | ✅ Supported |
 | SURFACE | POLYGON | ✅ Supported (exterior + interior rings) |
 | MULTISURFACE | MULTIPOLYGON | ✅ Supported |
-| AREA | POLYGON | ✅ Converted via `surface2hexwkb` |
-| MULTIAREA | MULTIPOLYGON | ✅ Converted via `multisurface2hexwkb` |
+| AREA | POLYGON | ✅ Converted via `multisurface2hexwkb` (same XTF structure as SURFACE) |
+| MULTIAREA | MULTIPOLYGON | ✅ Converted via `multisurface2hexwkb` (same XTF structure as MULTISURFACE) |
 
 ## 3D / Z Coordinate Handling
 
@@ -102,6 +102,16 @@ Future work may use JTS `WKBWriter(3)` for true 3D support.
 INTERLIS `POLYLINE` with circular arcs (`ARC` segments) is dispatched to `Iox2jtsext.polyline2hexwkb` with `strokeTolerance=0`. The exact XTF XML structure required by `iox-ili` for ARC linearization is non-trivial to produce manually; automatic tests for ARC are therefore disabled. The encoder accepts both:
 - **Successful linearization** by `iox-ili` (produces multiple vertices), or
 - **Failure** with an explicit exception (not silent ignoring).
+
+## Custom Line Forms, Clipped Polylines, Line Attributes
+
+The following INTERLIS constructs are explicitly rejected with `UnsupportedGeometryException`:
+
+| Edge Case | Detection | Error Behavior |
+|-----------|-----------|----------------|
+| **Custom line forms** | Non-standard segment tags in POLYLINE/MULTIPOLYLINE IomObjects (anything other than COORD, ARC, SEGMENT, POLYLINE) | `UnsupportedGeometryException` with tag name |
+| **Clipped polylines** | `IomObject.getobjectconsistency() == IOM_INCOMPLETE` (value 1) | `UnsupportedGeometryException` with TID |
+| **Line attributes** | Non-coordinate sub-elements under POLYLINE with unknown tags | `UnsupportedGeometryException` (caught by custom line form detection) |
 
 ## MANDATORY / NOT NULL Constraints
 
