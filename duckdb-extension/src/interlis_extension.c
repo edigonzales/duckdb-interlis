@@ -172,7 +172,7 @@ static int make_dir_recursive_safe(const char *path) {
             char saved = *p;
             *p = '\0';
 #ifdef _WIN32
-            if (mkdir(tmp) != 0 && errno != EEXIST) {
+            if (_mkdir(tmp) != 0 && errno != EEXIST) {
                 free(tmp);
                 return -1;
             }
@@ -186,7 +186,7 @@ static int make_dir_recursive_safe(const char *path) {
         }
     }
 #ifdef _WIN32
-    if (mkdir(tmp) != 0 && errno != EEXIST) {
+    if (_mkdir(tmp) != 0 && errno != EEXIST) {
         free(tmp);
         return -1;
     }

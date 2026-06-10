@@ -342,7 +342,7 @@ jobs:
 
       - name: Compile and run DuckDB extension concurrency test with TSAN
         run: |
-          cc -g \
+          cc -fsanitize=thread -g \
             -o duckdb-extension/test/duckdb_extension_concurrency_test \
             duckdb-extension/test/duckdb_extension_concurrency_test.c \
             -Iduckdb-extension/src/include \
