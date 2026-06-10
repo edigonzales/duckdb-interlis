@@ -65,47 +65,47 @@ class InterlisGeometryTypeResolverTest {
 
     @Test
     void resolveKind_point() {
-        assertEquals(GeometryKind.POINT, RESOLVER.resolveKind(findAttr("PunktObjekt", "Lage")));
+        assertEquals(GeometryKind.POINT, RESOLVER.resolveGeometryKind(findAttr("PunktObjekt", "Lage")));
     }
 
     @Test
     void resolveKind_multipoint() {
-        assertEquals(GeometryKind.MULTIPOINT, RESOLVER.resolveKind(findAttr("MultiPunktObjekt", "Lagen")));
+        assertEquals(GeometryKind.MULTIPOINT, RESOLVER.resolveGeometryKind(findAttr("MultiPunktObjekt", "Lagen")));
     }
 
     @Test
     void resolveKind_linestring() {
-        assertEquals(GeometryKind.LINESTRING, RESOLVER.resolveKind(findAttr("LinienObjekt", "Verlauf")));
+        assertEquals(GeometryKind.LINESTRING, RESOLVER.resolveGeometryKind(findAttr("LinienObjekt", "Verlauf")));
     }
 
     @Test
     void resolveKind_multilinestring() {
-        assertEquals(GeometryKind.MULTILINESTRING, RESOLVER.resolveKind(findAttr("MultiLinienObjekt", "Verlaeufe")));
+        assertEquals(GeometryKind.MULTILINESTRING, RESOLVER.resolveGeometryKind(findAttr("MultiLinienObjekt", "Verlaeufe")));
     }
 
     @Test
     void resolveKind_polygon() {
-        assertEquals(GeometryKind.POLYGON, RESOLVER.resolveKind(findAttr("FlaechenObjekt", "Flaeche")));
+        assertEquals(GeometryKind.POLYGON, RESOLVER.resolveGeometryKind(findAttr("FlaechenObjekt", "Flaeche")));
     }
 
     @Test
     void resolveKind_multipolygon() {
-        assertEquals(GeometryKind.MULTIPOLYGON, RESOLVER.resolveKind(findAttr("MultiFlaechenObjekt", "Flaechen")));
+        assertEquals(GeometryKind.MULTIPOLYGON, RESOLVER.resolveGeometryKind(findAttr("MultiFlaechenObjekt", "Flaechen")));
     }
 
     @Test
     void resolveKind_area() {
-        assertEquals(GeometryKind.AREA, RESOLVER.resolveKind(findAttr("AreaObjekt", "Flaeche")));
+        assertEquals(GeometryKind.AREA, RESOLVER.resolveGeometryKind(findAttr("AreaObjekt", "Flaeche")));
     }
 
     @Test
     void resolveKind_multiarea() {
-        assertEquals(GeometryKind.MULTIAREA, RESOLVER.resolveKind(findAttr("MultiAreaObjekt", "Flaechen")));
+        assertEquals(GeometryKind.MULTIAREA, RESOLVER.resolveGeometryKind(findAttr("MultiAreaObjekt", "Flaechen")));
     }
 
     @Test
     void resolveKind_nonGeometry() {
-        assertEquals(GeometryKind.UNKNOWN, RESOLVER.resolveKind(findAttr("PunktObjekt", "Name")));
+        assertEquals(GeometryKind.UNKNOWN, RESOLVER.resolveGeometryKind(findAttr("PunktObjekt", "Name")));
     }
 
     @Test

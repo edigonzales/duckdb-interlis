@@ -270,17 +270,17 @@ class RegressionTest {
     }
 
     @Test
-    @DisplayName("REGRESSION: Invalid geometry throws error (Phase 7)")
-    void invalidGeometryThrowsError() {
+    @DisplayName("REGRESSION: Invalid geometry returns error marker (Phase 7)")
+    void invalidGeometryReturnsErrorMarker() {
         XtfObjectReader reader = new XtfObjectReader();
         Path geomDir = REPO_ROOT.resolve("testdata/synthetic/geometries");
         Path xtfPath = geomDir.resolve("broken_geom.xtf");
-        RuntimeException ex = assertThrows(RuntimeException.class, () ->
-            reader.readClass(xtfPath.toString(),
+        // Robust parsing: should not throw; geometry cell contains error marker
+        String result = reader.readClass(xtfPath.toString(),
                 "SO_AGI_Geometries_20260605.Topic.FlaechenObjekt",
-                geomDir.toString()));
-        assertTrue(ex.getMessage().contains("XTF read error"),
-            "Should throw XTF read error for invalid geometry: " + ex.getMessage());
+                geomDir.toString());
+        assertTrue(result.contains("_geometry_error") || result.contains("\\N"),
+            "Invalid geometry should be marked in cell, not crash entire import: " + result);
     }
 
     @Test

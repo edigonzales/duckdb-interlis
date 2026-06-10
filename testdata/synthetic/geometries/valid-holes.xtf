@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ili:transfer xmlns:ili="http://www.interlis.ch/xtf/2.4/INTERLIS"
+              xmlns:geom="http://www.interlis.ch/geometry/1.0"
+              xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+              xmlns:SO_AGI_Geometries_20260605="http://www.interlis.ch/xtf/2.4/SO_AGI_Geometries_20260605">
+  <ili:headersection>
+    <ili:models>
+      <ili:model>SO_AGI_Geometries_20260605</ili:model>
+    </ili:models>
+    <ili:sender>test</ili:sender>
+  </ili:headersection>
+  <ili:datasection>
+    <SO_AGI_Geometries_20260605:Topic ili:bid="basket1">
+      <SO_AGI_Geometries_20260605:FlaechenObjektLoch ili:tid="fhole1">
+        <SO_AGI_Geometries_20260605:Name>ParzelleMitLoch</SO_AGI_Geometries_20260605:Name>
+        <SO_AGI_Geometries_20260605:Flaeche>
+          <geom:multisurface>
+            <geom:surface>
+              <geom:exterior>
+                <geom:polyline>
+                  <geom:coord><geom:c1>2605000.000</geom:c1><geom:c2>1203000.000</geom:c2></geom:coord>
+                  <geom:coord><geom:c1>2605200.000</geom:c1><geom:c2>1203000.000</geom:c2></geom:coord>
+                  <geom:coord><geom:c1>2605200.000</geom:c1><geom:c2>1203200.000</geom:c2></geom:coord>
+                  <geom:coord><geom:c1>2605000.000</geom:c1><geom:c2>1203200.000</geom:c2></geom:coord>
+                  <geom:coord><geom:c1>2605000.000</geom:c1><geom:c2>1203000.000</geom:c2></geom:coord>
+                </geom:polyline>
+              </geom:exterior>
+              <geom:interior>
+                <geom:polyline>
+                  <geom:coord><geom:c1>2605050.000</geom:c1><geom:c2>1203050.000</geom:c2></geom:coord>
+                  <geom:coord><geom:c1>2605100.000</geom:c1><geom:c2>1203050.000</geom:c2></geom:coord>
+                  <geom:coord><geom:c1>2605100.000</geom:c1><geom:c2>1203100.000</geom:c2></geom:coord>
+                  <geom:coord><geom:c1>2605050.000</geom:c1><geom:c2>1203100.000</geom:c2></geom:coord>
+                  <geom:coord><geom:c1>2605050.000</geom:c1><geom:c2>1203050.000</geom:c2></geom:coord>
+                </geom:polyline>
+              </geom:interior>
+            </geom:surface>
+          </geom:multisurface>
+        </SO_AGI_Geometries_20260605:Flaeche>
+      </SO_AGI_Geometries_20260605:FlaechenObjektLoch>
+    </SO_AGI_Geometries_20260605:Topic>
+  </ili:datasection>
+</ili:transfer>

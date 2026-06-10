@@ -7,26 +7,50 @@ import ch.interlis.ili2c.metamodel.*;
 import ch.interlis.ilirepository.IliManager;
 import ch.interlis.iom.IomObject;
 import ch.interlis.iox.*;
-import ch.interlis.iox_j.jts.Iox2jts;
-import ch.interlis.iox_j.jts.Iox2jtsext;
 import ch.interlis.iom_j.xtf.Xtf24Reader;
 import ch.interlis.iox_j.IoxIliReader;
 import ch.interlis.iox_j.IoxSyntaxException;
 import ch.interlis.iox_j.utility.ReaderFactory;
+import ch.so.agi.duckdbili.core.geometry.*;
 import ch.so.agi.duckdbili.core.logging.IliLogger;
 import ch.so.agi.duckdbili.core.transport.TsvCodec;
 import ch.so.agi.duckdbili.core.model.ModelCache;
 import ch.so.agi.duckdbili.core.model.ModelRepositoryResolver;
 
 import java.io.File;
-import java.nio.file.*;
 import java.util.*;
+import java.nio.file.*;
 
 public class XtfObjectReader {
 
     private static final String DEFAULT_MODELDIR = System.getenv("ILI_DEFAULT_MODELDIR") != null
             ? System.getenv("ILI_DEFAULT_MODELDIR")
             : "https://models.interlis.ch";
+
+    private final InterlisGeometryTypeResolver geometryTypeResolver;
+    private final InterlisGeometryEncoder geometryEncoder;
+    private final GeometryConversionOptions geometryOptions;
+
+    public XtfObjectReader() {
+        this.geometryTypeResolver = new InterlisGeometryTypeResolver();
+        this.geometryOptions = GeometryConversionOptions.defaults();
+        this.geometryEncoder = new InterlisGeometryEncoder(
+                geometryTypeResolver,
+                new InterlisGeometryExtractor(),
+                geometryOptions);
+    }
+
+    public XtfObjectReader(
+            InterlisGeometryTypeResolver geometryTypeResolver,
+            InterlisGeometryEncoder geometryEncoder,
+            GeometryConversionOptions geometryOptions) {
+        if (geometryTypeResolver == null) throw new NullPointerException("geometryTypeResolver is null");
+        if (geometryEncoder == null) throw new NullPointerException("geometryEncoder is null");
+        if (geometryOptions == null) throw new NullPointerException("geometryOptions is null");
+        this.geometryTypeResolver = geometryTypeResolver;
+        this.geometryEncoder = geometryEncoder;
+        this.geometryOptions = geometryOptions;
+    }
 
     /**
      * Read all objects from an XTF file. TSV columns: xtf_bid, xtf_topic, xtf_class,
@@ -74,7 +98,7 @@ public class XtfObjectReader {
         while (ait.hasNext()) {
             ViewableTransferElement vte = (ViewableTransferElement) ait.next();
             if (vte.obj instanceof AttributeDef ad) {
-                if (isGeometryDomain(ad) || isMultiGeometryDomain(ad))
+                if (geometryTypeResolver.isGeometryAttribute(ad))
                     sb.append('\t').append(TsvCodec.encodeNullable(ad.getName() + "_wkb"));
                 else if (isStructureDomain(ad) || isCompositionDomain(ad))
                     sb.append('\t').append(TsvCodec.encodeNullable(ad.getName() + colSuffix));
@@ -129,24 +153,36 @@ public class XtfObjectReader {
         List<String> bagAttrs = new ArrayList<>();
         List<String> geomAttrs = new ArrayList<>();
         List<String> roleRefs = new ArrayList<>();
+        Map<String, AttributeDef> attrDefMap = new HashMap<>();
+        Map<String, GeometryMetadata> geomMetaMap = new HashMap<>();
         if (classDef != null) {
             Iterator<?> ait = classDef.getAttributesAndRoles2();
             while (ait.hasNext()) {
                 ViewableTransferElement vte = (ViewableTransferElement) ait.next();
                 if (vte.obj instanceof AttributeDef ad) {
-                    attrNames.add(ad.getName());
-                    if (isGeometryDomain(ad) || isMultiGeometryDomain(ad))
-                        geomAttrs.add(ad.getName());
-                    else if (isStructureDomain(ad))
-                        structureAttrs.add(ad.getName());
-                    else if (isCompositionDomain(ad))
-                        bagAttrs.add(ad.getName());
-                    else
-                        scalarAttrs.add(ad.getName());
+                    String an = ad.getName();
+                    attrNames.add(an);
+                    attrDefMap.put(an, ad);
+                    if (geometryTypeResolver.isGeometryAttribute(ad)) {
+                        geomAttrs.add(an);
+                        String[] parts = className.split("\\.");
+                        String modelName = parts[0], topicName = parts[1], clsName = parts[2];
+                        GeometryKind kind = geometryTypeResolver.resolveGeometryKind(ad);
+                        geomMetaMap.put(an, new GeometryMetadata(
+                                modelName, topicName, clsName, an, className + "." + an,
+                                kind, GeometryDimension.XY, null, null, null, null, null,
+                                true, 1, 1, false, false, false));
+                    } else if (isStructureDomain(ad)) {
+                        structureAttrs.add(an);
+                    } else if (isCompositionDomain(ad)) {
+                        bagAttrs.add(an);
+                    } else {
+                        scalarAttrs.add(an);
+                    }
                 } else if (vte.obj instanceof RoleDef rd) {
-                    String refName = rd.getName() + "_ref";
-                    attrNames.add(rd.getName());
-                    roleRefs.add(rd.getName());
+                    String rn = rd.getName();
+                    attrNames.add(rn);
+                    roleRefs.add(rn);
                 }
             }
         }
@@ -200,8 +236,20 @@ public class XtfObjectReader {
                         sb.append(TsvCodec.encodeNullable(currentBid)).append('\t').append(TsvCodec.encodeNullable(tid)).append('\t').append(TsvCodec.encodeNullable(cn));
                         for (String an : scalarAttrs)
                             sb.append('\t').append(TsvCodec.encodeNullable(obj.getattrvalue(an)));
-                        for (String an : geomAttrs)
-                            sb.append('\t').append(TsvCodec.encodeNullable(buildGeometryWkb(obj, an)));
+                        for (String an : geomAttrs) {
+                            AttributeDef ad = attrDefMap.get(an);
+                            GeometryMetadata meta = geomMetaMap.get(an);
+                            String wkb = null;
+                            try {
+                                Optional<GeometryValue> val = geometryEncoder.encodeAttribute(obj, ad, meta);
+                                wkb = val.map(GeometryValue::hexWkb).orElse(null);
+                            } catch (GeometryConversionException e) {
+                                wkb = "{\"_geometry_error\":\"" + escJson(e.getMessage()) + "\"}";
+                            } catch (Exception e) {
+                                wkb = "{\"_geometry_error\":\"" + escJson(e.getClass().getSimpleName() + ": " + e.getMessage()) + "\"}";
+                            }
+                            sb.append('\t').append(TsvCodec.encodeNullable(wkb));
+                        }
                         for (String an : structureAttrs)
                             sb.append('\t').append(TsvCodec.encodeNullable(buildSingleStructureJson(obj, an)));
                         for (String an : bagAttrs)
@@ -554,72 +602,6 @@ public class XtfObjectReader {
             }
         }
         return sb.toString();
-    }
-
-    // -----------------------------------------------------------------------
-    // Geometry detection
-    // -----------------------------------------------------------------------
-
-    private static boolean isGeometryDomain(AttributeDef ad) {
-        Type domain = resolveToBaseType(ad);
-        return domain instanceof AbstractCoordType
-            || domain instanceof LineType
-            || domain instanceof AbstractSurfaceOrAreaType;
-    }
-
-    private static boolean isMultiGeometryDomain(AttributeDef ad) {
-        Type domain = resolveToBaseType(ad);
-        return domain instanceof MultiCoordType
-            || domain instanceof MultiSurfaceType
-            || domain instanceof MultiPolylineType
-            || domain instanceof MultiAreaType;
-    }
-
-    private static Type resolveToBaseType(AttributeDef ad) {
-        Type domain = ad.getDomainResolvingAll();
-        if (domain == null) domain = ad.getDomain();
-        // Unwrap TypeAlias -> Domain -> Type
-        for (int i = 0; i < 5 && domain != null; i++) {
-            if (domain instanceof TypeAlias ta) {
-                Domain aliasing = ta.getAliasing();
-                if (aliasing != null) domain = aliasing.getType();
-            }
-        }
-        return domain;
-    }
-
-    // -----------------------------------------------------------------------
-    // WKB extraction via Iox2jtsext hexwkb methods
-    // -----------------------------------------------------------------------
-
-    private String buildGeometryWkb(IomObject obj, String attrName) {
-        int cnt = obj.getattrvaluecount(attrName);
-        if (cnt == 0) return null;
-        IomObject geom = obj.getattrobj(attrName, 0);
-        if (geom == null) return null;
-        return geomToHexWkb(geom);
-    }
-
-    private String geomToHexWkb(IomObject geom) {
-        if (geom == null) return "";
-        String tag = geom.getobjecttag();
-        String shortType = tag;
-        int dot = tag.lastIndexOf('.');
-        if (dot >= 0) shortType = tag.substring(dot + 1);
-
-        try {
-            switch (shortType) {
-                case "COORD":       return Iox2jtsext.coord2hexwkb(geom);
-                case "POLYLINE":    return Iox2jtsext.polyline2hexwkb(geom, 0);
-                case "SURFACE":     return Iox2jtsext.surface2hexwkb(geom, 0);
-                case "MULTICOORD":   return Iox2jts.multicoord2hexwkb(geom);
-                case "MULTIPOLYLINE": return Iox2jts.multipolyline2hexwkb(geom, 0);
-                case "MULTISURFACE":  return Iox2jts.multisurface2hexwkb(geom, 0);
-                default:            return null;
-            }
-        } catch (Exception e) {
-            throw new RuntimeException("Geometry conversion failed for type " + shortType + ": " + e.getMessage(), e);
-        }
     }
 
     // -----------------------------------------------------------------------

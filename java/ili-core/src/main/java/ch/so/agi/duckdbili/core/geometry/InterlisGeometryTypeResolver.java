@@ -12,11 +12,11 @@ import java.util.Set;
 public final class InterlisGeometryTypeResolver {
 
     public boolean isGeometryAttribute(AttributeDef attribute) {
-        GeometryKind kind = resolveKind(attribute);
+        GeometryKind kind = resolveGeometryKind(attribute);
         return kind != GeometryKind.UNKNOWN;
     }
 
-    public GeometryKind resolveKind(AttributeDef attribute) {
+    public GeometryKind resolveGeometryKind(AttributeDef attribute) {
         Type base = resolveBaseType(attribute);
         // Order matters due to inheritance hierarchy:
         // e.g. MultiCoordType extends AbstractCoordType,
@@ -46,7 +46,7 @@ public final class InterlisGeometryTypeResolver {
     }
 
     public GeometryMetadata resolveMetadata(Model model, Topic topic, AbstractClassDef classDef, AttributeDef attribute) {
-        GeometryKind kind = resolveKind(attribute);
+        GeometryKind kind = resolveGeometryKind(attribute);
         GeometryDimension dim = resolveDeclaredDimension(attribute);
 
         Type base = resolveBaseType(attribute);
