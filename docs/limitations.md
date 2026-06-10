@@ -52,3 +52,23 @@ INTERLIS numeric types with decimal places are mapped to DuckDB `DOUBLE`, which 
 ## Identifier Quoting
 
 Table and column names use the `topic__class` pattern with lowercase sanitization. Very long names may be truncated or cause collisions. Always verify generated SQL before executing in production.
+
+## Geometry Format and Spatial Integration
+
+Geometry attributes are returned as **uppercase hexadecimal WKB strings** (HEX-WKB) in `VARCHAR` columns with the `_wkb` suffix. This is not binary WKB (BLOB). To convert these columns into DuckDB `GEOMETRY` values, you **must** install and load the `spatial` extension and use `ST_GeomFromHEXWKB(...)`:
+
+```sql
+INSTALL spatial;
+LOAD spatial;
+SELECT ST_GeomFromHEXWKB(Lage_wkb) AS geom FROM read_xtf_class(...);
+```
+
+Using `ST_GeomFromWKB(...)` on a `_wkb` column will fail because `ST_GeomFromWKB` expects binary data, not a hex string.
+
+## Coordinate Reference System (CRS)
+
+There is **no automatic CRS detection or inference** from coordinate values. The extension does not embed an SRID into the WKB output, nor does it guess the coordinate system (e.g. EPSG:2056). CRS metadata can be provided explicitly via the `ILI_GEOMETRY_CRS_MAP` environment variable or properties file; otherwise CRS columns remain `NULL`.
+
+## 3D / Z Coordinate Handling
+
+The 3D preservation of Z coordinates is not explicitly guaranteed in the current release. Whether Z values survive the `INTERLIS → WKB` conversion depends on the underlying `iox-ili` library behaviour. If your model declares 3D coordinates, verify the result with `ST_HasZ(ST_GeomFromHEXWKB(...))` until this is explicitly tested and documented.

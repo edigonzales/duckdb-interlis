@@ -585,8 +585,12 @@ FROM (
 ```
 
 ```sql
--- 4. Read a class with geometry (WKB column)
-SELECT xtf_tid, Name, Lage_wkb AS geom, ST_GeomFromWKB(Lage_wkb) AS point
+-- 4. Read a class with geometry (HEX-WKB column)
+-- Geometries are returned as uppercase hexadecimal WKB strings in VARCHAR columns.
+-- To use with DuckDB Spatial, you must use ST_GeomFromHEXWKB(...), not ST_GeomFromWKB(...).
+SELECT xtf_tid, Name, Lage_wkb,
+       ST_GeomFromHEXWKB(Lage_wkb) AS geom,
+       ST_GeometryType(ST_GeomFromHEXWKB(Lage_wkb)) AS geometry_type
 FROM read_xtf_class('testdata/synthetic/geometries/valid.xtf',
     class := 'SO_AGI_Geometries_20260605.Topic.PunktObjekt',
     modeldir := 'testdata/synthetic/geometries');

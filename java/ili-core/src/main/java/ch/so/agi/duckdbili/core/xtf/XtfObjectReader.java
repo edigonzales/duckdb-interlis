@@ -11,6 +11,7 @@ import ch.interlis.iox_j.jts.Iox2jts;
 import ch.interlis.iox_j.jts.Iox2jtsext;
 import ch.interlis.iom_j.xtf.Xtf24Reader;
 import ch.interlis.iox_j.IoxIliReader;
+import ch.interlis.iox_j.IoxSyntaxException;
 import ch.interlis.iox_j.utility.ReaderFactory;
 import ch.so.agi.duckdbili.core.logging.IliLogger;
 import ch.so.agi.duckdbili.core.transport.TsvCodec;
@@ -165,6 +166,7 @@ public class XtfObjectReader {
         }
 
         IoxReader reader = null;
+        boolean sawEndBasket = false;
         try {
             reader = new ReaderFactory().createReader(new File(xtfPath), null);
             if (reader == null) reader = new Xtf24Reader(new File(xtfPath));
@@ -177,6 +179,8 @@ public class XtfObjectReader {
                     currentBid = sbe.getBid() != null ? sbe.getBid() : "";
                     String[] topics = sbe.getTopicv();
                     currentTopic = topics != null && topics.length > 0 ? topics[0] : "";
+                } else if (event instanceof EndBasketEvent) {
+                    sawEndBasket = true;
                 } else if (event instanceof ObjectEvent oe) {
                     IomObject obj = oe.getIomObject();
                     if (obj == null) continue;
@@ -219,7 +223,16 @@ public class XtfObjectReader {
                 }
             }
         } catch (Exception ex) {
-            throw new RuntimeException("XTF read error for " + xtfPath + ": " + ex.getMessage(), ex);
+            // Xtf24Reader may throw IoxSyntaxException with empty message after EndBasketEvent
+            // when it reaches end of file. Treat this as normal EOF if we have seen the basket close.
+            if (sawEndBasket && ex instanceof IoxSyntaxException ise
+                    && (ise.getMessage() == null || ise.getMessage().isBlank())) {
+                if (IliLogger.isDebugEnabled()) {
+                    System.err.println("[ili-debug] Ignoring trailing IoxSyntaxException after file end");
+                }
+            } else {
+                throw new RuntimeException("XTF read error for " + xtfPath + ": " + ex.getMessage(), ex);
+            }
         } finally {
             if (reader != null) { try { reader.close(); } catch (Exception ignored) {} }
         }
