@@ -122,7 +122,7 @@ The extension should reject corrupt files with an error, not return partial data
 
 ### Symptom: Geometry values are NULL
 
-Geometry attributes are returned as WKB hex strings in the `*_wkb` column. If the column is NULL, the object may not have geometry data for that attribute.
+Geometry attributes are returned as WKT strings in the `*_geom` column. If the column is NULL, the object may not have geometry data for that attribute.
 
 ## Memory Issues
 

@@ -99,7 +99,7 @@ public class XtfObjectReader {
             ViewableTransferElement vte = (ViewableTransferElement) ait.next();
             if (vte.obj instanceof AttributeDef ad) {
                 if (geometryTypeResolver.isGeometryAttribute(ad))
-                    sb.append('\t').append(TsvCodec.encodeNullable(ad.getName() + "_wkb"));
+                    sb.append('\t').append(TsvCodec.encodeNullable(ad.getName() + "_geom"));
                 else if (isStructureDomain(ad) || isCompositionDomain(ad))
                     sb.append('\t').append(TsvCodec.encodeNullable(ad.getName() + colSuffix));
                 else
@@ -194,7 +194,7 @@ public class XtfObjectReader {
         if (className != null) {
             sb.append("xtf_bid\txtf_tid\txtf_class");
             for (String an : scalarAttrs) sb.append('\t').append(TsvCodec.encodeNullable(an));
-            for (String an : geomAttrs) sb.append('\t').append(TsvCodec.encodeNullable(an + "_wkb"));
+            for (String an : geomAttrs) sb.append('\t').append(TsvCodec.encodeNullable(an + "_geom"));
             for (String an : structureAttrs) sb.append('\t').append(TsvCodec.encodeNullable(an + colSuffix));
             for (String an : bagAttrs) sb.append('\t').append(TsvCodec.encodeNullable(an + colSuffix));
             for (String rn : roleRefs) sb.append('\t').append(TsvCodec.encodeNullable(rn + "_ref"));
@@ -239,16 +239,16 @@ public class XtfObjectReader {
                         for (String an : geomAttrs) {
                             AttributeDef ad = attrDefMap.get(an);
                             GeometryMetadata meta = geomMetaMap.get(an);
-                            String wkb = null;
+                            String wkt = null;
                             try {
                                 Optional<GeometryValue> val = geometryEncoder.encodeAttribute(obj, ad, meta);
-                                wkb = val.map(GeometryValue::hexWkb).orElse(null);
+                                wkt = val.map(GeometryValue::wkt).orElse(null);
                             } catch (GeometryConversionException e) {
-                                wkb = "{\"_geometry_error\":\"" + escJson(e.getMessage()) + "\"}";
+                                wkt = "{\"_geometry_error\":\"" + escJson(e.getMessage()) + "\"}";
                             } catch (Exception e) {
-                                wkb = "{\"_geometry_error\":\"" + escJson(e.getClass().getSimpleName() + ": " + e.getMessage()) + "\"}";
+                                wkt = "{\"_geometry_error\":\"" + escJson(e.getClass().getSimpleName() + ": " + e.getMessage()) + "\"}";
                             }
-                            sb.append('\t').append(TsvCodec.encodeNullable(wkb));
+                            sb.append('\t').append(TsvCodec.encodeNullable(wkt));
                         }
                         for (String an : structureAttrs)
                             sb.append('\t').append(TsvCodec.encodeNullable(buildSingleStructureJson(obj, an)));

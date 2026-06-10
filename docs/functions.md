@@ -531,7 +531,7 @@ FROM read_xtf_objects('testdata/synthetic/simple/valid.xtf',
 read_xtf_class(input VARCHAR, class => VARCHAR, modeldir => VARCHAR, nested => VARCHAR) → TABLE(...)
 ```
 
-**Description:** Reads an XTF file and returns rows for a specific INTERLIS class. Columns are dynamically determined from the class schema. Scalar attributes appear as individual columns of type VARCHAR. STRUCTURE attributes appear as `*_json` columns. BAG OF STRUCTURE attributes appear as `*_json` columns (JSON array). Geometry attributes appear as `*_wkb` columns.
+ **Description:** Reads an XTF file and returns rows for a specific INTERLIS class. Columns are dynamically determined from the class schema. Scalar attributes appear as individual columns of type VARCHAR. STRUCTURE attributes appear as `*_json` columns. BAG OF STRUCTURE attributes appear as `*_json` columns (JSON array). Geometry attributes appear as `*_geom` columns (WKT strings).
 
 **Parameters:**
 
@@ -585,12 +585,12 @@ FROM (
 ```
 
 ```sql
--- 4. Read a class with geometry (HEX-WKB column)
--- Geometries are returned as uppercase hexadecimal WKB strings in VARCHAR columns.
--- To use with DuckDB Spatial, you must use ST_GeomFromHEXWKB(...), not ST_GeomFromWKB(...).
-SELECT xtf_tid, Name, Lage_wkb,
-       ST_GeomFromHEXWKB(Lage_wkb) AS geom,
-       ST_GeometryType(ST_GeomFromHEXWKB(Lage_wkb)) AS geometry_type
+-- 4. Read a class with geometry (WKT column)
+-- Geometries are returned as Well-Known Text (WKT) strings in VARCHAR columns.
+-- Cast to GEOMETRY with ::GEOMETRY, or use ST_GeomFromText() with the spatial extension.
+SELECT xtf_tid, Name, Lage_geom,
+       Lage_geom::GEOMETRY AS geom,
+       ST_GeometryType(Lage_geom::GEOMETRY) AS geometry_type
 FROM read_xtf_class('testdata/synthetic/geometries/valid.xtf',
     class := 'SO_AGI_Geometries_20260605.Topic.PunktObjekt',
     modeldir := 'testdata/synthetic/geometries');

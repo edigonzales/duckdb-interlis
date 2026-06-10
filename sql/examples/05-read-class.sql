@@ -63,16 +63,16 @@ FROM read_xtf_class('testdata/synthetic/structures/valid.xtf',
 
 SELECT '=== Geometry: class with COORD ===' AS example;
 SELECT xtf_tid, Name,
-    CASE WHEN Lage_wkb != '' THEN 'has geometry' ELSE 'no geometry' END AS has_geom,
-    length(Lage_wkb) AS wkb_bytes
+    CASE WHEN Lage_geom != '' THEN 'has geometry' ELSE 'no geometry' END AS has_geom,
+    length(Lage_geom) AS wkt_length
 FROM read_xtf_class('testdata/synthetic/geometries/valid.xtf',
     class := 'SO_AGI_Geometries_20260605.Topic.PunktObjekt',
     modeldir := 'testdata/synthetic/geometries');
 
 SELECT '=== Geometry: class with SURFACE ===' AS example;
 SELECT xtf_tid, Name,
-    CASE WHEN Flaeche_wkb != '' THEN 'has geometry' ELSE 'no geometry' END AS has_geom,
-    length(Flaeche_wkb) AS wkb_bytes
+    CASE WHEN Flaeche_geom != '' THEN 'has geometry' ELSE 'no geometry' END AS has_geom,
+    length(Flaeche_geom) AS wkt_length
 FROM read_xtf_class('testdata/synthetic/geometries/valid.xtf',
     class := 'SO_AGI_Geometries_20260605.Topic.FlaechenObjekt',
     modeldir := 'testdata/synthetic/geometries');

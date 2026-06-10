@@ -55,15 +55,21 @@ Table and column names use the `topic__class` pattern with lowercase sanitizatio
 
 ## Geometry Format and Spatial Integration
 
-Geometry attributes are returned as **uppercase hexadecimal WKB strings** (HEX-WKB) in `VARCHAR` columns with the `_wkb` suffix. This is not binary WKB (BLOB). To convert these columns into DuckDB `GEOMETRY` values, you **must** install and load the `spatial` extension and use `ST_GeomFromHEXWKB(...)`:
+Geometry attributes are returned as **Well-Known Text (WKT) strings** in `VARCHAR` columns with the `_geom` suffix (e.g. `Lage_geom`). DuckDB v1.5+ supports `GEOMETRY` as a built-in type, so you can cast directly without loading the `spatial` extension simply to create `GEOMETRY` values:
+
+```sql
+SELECT Lage_geom::GEOMETRY AS geom FROM read_xtf_class(...);
+```
+
+The `spatial` extension is only required for spatial functions (e.g. `ST_GeometryType`, `ST_IsValid`, `ST_Area`, `ST_Intersection`):
 
 ```sql
 INSTALL spatial;
 LOAD spatial;
-SELECT ST_GeomFromHEXWKB(Lage_wkb) AS geom FROM read_xtf_class(...);
+SELECT ST_GeometryType(Lage_geom::GEOMETRY) AS type,
+       ST_IsValid(Lage_geom::GEOMETRY) AS valid
+FROM read_xtf_class(...);
 ```
-
-Using `ST_GeomFromWKB(...)` on a `_wkb` column will fail because `ST_GeomFromWKB` expects binary data, not a hex string.
 
 ## Supported Geometry Types
 
@@ -85,7 +91,7 @@ The following OGC geometry types are supported via INTERLIS mapping:
 **Verified behaviour:** The underlying `iox-ili` library (JTS 1.14.0 `Iox2jtsext.coord2hexwkb`) produces **2D WKB** even when the INTERLIS model declares 3D coordinates (`C3`/`Z`). By default (`preserveZ=true`), the encoder throws `UnsupportedGeometryException` when a 3D attribute results in 2D WKB output, so the error is never silent. Set `preserveZ=false` to allow 2D output for 3D-declared attributes.
 
 ```sql
--- Will return a JSON error marker in the _wkb cell for 3D geometry:
+-- Will return a JSON error marker in the _geom cell for 3D geometry:
 -- {"_geometry_error":"Geometry conversion failed: ... 3D coordinate declared but WKB output is 2D ..."}
 ```
 

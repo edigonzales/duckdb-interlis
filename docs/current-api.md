@@ -344,7 +344,7 @@
 | `xtf_class` | VARCHAR | Short class name |
 | `unsupported_json` | VARCHAR | JSON with attributes not in the schema |
 
-Plus: one column per scalar attribute, `*_wkb` for geometry attributes, `*_json` for STRUCTURE/BAG attributes, `*_ref` for role references.
+Plus: one column per scalar attribute, `*_geom` for geometry attributes (WKT), `*_json` for STRUCTURE/BAG attributes, `*_ref` for role references.
 
 **NULL behaviour:** Missing attribute values are returned as **empty strings** (`""`), not NULL. Missing geometry returns `""`, not NULL. Missing integer values return `""`, not NULL.
 

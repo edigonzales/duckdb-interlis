@@ -130,7 +130,7 @@ public class IliImportService {
             if (vte.obj instanceof AttributeDef ad) {
                 String type = mapScalarType(ad);
                 if (isGeometryDomain(ad) || isMultiGeometryDomain(ad)) {
-                    cols.add(new ColInfo(ad.getScopedName(null), ad.getName() + "_wkb", type));
+                    cols.add(new ColInfo(ad.getScopedName(null), ad.getName() + "_geom", type));
                 } else if (isStructureDomain(ad) || isCompositionDomain(ad)) {
                     cols.add(new ColInfo(ad.getScopedName(null), ad.getName() + "_json", type));
                 } else {

@@ -1,10 +1,14 @@
 package ch.so.agi.duckdbili.core.geometry;
 
+import com.vividsolutions.jts.geom.Geometry;
+import com.vividsolutions.jts.io.WKBReader;
+import com.vividsolutions.jts.io.WKTWriter;
+
 import java.util.Objects;
 
 /**
  * Immutable value object representing a converted geometry.
- * Internally stores WKB as {@code byte[]}; the hex string is produced on demand.
+ * Internally stores WKB as {@code byte[]}; WKT and hex strings are produced on demand.
  */
 public final class GeometryValue {
 
@@ -36,6 +40,23 @@ public final class GeometryValue {
      */
     public String hexWkb() {
         return wkb == null ? null : HexWkbCodec.encode(wkb);
+    }
+
+    /**
+     * Returns Well-Known Text (WKT), or {@code null} if WKB is null.
+     * Converts WKB → JTS Geometry → WKT.
+     */
+    public String wkt() {
+        if (wkb == null) return null;
+        try {
+            WKBReader reader = new WKBReader();
+            Geometry geom = reader.read(wkb);
+            WKTWriter writer = new WKTWriter();
+            return writer.write(geom);
+        } catch (Exception e) {
+            throw new IllegalStateException(
+                    "Failed to convert WKB to WKT for " + metadata.attributeFqn() + ": " + e.getMessage(), e);
+        }
     }
 
     public GeometryDimension actualDimension() {
