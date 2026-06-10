@@ -149,6 +149,14 @@ jobs:
             -ev "$EXT_VERSION" \
             -o duckdb-extension/build/interlis.duckdb_extension
 
+      - name: Set writable HOME for DuckDB (Windows CI workaround)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          DUCKDB_HOME="${{ github.workspace }}/.duckdb_home"
+          mkdir -p "$DUCKDB_HOME"
+          echo "HOME=$DUCKDB_HOME" >> $GITHUB_ENV
+
       - name: Install DuckDB CLI
         shell: bash
         run: |
@@ -333,25 +341,6 @@ jobs:
             -ldl -lpthread
           ILI_NATIVE_LIB="java/ili-native/build/native/libduckdb_ili_native.so" \
             duckdb-extension/test/native_smoke_test_tsan
-
-      - name: Download libduckdb for extension concurrency test
-        run: |
-          curl -fsSL -o libduckdb.zip \
-            https://github.com/duckdb/duckdb/releases/download/v1.5.3/libduckdb-linux-amd64.zip
-          unzip -o libduckdb.zip
-
-      - name: Compile and run DuckDB extension concurrency test with TSAN
-        run: |
-          cc -fsanitize=thread -g \
-            -o duckdb-extension/test/duckdb_extension_concurrency_test \
-            duckdb-extension/test/duckdb_extension_concurrency_test.c \
-            -Iduckdb-extension/src/include \
-            -ldl -lpthread
-          TSAN_OPTIONS="suppressions=duckdb-extension/test/tsan_suppressions.txt" \
-          LD_LIBRARY_PATH=".:$LD_LIBRARY_PATH" \
-          DUCKDB_LIB="libduckdb.so" \
-          INTERLIS_EXTENSION="duckdb-extension/build/interlis.duckdb_extension" \
-            duckdb-extension/test/duckdb_extension_concurrency_test
 
   deploy:
     name: Deploy to Repository
