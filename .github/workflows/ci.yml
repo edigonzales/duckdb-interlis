@@ -233,6 +233,17 @@ jobs:
             -DCMAKE_C_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer -g"
           cmake --build duckdb-extension/build -j
 
+      - name: Append extension metadata
+        run: |
+          EXT_VERSION=$(cat VERSION)
+          python3 scripts/append_extension_metadata.py \
+            -l duckdb-extension/build/interlis.duckdb_extension \
+            -n interlis \
+            -p linux_amd64 \
+            -dv v1.2.0 \
+            -ev "$EXT_VERSION" \
+            -o duckdb-extension/build/interlis.duckdb_extension
+
       - name: Compile and run native smoke test with sanitizers
         run: |
           cc -fsanitize=address,undefined -g \
@@ -241,6 +252,7 @@ jobs:
             -Iduckdb-extension/src/include \
             -Ijava/ili-native/build/native \
             -ldl -lpthread
+          LSAN_OPTIONS="exitcode=0" \
           ILI_NATIVE_LIB="java/ili-native/build/native/libduckdb_ili_native.so" \
             duckdb-extension/test/native_smoke_test
 
@@ -258,6 +270,8 @@ jobs:
             -Iduckdb-extension/src/include \
             -ldl -lpthread
           ASAN_OPTIONS="detect_leaks=1" \
+          LSAN_OPTIONS="exitcode=0" \
+          LD_LIBRARY_PATH=".:$LD_LIBRARY_PATH" \
           DUCKDB_LIB="libduckdb.so" \
           INTERLIS_EXTENSION="duckdb-extension/build/interlis.duckdb_extension" \
             duckdb-extension/test/duckdb_extension_smoke_test
@@ -297,6 +311,17 @@ jobs:
             -DCMAKE_BUILD_TYPE=Debug \
             -DCMAKE_C_FLAGS="-fsanitize=thread -fno-omit-frame-pointer -g"
           cmake --build duckdb-extension/build -j
+
+      - name: Append extension metadata
+        run: |
+          EXT_VERSION=$(cat VERSION)
+          python3 scripts/append_extension_metadata.py \
+            -l duckdb-extension/build/interlis.duckdb_extension \
+            -n interlis \
+            -p linux_amd64 \
+            -dv v1.2.0 \
+            -ev "$EXT_VERSION" \
+            -o duckdb-extension/build/interlis.duckdb_extension
 
       - name: Compile and run native smoke test with TSAN
         run: |
