@@ -31,14 +31,12 @@ SELECT xtf_class, count(*) AS cnt FROM read_xtf_objects('testdata/synthetic/simp
 
 SELECT '=== CONCURRENCY-6: Parallel class reads ===' AS test;
 
-SELECT b.name, b.bfs_nr
-FROM (
-    SELECT unnest(['Gemeinde', 'Abbaustelle']) AS class_name
-) c,
-LATERAL (
-    SELECT * FROM read_xtf_class('testdata/synthetic/simple/valid.xtf',
-        class := 'SO_AGI_Simple_20260605.Topic.' || c.class_name,
-        modeldir := 'testdata/synthetic/simple')
-) b;
+SELECT xtf_class, xtf_tid, "Name" FROM read_xtf_class('testdata/synthetic/simple/valid.xtf',
+    class := 'SO_AGI_Simple_20260605.Topic.Gemeinde',
+    modeldir := 'testdata/synthetic/simple')
+UNION ALL
+SELECT xtf_class, xtf_tid, "Name" FROM read_xtf_class('testdata/synthetic/simple/valid.xtf',
+    class := 'SO_AGI_Simple_20260605.Topic.Abbaustelle',
+    modeldir := 'testdata/synthetic/simple');
 
 SELECT '=== CONCURRENCY: All tests passed ===' AS test;

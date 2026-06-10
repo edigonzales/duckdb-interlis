@@ -323,6 +323,7 @@ jobs:
             -Iduckdb-extension/src/include \
             -ldl -lpthread
           TSAN_OPTIONS="suppressions=duckdb-extension/test/tsan_suppressions.txt" \
+          LD_LIBRARY_PATH=".:$LD_LIBRARY_PATH" \
           DUCKDB_LIB="libduckdb.so" \
           INTERLIS_EXTENSION="duckdb-extension/build/interlis.duckdb_extension" \
             duckdb-extension/test/duckdb_extension_concurrency_test

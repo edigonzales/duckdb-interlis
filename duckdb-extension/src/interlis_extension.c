@@ -216,6 +216,22 @@ static void build_cache_dir(char *buf, size_t bufsize) {
     }
 }
 
+static void get_temp_dir(char *buf, size_t bufsize) {
+    const char *tmp = NULL;
+#ifdef _WIN32
+    tmp = getenv("TEMP");
+    if (!tmp) tmp = getenv("TMP");
+#else
+    tmp = getenv("TMPDIR");
+    if (!tmp) tmp = "/tmp";
+#endif
+    if (tmp) {
+        snprintf(buf, bufsize, "%s/duckdb-interlis-natives", tmp);
+    } else {
+        buf[0] = '\0';
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Construct cached library filename with version, ABI, platform, and hash
 // Format: {ext_version}_{abi_version}_{platform}_{hash_short}_{lib_name}
@@ -445,6 +461,37 @@ static const char *resolve_native_lib_path(void) {
                 ili_strerror(errno, errstr, sizeof(errstr));
                 snprintf(g_path_error, sizeof(g_path_error),
                     "Failed to create cache directory '%s': %s", cache_dir, errstr);
+            }
+        }
+    }
+
+    // 2b. Temp directory fallback (when home cache not writable, e.g. CI)
+    {
+        char tmp_dir[512];
+        get_temp_dir(tmp_dir, sizeof(tmp_dir));
+        if (tmp_dir[0]) {
+            static char tmp_cache_path[2048];
+            cache_file_name(tmp_cache_path, sizeof(tmp_cache_path));
+
+            static char tmp_full_path[2048];
+            int n = snprintf(tmp_full_path, sizeof(tmp_full_path), "%s/%s", tmp_dir, tmp_cache_path);
+            if (n >= 0 && (size_t)n < sizeof(tmp_full_path)) {
+                if (file_exists(tmp_full_path)) {
+                    if (verify_file_hash(tmp_full_path, g_path_error, sizeof(g_path_error))) {
+                        ILI_DEBUG_LOG("Native library temp cache HIT: %s", tmp_full_path);
+                        return tmp_full_path;
+                    } else {
+                        unlink(tmp_full_path);
+                    }
+                }
+
+                if (make_dir_recursive_safe(tmp_dir) == 0) {
+                    ILI_DEBUG_LOG("Extracting native library to temp: %s", tmp_full_path);
+                    if (extract_native_lib_safe(tmp_full_path, g_path_error, sizeof(g_path_error))) {
+                        ILI_DEBUG_LOG("Native library temp extraction successful");
+                        return tmp_full_path;
+                    }
+                }
             }
         }
     }
