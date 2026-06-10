@@ -5,6 +5,7 @@ import ch.interlis.ili2c.Main;
 import ch.interlis.ili2c.config.Configuration;
 import ch.interlis.ili2c.metamodel.*;
 import ch.interlis.ilirepository.IliManager;
+import ch.so.agi.duckdbili.core.geometry.*;
 import ch.so.agi.duckdbili.core.logging.IliLogger;
 import ch.so.agi.duckdbili.core.model.ModelCache;
 import ch.so.agi.duckdbili.core.model.ModelRepositoryResolver;
@@ -19,6 +20,14 @@ public class IliImportService {
     private static final String DEFAULT_MODELDIR = System.getenv("ILI_DEFAULT_MODELDIR") != null
             ? System.getenv("ILI_DEFAULT_MODELDIR")
             : "https://models.interlis.ch";
+
+    private final GeometryCrsResolver crsResolver;
+    private final InterlisGeometryTypeResolver geometryTypeResolver;
+
+    public IliImportService() {
+        this.crsResolver = new MapGeometryCrsResolver();
+        this.geometryTypeResolver = new InterlisGeometryTypeResolver();
+    }
 
     public String generateImportSql(String xtfPath, String modelDir, String schema, String mapping, String mode) {
         long startNanos = System.nanoTime();
@@ -77,7 +86,7 @@ public class IliImportService {
                         String classFqn = model.getName() + "." + topic.getName() + "." + classDef.getName();
                         String tableName = buildTableName(topic, classDef.getName());
                         ensureNoTableCollision(tableName, classFqn, tableNames);
-                        List<ColInfo> cols = buildClassColumns(classDef);
+                        List<ColInfo> cols = buildClassColumns(model, topic, classDef);
                         if (effectiveMode.equals("replace")) {
                             sql.append("DROP TABLE IF EXISTS ").append(SqlIdentifiers.quoteIdent(schema)).append(".")
                               .append(SqlIdentifiers.quoteIdent(tableName)).append(";\n");
@@ -120,7 +129,7 @@ public class IliImportService {
 
     private static final List<String> TECH_COLS = List.of("xtf_bid", "xtf_tid", "xtf_class");
 
-    private List<ColInfo> buildClassColumns(AbstractClassDef cdef) {
+    private List<ColInfo> buildClassColumns(Model model, Topic topic, AbstractClassDef cdef) {
         List<ColInfo> cols = new ArrayList<>();
         for (String tc : TECH_COLS) cols.add(new ColInfo("<technical>", tc, "VARCHAR"));
 
@@ -128,12 +137,14 @@ public class IliImportService {
         while (ait.hasNext()) {
             ViewableTransferElement vte = (ViewableTransferElement) ait.next();
             if (vte.obj instanceof AttributeDef ad) {
-                String type = mapScalarType(ad);
                 if (isGeometryDomain(ad) || isMultiGeometryDomain(ad)) {
-                    cols.add(new ColInfo(ad.getScopedName(null), ad.getName() + "_geom", type));
+                    String geomType = resolveGeometryType(ad, model, topic, cdef);
+                    cols.add(new ColInfo(ad.getScopedName(null), ad.getName() + "_geom", geomType));
                 } else if (isStructureDomain(ad) || isCompositionDomain(ad)) {
+                    String type = mapScalarType(ad);
                     cols.add(new ColInfo(ad.getScopedName(null), ad.getName() + "_json", type));
                 } else {
+                    String type = mapScalarType(ad);
                     cols.add(new ColInfo(ad.getScopedName(null), ad.getName(), type));
                 }
             } else if (vte.obj instanceof RoleDef rd) {
@@ -143,6 +154,26 @@ public class IliImportService {
         cols.add(new ColInfo("<technical>", "unsupported_json", "VARCHAR"));
         ensureNoColumnCollisions(cdef.getScopedName(null), cols);
         return cols;
+    }
+
+    /**
+     * Resolves the DuckDB geometry type for an attribute.
+     * If a CRS mapping is configured for the coordinate domain, returns
+     * {@code GEOMETRY('EPSG:2056')}; otherwise returns bare {@code GEOMETRY}.
+     */
+    private String resolveGeometryType(AttributeDef ad, Model model, Topic topic, AbstractClassDef classDef) {
+        GeometryMetadata meta = geometryTypeResolver.resolveMetadata(model, topic, classDef, ad);
+        if (meta.coordinateDomainFqn() != null) {
+            GeometryMetadataContext ctx = new GeometryMetadataContext(
+                    meta.modelName(), meta.topicName(),
+                    meta.className(), meta.attributeName(),
+                    meta.coordinateDomainFqn());
+            var crs = crsResolver.resolve(ctx);
+            if (crs.isPresent()) {
+                return "GEOMETRY('" + crs.get().authority() + ":" + crs.get().code() + "')";
+            }
+        }
+        return "GEOMETRY";
     }
 
     private List<ColInfo> buildAssociationColumns(AssociationDef adef) {
@@ -222,8 +253,13 @@ public class IliImportService {
         List<String> parts = new ArrayList<>();
         for (ColInfo ci : cols) {
             if ("VARCHAR".equals(ci.duckdbType)) {
-                // read_xtf_class/read_xtf_association returns VARCHAR for everything
                 parts.add(SqlIdentifiers.quoteIdent(ci.name));
+            } else if ("GEOMETRY".equals(ci.duckdbType)) {
+                // read_xtf_class returns bare GEOMETRY; no CAST needed
+                parts.add(SqlIdentifiers.quoteIdent(ci.name));
+            } else if (ci.duckdbType.startsWith("GEOMETRY(")) {
+                // CRS-typed geometry: CAST from bare GEOMETRY to typed GEOMETRY('EPSG:2056')
+                parts.add("CAST(" + SqlIdentifiers.quoteIdent(ci.name) + " AS " + ci.duckdbType + ")");
             } else {
                 parts.add("CAST(" + SqlIdentifiers.quoteIdent(ci.name) + " AS " + ci.duckdbType + ")");
             }
@@ -265,7 +301,7 @@ public class IliImportService {
                 || domain instanceof MultiCoordType
                 || domain instanceof MultiSurfaceType
                 || domain instanceof MultiPolylineType
-                || domain instanceof MultiAreaType) return "VARCHAR";
+                || domain instanceof MultiAreaType) return "GEOMETRY";
         if (domain instanceof ObjectType || domain instanceof CompositionType) return "VARCHAR";
         if (domain instanceof ReferenceType) return "VARCHAR";
 

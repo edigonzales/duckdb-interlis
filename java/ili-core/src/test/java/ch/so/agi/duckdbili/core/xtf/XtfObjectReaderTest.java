@@ -176,4 +176,98 @@ class XtfObjectReaderTest {
         assertTrue(result.contains("Max Muster"));
         assertTrue(result.contains("Anna Beispiel"));
     }
+
+    // -------------------------------------------------------------------
+    // Schema v2 tests (Phase 1)
+    // -------------------------------------------------------------------
+    private static final Path GEOM_DIR;
+    static {
+        Path cwd = Path.of("").toAbsolutePath();
+        if (Files.isRegularFile(cwd.resolve("testdata/synthetic/geometries/SO_AGI_Geometries_20260605.ili"))) {
+            GEOM_DIR = cwd.resolve("testdata/synthetic/geometries");
+        } else if (Files.isRegularFile(cwd.getParent().resolve("testdata/synthetic/geometries/SO_AGI_Geometries_20260605.ili"))) {
+            GEOM_DIR = cwd.getParent().resolve("testdata/synthetic/geometries");
+        } else {
+            GEOM_DIR = cwd.getParent().getParent().resolve("testdata/synthetic/geometries");
+        }
+    }
+
+    private static final String GEOM_MODELDIR = GEOM_DIR.toString();
+    private static final String GEOM_XTF = GEOM_DIR.resolve("valid.xtf").toString();
+    private static final String PUNKT_KLASSE = "SO_AGI_Geometries_20260605.Topic.PunktObjekt";
+    private static final String FLAECHEN_KLASSE = "SO_AGI_Geometries_20260605.Topic.FlaechenObjekt";
+
+    @Test
+    void readClassSchemaV2_geometryColumnsMarkedAsGEOMETRY() {
+        String schema = reader.readClassSchemaV2(PUNKT_KLASSE, GEOM_MODELDIR);
+        assertNotNull(schema);
+        assertFalse(schema.isBlank());
+
+        String[] lines = schema.split("\n");
+        boolean foundGeomColumn = false;
+        for (String line : lines) {
+            String[] fields = line.split("\t", -1);
+            if (fields.length >= 4 && fields[0].contains("Lage_geom")) {
+                foundGeomColumn = true;
+                assertEquals("GEOMETRY", fields[1], "Geometry column should have GEOMETRY type");
+                assertEquals("HEX_WKB", fields[2], "Geometry column should have HEX_WKB encoding");
+                assertEquals("true", fields[3], "Geometry column should be nullable");
+            }
+            if (fields.length >= 4 && fields[0].equals("Name")) {
+                assertEquals("VARCHAR", fields[1], "Scalar column should have VARCHAR type");
+                assertEquals("TEXT", fields[2], "Scalar column should have TEXT encoding");
+            }
+        }
+        assertTrue(foundGeomColumn, "Should find Lage_geom column in schema v2");
+    }
+
+    @Test
+    void readClassSchemaV2_polygonMarkedAsPOLYGON() {
+        String schema = reader.readClassSchemaV2(FLAECHEN_KLASSE, GEOM_MODELDIR);
+        String[] lines = schema.split("\n");
+        boolean found = false;
+        for (String line : lines) {
+            if (line.contains("Flaeche_geom")) {
+                found = true;
+                String[] fields = line.split("\t", -1);
+                assertEquals("GEOMETRY", fields[1]);
+                assertTrue(fields[4] != null && !fields[4].isEmpty(), "geometry_kind should be set");
+            }
+        }
+        assertTrue(found);
+    }
+
+    @Test
+    void readClassV2_geometryIsHexWKB() {
+        String result = reader.readClassV2(GEOM_XTF, PUNKT_KLASSE, GEOM_MODELDIR, "json");
+        assertNotNull(result);
+        assertFalse(result.isBlank());
+
+        String[] lines = result.split("\n");
+        assertTrue(lines.length >= 2, "Should have header + data");
+
+        // Find Lage_geom column index
+        String[] header = lines[0].split("\t", -1);
+        int geomIdx = -1;
+        for (int i = 0; i < header.length; i++) {
+            if (header[i].equals("Lage_geom")) { geomIdx = i; break; }
+        }
+        assertTrue(geomIdx > 0, "Should have Lage_geom column");
+
+        // Check that geometry value is hex WKB (uppercase, even length, no spaces)
+        for (int i = 1; i < lines.length; i++) {
+            String[] fields = lines[i].split("\t", -1);
+            if (fields.length > geomIdx && fields[1].equals("p1")) {
+                String geomVal = fields[geomIdx];
+                assertNotNull(geomVal);
+                // Hex WKB should be uppercase, even length, only hex chars
+                assertTrue(geomVal.matches("^[0-9A-F]*$"),
+                    "Geometry value should be uppercase hex: " + geomVal);
+                assertTrue(geomVal.length() % 2 == 0,
+                    "Hex WKB should have even length");
+                assertFalse(geomVal.contains(" "),
+                    "Hex WKB should not contain spaces (WKT)");
+            }
+        }
+    }
 }

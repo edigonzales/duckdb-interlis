@@ -1,7 +1,9 @@
 package ch.so.agi.duckdbili.core.geometry;
 
 import com.vividsolutions.jts.geom.Geometry;
+import com.vividsolutions.jts.io.ByteOrderValues;
 import com.vividsolutions.jts.io.WKBReader;
+import com.vividsolutions.jts.io.WKBWriter;
 import com.vividsolutions.jts.io.WKTWriter;
 
 import java.util.Objects;
@@ -29,17 +31,36 @@ public final class GeometryValue {
     }
 
     /**
-     * Returns a defensive copy of the WKB byte array.
+     * Returns a defensive copy of the WKB byte array (may be big-endian from ioX).
      */
     public byte[] wkb() {
         return wkb != null ? wkb.clone() : null;
     }
 
     /**
-     * Returns the uppercase hex-encoded WKB, or {@code null} if WKB is null.
+     * Returns the uppercase hex-encoded WKB (big-endian from ioX), or {@code null} if WKB is null.
      */
     public String hexWkb() {
         return wkb == null ? null : HexWkbCodec.encode(wkb);
+    }
+
+    /**
+     * Returns little-endian hex-encoded WKB for DuckDB GEOMETRY native transport.
+     * DuckDB 1.5.3 expects little-endian WKB internally.
+     * Converts via JTS (WKB→Geometry→LE-WKB) — a one-time roundtrip for transport.
+     */
+    public String hexWkbLE() {
+        if (wkb == null) return null;
+        try {
+            WKBReader reader = new WKBReader();
+            Geometry geom = reader.read(wkb);
+            WKBWriter writer = new WKBWriter(2, ByteOrderValues.LITTLE_ENDIAN);
+            byte[] wkbLE = writer.write(geom);
+            return HexWkbCodec.encode(wkbLE);
+        } catch (Exception e) {
+            throw new IllegalStateException(
+                    "Failed to convert WKB to little-endian for " + metadata.attributeFqn() + ": " + e.getMessage(), e);
+        }
     }
 
     /**

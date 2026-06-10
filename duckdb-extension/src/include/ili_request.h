@@ -69,11 +69,15 @@ typedef struct ili_request {
 #define ILI_CAP_READ_XTF_ASSOC_SCHEMA (1ULL << 9)
 #define ILI_CAP_IMPORT_XTF            (1ULL << 10)
 #define ILI_CAP_FREE_STRING           (1ULL << 11)
+#define ILI_CAP_TYPED_CLASS_SCAN      (1ULL << 12)
 
 /*
  * All capabilities required for the core ILI extension functionality.
  * ABI v1 treats all 12 public API functions as mandatory.
  * Bits 0-11 must all be present.
+ * ILI_CAP_TYPED_CLASS_SCAN (bit 12) is optional/gradual: if present,
+ * the extension uses typed schema v2 and GEOMETRY columns.
+ * If absent, the extension uses the v1 compatibility path (VARCHAR columns).
  */
 #define ILI_CAP_REQUIRED_MASK \
     (ILI_CAP_VERSION | ILI_CAP_VALIDATE | ILI_CAP_VALIDATE_TSV | \
@@ -107,6 +111,9 @@ typedef struct ili_api_v1 {
 } ili_api_v1;
 
 int ili_get_api(graal_isolatethread_t *thread, uint32_t requested_abi_version, char **out_payload);
+
+// Function pointer type for all ili_request-based native API calls
+typedef int (*native_struct_fn)(graal_isolatethread_t *, ili_request *, char **);
 
 #ifdef __cplusplus
 }

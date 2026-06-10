@@ -30,6 +30,7 @@ public class XtfObjectReader {
     private final InterlisGeometryTypeResolver geometryTypeResolver;
     private final InterlisGeometryEncoder geometryEncoder;
     private final GeometryConversionOptions geometryOptions;
+    private final GeometryCrsResolver crsResolver;
 
     public XtfObjectReader() {
         this.geometryTypeResolver = new InterlisGeometryTypeResolver();
@@ -38,18 +39,29 @@ public class XtfObjectReader {
                 geometryTypeResolver,
                 new InterlisGeometryExtractor(),
                 geometryOptions);
+        this.crsResolver = new MapGeometryCrsResolver();
     }
 
     public XtfObjectReader(
             InterlisGeometryTypeResolver geometryTypeResolver,
             InterlisGeometryEncoder geometryEncoder,
             GeometryConversionOptions geometryOptions) {
+        this(geometryTypeResolver, geometryEncoder, geometryOptions, new MapGeometryCrsResolver());
+    }
+
+    public XtfObjectReader(
+            InterlisGeometryTypeResolver geometryTypeResolver,
+            InterlisGeometryEncoder geometryEncoder,
+            GeometryConversionOptions geometryOptions,
+            GeometryCrsResolver crsResolver) {
         if (geometryTypeResolver == null) throw new NullPointerException("geometryTypeResolver is null");
         if (geometryEncoder == null) throw new NullPointerException("geometryEncoder is null");
         if (geometryOptions == null) throw new NullPointerException("geometryOptions is null");
+        if (crsResolver == null) throw new NullPointerException("crsResolver is null");
         this.geometryTypeResolver = geometryTypeResolver;
         this.geometryEncoder = geometryEncoder;
         this.geometryOptions = geometryOptions;
+        this.crsResolver = crsResolver;
     }
 
     /**
@@ -112,15 +124,111 @@ public class XtfObjectReader {
         return sb.toString();
     }
 
+    /**
+     * Returns a typed schema descriptor (v2) for a class.
+     * One line per column, TSV-encoded with fields:
+     * name, logical_type, wire_encoding, nullable, geometry_kind, crs_auth_name, crs_code
+     * <p>
+     * Geometry columns report GEOMETRY/HEX_WKB; scalar columns report VARCHAR/TEXT.
+     * This is the basis for typed bind in C (DUCKDB_TYPE_GEOMETRY vs DUCKDB_TYPE_VARCHAR).
+     */
+    public String readClassSchemaV2(String className, String modelDir) {
+        TransferDescription td = compileModel(modelDir, extractModelName(className));
+
+        String[] parts = className.split("\\.");
+        if (parts.length < 3) throw new IllegalArgumentException("Class name must be fully qualified (Model.Topic.Class), got: " + className);
+
+        AbstractClassDef cdef = findClass(td, parts[0], parts[1], parts[2]);
+        if (cdef == null) throw new IllegalArgumentException("Class not found in model: " + className);
+
+        StringBuilder sb = new StringBuilder();
+
+        // Fixed columns: always VARCHAR/TEXT, non-nullable
+        appendSchemaRow(sb, "xtf_bid", "VARCHAR", "TEXT", "false", "", "", "");
+        appendSchemaRow(sb, "xtf_tid", "VARCHAR", "TEXT", "false", "", "", "");
+        appendSchemaRow(sb, "xtf_class", "VARCHAR", "TEXT", "false", "", "", "");
+
+        Iterator<?> ait = cdef.getAttributesAndRoles2();
+        while (ait.hasNext()) {
+            ViewableTransferElement vte = (ViewableTransferElement) ait.next();
+            if (vte.obj instanceof AttributeDef ad) {
+                String colName;
+                boolean isGeom = geometryTypeResolver.isGeometryAttribute(ad);
+                if (isGeom) {
+                    colName = ad.getName() + "_geom";
+                    GeometryKind kind = geometryTypeResolver.resolveGeometryKind(ad);
+                    Model model = findModel(td, parts[0]);
+                    Topic topic = (model != null) ? findTopic(model, parts[1]) : null;
+                    GeometryMetadata meta = geometryTypeResolver.resolveMetadata(
+                            model, topic, cdef, ad);
+                    String crsAuth = "";
+                    String crsCode = "";
+                    if (meta != null && meta.coordinateDomainFqn() != null) {
+                        GeometryMetadataContext ctx = new GeometryMetadataContext(
+                                parts[0], parts[1], parts[2], ad.getName(), meta.coordinateDomainFqn());
+                        var crs = crsResolver.resolve(ctx);
+                        if (crs.isPresent()) {
+                            crsAuth = crs.get().authority();
+                            crsCode = crs.get().code();
+                        }
+                    }
+                    appendSchemaRow(sb, colName, "GEOMETRY", "HEX_WKB", "true",
+                            kind != null ? kind.name() : "UNKNOWN",
+                            crsAuth, crsCode);
+                } else if (isStructureDomain(ad) || isCompositionDomain(ad)) {
+                    colName = ad.getName() + "_json";
+                    appendSchemaRow(sb, colName, "VARCHAR", "TEXT", "true", "", "", "");
+                } else {
+                    colName = ad.getName();
+                    appendSchemaRow(sb, colName, "VARCHAR", "TEXT", "true", "", "", "");
+                }
+            } else if (vte.obj instanceof RoleDef rd) {
+                appendSchemaRow(sb, rd.getName() + "_ref", "VARCHAR", "TEXT", "true", "", "", "");
+            }
+        }
+
+        appendSchemaRow(sb, "unsupported_json", "VARCHAR", "TEXT", "true", "", "", "");
+        return sb.toString();
+    }
+
+    /**
+     * Reads class-specific data with typed v2 transport.
+     * Geometry columns use hex-WKB encoding; scalar columns use plain text.
+     * Header line is the same as v1 (column names only).
+     * Data lines use hex-WKB for geometry columns instead of WKT.
+     */
+    public String readClassV2(String xtfPath, String className, String modelDir, String nested) {
+        String effectiveNested = nested != null ? nested : "json";
+        return readXtfInternal(xtfPath, modelDir, extractModelName(className), className, effectiveNested, true);
+    }
+
     // -----------------------------------------------------------------------
     // Internal
     // -----------------------------------------------------------------------
 
+    private void appendSchemaRow(StringBuilder sb, String name, String logicalType,
+                                  String wireEncoding, String nullable,
+                                  String geometryKind, String crsAuth, String crsCode) {
+        if (sb.length() > 0) sb.append('\n');
+        sb.append(TsvCodec.encodeNullable(name)).append('\t');
+        sb.append(TsvCodec.encodeNullable(logicalType)).append('\t');
+        sb.append(TsvCodec.encodeNullable(wireEncoding)).append('\t');
+        sb.append(TsvCodec.encodeNullable(nullable)).append('\t');
+        sb.append(TsvCodec.encodeNullable(geometryKind.isEmpty() ? null : geometryKind)).append('\t');
+        sb.append(TsvCodec.encodeNullable(crsAuth.isEmpty() ? null : crsAuth)).append('\t');
+        sb.append(TsvCodec.encodeNullable(crsCode.isEmpty() ? null : crsCode));
+    }
+
     private String readXtf(String xtfPath, String modelDir, String modelNames, String className) {
-        return readXtf(xtfPath, modelDir, modelNames, className, "json");
+        return readXtfInternal(xtfPath, modelDir, modelNames, className, "json", false);
     }
 
     private String readXtf(String xtfPath, String modelDir, String modelNames, String className, String nested) {
+        return readXtfInternal(xtfPath, modelDir, modelNames, className, nested, false);
+    }
+
+    private String readXtfInternal(String xtfPath, String modelDir, String modelNames,
+                                    String className, String nested, boolean useHexWkb) {
         long startNanos = System.nanoTime();
 
         // Build effective modeldir: user-specified > XTF directory > default
@@ -239,16 +347,22 @@ public class XtfObjectReader {
                         for (String an : geomAttrs) {
                             AttributeDef ad = attrDefMap.get(an);
                             GeometryMetadata meta = geomMetaMap.get(an);
-                            String wkt = null;
-                            try {
+                            if (useHexWkb) {
                                 Optional<GeometryValue> val = geometryEncoder.encodeAttribute(obj, ad, meta);
-                                wkt = val.map(GeometryValue::wkt).orElse(null);
-                            } catch (GeometryConversionException e) {
-                                wkt = "{\"_geometry_error\":\"" + escJson(e.getMessage()) + "\"}";
-                            } catch (Exception e) {
-                                wkt = "{\"_geometry_error\":\"" + escJson(e.getClass().getSimpleName() + ": " + e.getMessage()) + "\"}";
+                                String hex = val.map(GeometryValue::hexWkbLE).orElse(null);
+                                sb.append('\t').append(TsvCodec.encodeNullable(hex));
+                            } else {
+                                String wkt = null;
+                                try {
+                                    Optional<GeometryValue> val = geometryEncoder.encodeAttribute(obj, ad, meta);
+                                    wkt = val.map(GeometryValue::wkt).orElse(null);
+                                } catch (GeometryConversionException e) {
+                                    wkt = "{\"_geometry_error\":\"" + escJson(e.getMessage()) + "\"}";
+                                } catch (Exception e) {
+                                    wkt = "{\"_geometry_error\":\"" + escJson(e.getClass().getSimpleName() + ": " + e.getMessage()) + "\"}";
+                                }
+                                sb.append('\t').append(TsvCodec.encodeNullable(wkt));
                             }
-                            sb.append('\t').append(TsvCodec.encodeNullable(wkt));
                         }
                         for (String an : structureAttrs)
                             sb.append('\t').append(TsvCodec.encodeNullable(buildSingleStructureJson(obj, an)));
@@ -372,19 +486,30 @@ public class XtfObjectReader {
     }
 
     private AbstractClassDef findClass(TransferDescription td, String mn, String tn, String cn) {
+        Model m = findModel(td, mn);
+        if (m == null) return null;
+        Topic t = findTopic(m, tn);
+        if (t == null) return null;
+        for (Iterator<Element> tit = t.iterator(); tit.hasNext(); ) {
+            Element tel = tit.next();
+            if (tel instanceof AbstractClassDef c && !(tel instanceof AssociationDef) && cn.equals(c.getName()))
+                return c;
+        }
+        return null;
+    }
+
+    private static Model findModel(TransferDescription td, String mn) {
         for (Iterator<Model> it = td.iterator(); it.hasNext(); ) {
             Model m = it.next();
-            if (!mn.equals(m.getName())) continue;
-            for (Iterator<Element> eit = m.iterator(); eit.hasNext(); ) {
-                Element el = eit.next();
-                if (el instanceof Topic t && tn.equals(t.getName())) {
-                    for (Iterator<Element> tit = t.iterator(); tit.hasNext(); ) {
-                        Element tel = tit.next();
-                        if (tel instanceof AbstractClassDef c && !(tel instanceof AssociationDef) && cn.equals(c.getName()))
-                            return c;
-                    }
-                }
-            }
+            if (mn.equals(m.getName())) return m;
+        }
+        return null;
+    }
+
+    private static Topic findTopic(Model m, String tn) {
+        for (Iterator<Element> eit = m.iterator(); eit.hasNext(); ) {
+            Element el = eit.next();
+            if (el instanceof Topic t && tn.equals(t.getName())) return t;
         }
         return null;
     }

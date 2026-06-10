@@ -131,3 +131,82 @@ SELECT '--- REGRESSION-12: No ERROR prefix in data ---' AS test;
 SELECT * FROM read_xtf_objects('testdata/synthetic/simple/valid.xtf',
     modeldir := 'testdata/synthetic/simple');
 -- Expected: data rows only, no rows containing "ERROR:"
+
+-- ============================================================================
+-- Phase 0 (Baseline): Geometry column behavior – NOW IMPLEMENTED (Phases 1-3)
+-- These tests now show the post-implementation state: GEOMETRY columns,
+-- hex-WKB transport, no WKT cast needed.
+-- ============================================================================
+
+-- REGRESSION-G0: Geometry columns are GEOMETRY type (Phase 2)
+SELECT '--- REGRESSION-G0: Geometry column type is GEOMETRY ---' AS test;
+SELECT typeof(Lage_geom) AS geometry_column_type
+FROM read_xtf_class('testdata/synthetic/geometries/valid.xtf',
+    class := 'SO_AGI_Geometries_20260605.Topic.PunktObjekt',
+    modeldir := 'testdata/synthetic/geometries');
+-- Expected: GEOMETRY
+
+-- REGRESSION-G1: Geometry WKT via CAST (Phase 2)
+SELECT '--- REGRESSION-G1: Geometry WKT via CAST ---' AS test;
+SELECT xtf_tid, Name, Lage_geom::VARCHAR AS wkt
+FROM read_xtf_class('testdata/synthetic/geometries/valid.xtf',
+    class := 'SO_AGI_Geometries_20260605.Topic.PunktObjekt',
+    modeldir := 'testdata/synthetic/geometries');
+-- Expected: Lage_geom::VARCHAR = 'POINT (2605000 1203000)'
+
+-- REGRESSION-G2: All basic geometry types (Phase 2)
+-- GEOMETRY columns with valid WKT representation
+SELECT '--- REGRESSION-G2a: POINT ---' AS test;
+SELECT xtf_tid, Lage_geom::VARCHAR AS wkt
+FROM read_xtf_class('testdata/synthetic/geometries/valid.xtf',
+    class := 'SO_AGI_Geometries_20260605.Topic.PunktObjekt',
+    modeldir := 'testdata/synthetic/geometries');
+
+SELECT '--- REGRESSION-G2b: MULTIPOINT ---' AS test;
+SELECT xtf_tid, Lagen_geom::VARCHAR AS wkt
+FROM read_xtf_class('testdata/synthetic/geometries/valid.xtf',
+    class := 'SO_AGI_Geometries_20260605.Topic.MultiPunktObjekt',
+    modeldir := 'testdata/synthetic/geometries');
+
+SELECT '--- REGRESSION-G2c: LINESTRING ---' AS test;
+SELECT xtf_tid, Verlauf_geom::VARCHAR AS wkt
+FROM read_xtf_class('testdata/synthetic/geometries/valid.xtf',
+    class := 'SO_AGI_Geometries_20260605.Topic.LinienObjekt',
+    modeldir := 'testdata/synthetic/geometries');
+
+SELECT '--- REGRESSION-G2d: MULTILINESTRING ---' AS test;
+SELECT xtf_tid, Verlaeufe_geom::VARCHAR AS wkt
+FROM read_xtf_class('testdata/synthetic/geometries/valid.xtf',
+    class := 'SO_AGI_Geometries_20260605.Topic.MultiLinienObjekt',
+    modeldir := 'testdata/synthetic/geometries');
+
+SELECT '--- REGRESSION-G2e: POLYGON ---' AS test;
+SELECT xtf_tid, Flaeche_geom::VARCHAR AS wkt
+FROM read_xtf_class('testdata/synthetic/geometries/valid.xtf',
+    class := 'SO_AGI_Geometries_20260605.Topic.FlaechenObjekt',
+    modeldir := 'testdata/synthetic/geometries');
+
+SELECT '--- REGRESSION-G2f: MULTIPOLYGON ---' AS test;
+SELECT xtf_tid, Flaechen_geom::VARCHAR AS wkt
+FROM read_xtf_class('testdata/synthetic/geometries/valid.xtf',
+    class := 'SO_AGI_Geometries_20260605.Topic.MultiFlaechenObjekt',
+    modeldir := 'testdata/synthetic/geometries');
+
+-- REGRESSION-G3: Import SQL maps geometry to GEOMETRY (Phase 3)
+SELECT '--- REGRESSION-G3: Import SQL geometry type is GEOMETRY ---' AS test;
+SELECT sql_statement
+FROM ili_generate_import_sql('testdata/synthetic/geometries/valid.xtf',
+    schema := 'regression_test',
+    modeldir := 'testdata/synthetic/geometries')
+WHERE sql_statement ILIKE '%lage_geom%';
+-- Expected: "lage_geom" GEOMETRY
+
+-- REGRESSION-G4: CRS-aware import mode (Phase 4)
+-- Requires: ILI_GEOMETRY_CRS_MAP='SO_AGI_Geometries_20260605.Koord=EPSG:2056'
+-- SELECT '--- REGRESSION-G4: CRS typed geometry ---' AS test;
+-- SELECT sql_statement
+-- FROM ili_generate_import_sql('testdata/synthetic/geometries/valid.xtf',
+--     schema := 'regression_test',
+--     modeldir := 'testdata/synthetic/geometries')
+-- WHERE sql_statement ILIKE '%EPSG:2056%';
+-- Expected: "lage_geom" GEOMETRY('EPSG:2056'), SELECT includes CAST

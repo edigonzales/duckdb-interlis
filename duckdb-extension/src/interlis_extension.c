@@ -5,6 +5,7 @@
 #include "ili_duckdb_utils.h"
 #include "ili_tsv.h"
 #include "ili_duckdb_tsv.h"
+#include "ili_typed_scan.h"
 #include "sha256.h"
 #include <string.h>
 #include <errno.h>
@@ -113,8 +114,9 @@ static graal_tear_down_isolate_fn_t g_tear_down = NULL;
 
 // Native API function pointers — resolved via dlsym after ABI handshake
 typedef int (*native_version_fn)(graal_isolatethread_t*, char**);
-typedef int (*native_struct_fn)(graal_isolatethread_t*, ili_request*, char**);
 typedef void (*native_free_fn)(graal_isolatethread_t*, char*);
+
+// native_struct_fn is now defined in ili_request.h
 
 static native_version_fn g_native_version = NULL;
 static native_struct_fn g_native_validate = NULL;
@@ -127,10 +129,15 @@ static native_struct_fn g_native_read_xtf_structures = NULL;
 static native_struct_fn g_native_read_xtf_association = NULL;
 static native_struct_fn g_native_read_xtf_association_schema = NULL;
 static native_struct_fn g_native_generate_import_sql = NULL;
+native_struct_fn g_native_read_xtf_class_schema_v2 = NULL;
+native_struct_fn g_native_read_xtf_class_v2 = NULL;
 static native_free_fn g_native_free = NULL;
 
 // ABI handshake result
 static ili_api_v1 g_handshake = {0};
+
+// Typed class scan availability (determined at init, based on capability bit 12)
+static bool g_has_typed_class_scan = false;
 
 // --- Thread-safe initialization state ---
 static bool g_init_done = false;
@@ -699,6 +706,24 @@ static bool init_native_library_locked(void) {
         goto cleanup_handshake_fail;
     }
 
+    // Check for typed class scan capability (bit 12)
+    // This is optional — if present, we use v2 typed path with GEOMETRY columns.
+    // If absent, we fall back to v1 VARCHAR-only path.
+    if (g_handshake.capabilities & ILI_CAP_TYPED_CLASS_SCAN) {
+        g_native_read_xtf_class_schema_v2 =
+            (native_struct_fn)dlsym(g_native_handle, "ili_native_read_xtf_class_schema_v2");
+        g_native_read_xtf_class_v2 =
+            (native_struct_fn)dlsym(g_native_handle, "ili_native_read_xtf_class_v2");
+        if (g_native_read_xtf_class_schema_v2 && g_native_read_xtf_class_v2) {
+            g_has_typed_class_scan = true;
+            ILI_DEBUG_LOG("Typed class scan v2 enabled (ILI_CAP_TYPED_CLASS_SCAN present)");
+        } else {
+            ILI_DEBUG_LOG("ILI_CAP_TYPED_CLASS_SCAN claimed but v2 symbols not found; using v1 fallback");
+        }
+    } else {
+        ILI_DEBUG_LOG("Typed class scan v2 not available (ILI_CAP_TYPED_CLASS_SCAN absent); using v1 VARCHAR path");
+    }
+
     // Detach the init thread since DuckDB will attach its own threads
     g_detach_thread(init_thread);
 
@@ -718,7 +743,7 @@ cleanup_handshake_fail:
 
 // Thread-safe initialization. Returns true if native library is ready.
 // Stores persistent error in g_init_error on failure; does NOT retry.
-static bool ensure_native_ready(void) {
+bool ensure_native_ready(void) {
     ili_mutex_lock(&g_init_lock);
 
     if (g_init_done) {
@@ -743,7 +768,7 @@ static bool ensure_native_ready(void) {
 }
 
 // Returns the initialization error message, or a default.
-static const char *get_init_error(void) {
+const char *get_init_error(void) {
     return g_init_error ? g_init_error : "Native library initialization failed";
 }
 
@@ -779,7 +804,10 @@ static void shutdown_native_library(void) {
     g_native_read_xtf_association = NULL;
     g_native_read_xtf_association_schema = NULL;
     g_native_generate_import_sql = NULL;
+    g_native_read_xtf_class_schema_v2 = NULL;
+    g_native_read_xtf_class_v2 = NULL;
     g_native_free = NULL;
+    g_has_typed_class_scan = false;
     memset(&g_handshake, 0, sizeof(g_handshake));
     g_create_isolate = NULL;
     g_attach_thread = NULL;
@@ -866,7 +894,8 @@ static char *ili_call_input_str(
 
 // With-ili_request call (most API functions)
 // Returns C-allocated copy of result, or NULL. Sets *out_status.
-static char *ili_call_struct_str(
+// Non-static so ili_typed_scan.c can use it.
+char *ili_call_struct_str(
         native_struct_fn fn, const ili_request *req, int *out_status) {
     *out_status = -1;
     if (!g_isolate || !fn) return NULL;
@@ -899,7 +928,7 @@ static char *ili_call_struct_str(
 // ---------------------------------------------------------------------------
 // Error extraction
 // ---------------------------------------------------------------------------
-static char *extract_error_message(const char *json_payload) {
+char *extract_error_message(const char *json_payload) {
     if (!json_payload || json_payload[0] != '{') return NULL;
 
     const char *msg_start = strstr(json_payload, "\"message\":\"");
@@ -965,7 +994,7 @@ static char *extract_error_message(const char *json_payload) {
 }
 
 // Report a failed native call to DuckDB. Payload is C-allocated (must free()).
-static void ili_report_error(duckdb_init_info info, int status, char *payload, const char *fallback) {
+void ili_report_error(duckdb_init_info info, int status, char *payload, const char *fallback) {
     char *msg = extract_error_message(payload);
     duckdb_init_set_error(info, msg ? msg : (payload ? payload : fallback));
     free(msg);
@@ -973,7 +1002,7 @@ static void ili_report_error(duckdb_init_info info, int status, char *payload, c
 }
 
 // Report a failed native schema/bind call to DuckDB. Payload is C-allocated (must free()).
-static void ili_report_bind_error(duckdb_bind_info info, int status, char *payload, const char *fallback) {
+void ili_report_bind_error(duckdb_bind_info info, int status, char *payload, const char *fallback) {
     if (payload) {
         char *msg = extract_error_message(payload);
         duckdb_bind_set_error(info, msg ? msg : payload);
@@ -987,7 +1016,7 @@ static void ili_report_bind_error(duckdb_bind_info info, int status, char *paylo
 // ---------------------------------------------------------------------------
 // Safe allocation helpers — return NULL and set DuckDB error on OOM
 // ---------------------------------------------------------------------------
-static void *ili_malloc_or_error_bind(
+void *ili_malloc_or_error_bind(
         duckdb_bind_info info,
         size_t size,
         const char *what) {
@@ -1000,7 +1029,7 @@ static void *ili_malloc_or_error_bind(
     return p;
 }
 
-static void *ili_malloc_or_error_init(
+void *ili_malloc_or_error_init(
         duckdb_init_info info,
         size_t size,
         const char *what) {
@@ -1013,7 +1042,7 @@ static void *ili_malloc_or_error_init(
     return p;
 }
 
-static void *ili_calloc_or_error_bind(
+void *ili_calloc_or_error_bind(
         duckdb_bind_info info,
         size_t count,
         size_t size,
@@ -1027,7 +1056,7 @@ static void *ili_calloc_or_error_bind(
     return p;
 }
 
-static void *ili_calloc_or_error_init(
+void *ili_calloc_or_error_init(
         duckdb_init_info info,
         size_t count,
         size_t size,
@@ -2398,6 +2427,11 @@ DUCKDB_EXTENSION_ENTRYPOINT(duckdb_connection connection, duckdb_extension_info 
     register_table_functions(connection);
     register_model_table_functions(connection);
 
+    // Eagerly initialize native library so we can detect v2 capabilities
+    // at table function registration time. Falls back gracefully if native lib
+    // is not available (error reported on first actual call).
+    ensure_native_ready();
+
     // read_xtf_objects
     {
         duckdb_table_function fn = duckdb_create_table_function();
@@ -2414,7 +2448,7 @@ DUCKDB_EXTENSION_ENTRYPOINT(duckdb_connection connection, duckdb_extension_info 
         duckdb_destroy_logical_type(&vt);
     }
 
-    // read_xtf_class
+    // read_xtf_class — uses typed v2 path when available, v1 VARCHAR path otherwise
     {
         duckdb_table_function fn = duckdb_create_table_function();
         duckdb_table_function_set_name(fn, "read_xtf_class");
@@ -2423,9 +2457,17 @@ DUCKDB_EXTENSION_ENTRYPOINT(duckdb_connection connection, duckdb_extension_info 
         duckdb_table_function_add_named_parameter(fn, "class", vt);
         duckdb_table_function_add_named_parameter(fn, "modeldir", vt);
         duckdb_table_function_add_named_parameter(fn, "nested", vt);
-        duckdb_table_function_set_bind(fn, xtf_class_bind);
-        duckdb_table_function_set_init(fn, xtf_class_init);
-        duckdb_table_function_set_function(fn, mi_function);
+        if (g_has_typed_class_scan) {
+            duckdb_table_function_set_bind(fn, xtf_class_typed_bind);
+            duckdb_table_function_set_init(fn, xtf_class_typed_init);
+            duckdb_table_function_set_function(fn, xtf_class_typed_function);
+            ILI_DEBUG_LOG("read_xtf_class: using typed v2 path (GEOMETRY columns)");
+        } else {
+            duckdb_table_function_set_bind(fn, xtf_class_bind);
+            duckdb_table_function_set_init(fn, xtf_class_init);
+            duckdb_table_function_set_function(fn, mi_function);
+            ILI_DEBUG_LOG("read_xtf_class: using v1 path (VARCHAR columns)");
+        }
         duckdb_register_table_function(connection, fn);
         duckdb_destroy_table_function(&fn);
         duckdb_destroy_logical_type(&vt);

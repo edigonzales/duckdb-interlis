@@ -68,6 +68,10 @@ set(EXTENSION_SOURCES
     src/ili_duckdb_utils.c
     src/ili_tsv.c
     src/ili_duckdb_tsv.c
+    src/ili_typed_schema.c
+    src/ili_hex.c
+    src/ili_duckdb_geometry.c
+    src/ili_typed_scan.c
 )
 
 # ---------------------------------------------------------------------------

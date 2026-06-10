@@ -439,6 +439,81 @@ public class NativeEntryPoints {
         }
     }
 
+    // -----------------------------------------------------------------------
+    // Typed class scan (v2) — GEOMETRY-native transport
+    // Activated when ILI_CAP_TYPED_CLASS_SCAN is present.
+    // Falls back to v1 (VARCHAR columns) when capability is absent.
+    // -----------------------------------------------------------------------
+
+    @CEntryPoint(name = "ili_native_read_xtf_class_schema_v2")
+    public static int nativeReadXtfClassSchemaV2(
+            IsolateThread thread,
+            IliRequest request,
+            CCharPointerPointer outPayload) {
+
+        NativeError verr = NativeRequestValidator.requireRequest(request, NativeRequestValidator.expectedStructSize(), "read_xtf_class_schema_v2");
+        if (verr != null) {
+            outPayload.write(allocCString(verr.toJson()));
+            return verr.status();
+        }
+
+        String className = getField(request.class_name());
+        String modelDir = getField(request.modeldir());
+
+        if (className == null) {
+            NativeError err = NativeError.invalidArgument("read_xtf_class_schema_v2", "Missing required field", "class");
+            outPayload.write(allocCString(err.toJson()));
+            return NativeStatus.INVALID_ARGUMENT;
+        }
+        try {
+            String tsv = getXtfReader().readClassSchemaV2(className, modelDir);
+            outPayload.write(allocCString(tsv));
+            return NativeStatus.OK;
+        } catch (Exception e) {
+            NativeError err = NativeError.modelError("read_xtf_class_schema_v2",
+                    "Schema v2 read failed: " + (e.getMessage() != null ? e.getMessage() : e.getClass().getName()),
+                    e.toString(), modelDir);
+            outPayload.write(allocCString(err.toJson()));
+            return NativeStatus.MODEL_ERROR;
+        }
+    }
+
+    @CEntryPoint(name = "ili_native_read_xtf_class_v2")
+    public static int nativeReadXtfClassV2(
+            IsolateThread thread,
+            IliRequest request,
+            CCharPointerPointer outPayload) {
+
+        NativeError verr = NativeRequestValidator.requireRequest(request, NativeRequestValidator.expectedStructSize(), "read_xtf_class_v2");
+        if (verr != null) {
+            outPayload.write(allocCString(verr.toJson()));
+            return verr.status();
+        }
+
+        String input = getField(request.input());
+        String className = getField(request.class_name());
+        String modelDir = getField(request.modeldir());
+        String nested = getField(request.nested());
+
+        if (input == null || className == null) {
+            String missing = input == null ? "input" : "class";
+            NativeError err = NativeError.invalidArgument("read_xtf_class_v2", "Missing required field", missing);
+            outPayload.write(allocCString(err.toJson()));
+            return NativeStatus.INVALID_ARGUMENT;
+        }
+        try {
+            String tsv = getXtfReader().readClassV2(input, className, modelDir, nested);
+            outPayload.write(allocCString(tsv));
+            return NativeStatus.OK;
+        } catch (Exception e) {
+            NativeError err = NativeError.ioError("read_xtf_class_v2",
+                    "XTF class read v2 failed: " + (e.getMessage() != null ? e.getMessage() : e.getClass().getName()),
+                    e.toString(), input);
+            outPayload.write(allocCString(err.toJson()));
+            return NativeStatus.IO_ERROR;
+        }
+    }
+
     @CEntryPoint(name = "ili_native_read_xtf_structures")
     public static int nativeReadXtfStructures(
             IsolateThread thread,
@@ -630,7 +705,8 @@ public class NativeEntryPoints {
             | (1L << 8)  // READ_XTF_ASSOCIATION
             | (1L << 9)  // READ_XTF_ASSOC_SCHEMA
             | (1L << 10) // IMPORT_XTF
-            | (1L << 11); // FREE_STRING
+            | (1L << 11) // FREE_STRING
+            | (1L << 12); // TYPED_CLASS_SCAN
 
         // Return ABI metadata as simple JSON
         String json = "{\"abi_version\":" + ABI_VERSION + ",\"capabilities\":" + capabilities + "}";
