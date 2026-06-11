@@ -250,6 +250,7 @@ void xtf_class_typed_function(duckdb_function_info tfinfo, duckdb_data_chunk out
             }
 
             if (field.is_null) {
+                duckdb_vector_ensure_validity_writable(vec);
                 duckdb_validity_set_row_invalid(
                     duckdb_vector_get_validity(vec), i);
                 continue;
