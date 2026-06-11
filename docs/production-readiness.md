@@ -8,29 +8,29 @@
 
 | # | Requirement | Status | Phase |
 |---|-------------|--------|-------|
-| 1 | No allocator mismatches (C `free()` on GraalVM memory, or vice versa) | ❌ | 1 |
-| 2 | All result strings freed exactly once (success and error paths) | ❌ | 1 |
-| 3 | Error payloads freed (not discarded on `rc != 0`) | ❌ | 1 |
-| 4 | ABI handshake (`struct_size`, version, capabilities) | ❌ | 9 |
-| 5 | Incompatible native library rejected with clear error | ❌ | 9 |
-| 6 | Thread-safe initialization (`pthread_once` / `InitOnceExecuteOnce`) | ❌ | 4 |
+| 1 | No allocator mismatches (C `free()` on GraalVM memory, or vice versa) | ✅ | 4 |
+| 2 | All result strings freed exactly once (success and error paths) | ✅ | 4 |
+| 3 | Error payloads freed (not discarded on `rc != 0`) | ✅ | 1,4 |
+| 4 | ABI handshake (`struct_size`, version, capabilities) | ✅ | 9 |
+| 5 | Incompatible native library rejected with clear error | ✅ | 9 |
+| 6 | Thread-safe initialization (`pthread_once` / `InitOnceExecuteOnce`) | ✅ | 4 |
 
 ## Error Handling
 
 | # | Requirement | Status | Phase |
 |---|-------------|--------|-------|
-| 7 | No `ERROR:` prefix in successful result payloads | ❌ | 2 |
-| 8 | No silent empty result sets for internal errors | ❌ | 2 |
-| 9 | No partial results returned as success on technical errors | ❌ | 7 |
-| 10 | Original error cause visible in DuckDB error messages | ❌ | 1,2 |
-| 11 | Error codes documented (status enum) | ❌ | 2 |
+| 7 | No `ERROR:` prefix in successful result payloads | ✅ | 2 |
+| 8 | No silent empty result sets for internal errors | ✅ | 2 |
+| 9 | No partial results returned as success on technical errors | ✅ | 7 |
+| 10 | Original error cause visible in DuckDB error messages | ✅ | 1,2 |
+| 11 | Error codes documented (status enum) | ✅ | 2 |
 
 ## Validation
 
 | # | Requirement | Status | Phase |
 |---|-------------|--------|-------|
-| 12 | Validation profiles: full, structural, fast | ❌ | 6 |
-| 13 | Default profile clearly defined | ❌ | 6 |
+| 12 | Validation profiles: full, structural, fast | ⚠️ | 6 |
+| 13 | Default profile clearly defined | ✅ | 6 |
 | 14 | Constraint validation tested | ❌ | 6 |
 | 15 | AREA validation tested | ❌ | 6 |
 | 16 | Correct message parser (CSV with quotes, commas, Unicode) | ❌ | 6 |
@@ -50,10 +50,10 @@
 
 | # | Requirement | Status | Phase |
 |---|-------------|--------|-------|
-| 23 | No table name collisions across topics | ❌ | 10 |
-| 24 | `mapping` parameter implemented or rejected with UNSUPPORTED | ❌ | 10 |
-| 25 | Transaction wrapping (`BEGIN/COMMIT`) | ❌ | 10 |
-| 26 | Import modes (create/replace/append) | ❌ | 10 |
+| 23 | No table name collisions across topics | ✅ | 10 |
+| 24 | `mapping` parameter implemented or rejected with UNSUPPORTED | ✅ | 10 |
+| 25 | Transaction wrapping (`BEGIN/COMMIT`) | ✅ | 10 |
+| 26 | Import modes (create/replace/append) | ✅ | 10 |
 | 27 | Consistent identifier quoting | ⚠️ | 10 |
 | 28 | Type mapping documented | ⚠️ | 10 |
 
@@ -104,26 +104,26 @@
 
 | # | Requirement | Status | Phase |
 |---|-------------|--------|-------|
-| 52 | Atomic extraction (tmp + fsync + rename) | ❌ | 8 |
-| 53 | Hash verification before use | ❌ | 8 |
-| 54 | Parallel extraction safe | ❌ | 8 |
-| 55 | Cache path includes version + hash | ❌ | 8 |
+| 52 | Atomic extraction (tmp + fsync + rename) | ✅ | 8 |
+| 53 | Hash verification before use | ✅ | 8 |
+| 54 | Parallel extraction safe | ✅ | 8 |
+| 55 | Cache path includes version + hash | ✅ | 8 |
 
 ## Summary
 
 | Category | Total | Done |
 |----------|-------|------|
-| Native and ABI | 6 | 0 |
-| Error Handling | 5 | 0 |
-| Validation | 6 | 0 |
-| XTF Reading | 5 | 0 |
-| Import | 6 | 0 |
+| Native and ABI | 6 | 6 |
+| Error Handling | 5 | 5 |
+| Validation | 6 | 1 |
+| XTF Reading | 5 | 1 |
+| Import | 6 | 4 |
 | Build | 6 | 1 |
 | Quality | 7 | 2 |
 | Request Transfer | 5 | 0 |
 | Java Cache & Logger | 5 | 5 |
-| Native Library Extraction | 4 | 0 |
-| **Total** | **55** | **8** |
+| Native Library Extraction | 4 | 4 |
+| **Total** | **55** | **29** |
 
 ---
 
@@ -134,12 +134,12 @@ Each requirement is verified by the corresponding Phase:
 | Phase | Requirements Verified |
 |-------|----------------------|
 | 0 | Baseline documentation created |
-| 1 | #1, #2, #3 |
+| 1 | #1, #2, #3, #10 |
 | 2 | #7, #8, #10, #11 |
 | 3 | #42-#46 |
-| 4 | #6, #17 (partial), #38 |
+| 4 | #1, #2, #3, #6, #17 (partial), #38 |
 | 5 | #47-#51 |
-| 6 | #12-#17 |
+| 6 | #12, #13, #14, #15, #16, #17 |
 | 7 | #9, #18-#22 |
 | 8 | #52-#55 |
 | 9 | #4, #5 |
@@ -148,4 +148,4 @@ Each requirement is verified by the corresponding Phase:
 | 12 | #34-#39 |
 | 13 | #40, #41 |
 
-**Current overall readiness:** 8/55 = 14.5%
+**Current overall readiness:** 29/55 = 52.7%

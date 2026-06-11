@@ -55,7 +55,16 @@ Table and column names use the `topic__class` pattern with lowercase sanitizatio
 
 ## Geometry Format and Spatial Integration
 
-Geometry attributes are returned as **Well-Known Text (WKT) strings** in `VARCHAR` columns with the `_geom` suffix (e.g. `Lage_geom`). DuckDB v1.5+ supports `GEOMETRY` as a built-in type, so you can cast directly without loading the `spatial` extension simply to create `GEOMETRY` values:
+Geometry attributes in `read_xtf_class(...)` are returned as `_geom` columns. There are two output paths depending on the native library capability:
+
+**v2 typed path** (`ILI_CAP_TYPED_CLASS_SCAN`): Geometry columns are bound as native DuckDB `GEOMETRY` type. The Java side encodes geometry as hex-WKB, and the C extension decodes and populates `DUCKDB_TYPE_GEOMETRY` vectors directly. No `::GEOMETRY` cast needed:
+
+```sql
+SELECT Lage_geom, ST_GeometryType(Lage_geom) AS type
+FROM read_xtf_class(...);
+```
+
+**v1 fallback path**: Geometry columns are `VARCHAR` with WKT content. Cast to `GEOMETRY` with `::GEOMETRY`:
 
 ```sql
 SELECT Lage_geom::GEOMETRY AS geom FROM read_xtf_class(...);
@@ -66,8 +75,8 @@ The `spatial` extension is only required for spatial functions (e.g. `ST_Geometr
 ```sql
 INSTALL spatial;
 LOAD spatial;
-SELECT ST_GeometryType(Lage_geom::GEOMETRY) AS type,
-       ST_IsValid(Lage_geom::GEOMETRY) AS valid
+SELECT ST_GeometryType(Lage_geom) AS type,
+       ST_IsValid(Lage_geom) AS valid
 FROM read_xtf_class(...);
 ```
 
@@ -122,10 +131,10 @@ Future DuckDB versions may add this capability.
 ## Coordinate Reference System (CRS)
 
 There is **no automatic CRS detection or inference** from coordinate values. The extension does not embed an SRID into the WKB output, nor does it guess the coordinate system (e.g. EPSG:2056). CRS metadata can be provided explicitly via:
-- Environment variable `ILI_GEOMETRY_CRS_MAP='DomainFqn=AUTH:CODE'`
+- Environment variable `ILI_GEOMETRY_CRS_MAP='DomainFqn=AUTH:CODE;DomainFqn=AUTH:CODE'`
 - Or file via `ILI_GEOMETRY_CRS_FILE=/path/to/crs.properties`
 
-Otherwise CRS columns in `ili_geometry_attributes(...)` remain `NULL`.
+CRS mapping is used by `ili_generate_import_sql` to produce `GEOMETRY('EPSG:xxxx')` typed columns, and by `ili_geometry_attributes(...)` to populate the `crs_auth_name`, `crs_code`, and `srid` columns.
 
 ## Generic Reader `geom_json`
 
@@ -133,19 +142,15 @@ For `read_xtf_objects(...)` the `geom_json` column now contains a JSON object pe
 
 ## Native `GEOMETRY` Column Type
 
-DuckDB v1.5+ supports `GEOMETRY` as a built-in type, but the **DuckDB C API (v1.5.3) does not expose a function to populate `GEOMETRY` vectors from an extension**. Two PoC experiments were conducted:
+Two output paths exist for geometry columns in `read_xtf_class(...)`:
 
-| Attempt | Method | Result |
-|---|---|---|
-| **PoC v1:** WKT via `duckdb_vector_assign_string_element` | Wrote `"POINT (30 10)"` to a `DUCKDB_TYPE_GEOMETRY` vector | `Invalid Input Error: Unsupported byte order 80 in WKB` — GEOMETRY expects binary WKB, not WKT |
-| **PoC v2:** Binary WKB via `duckdb_vector_assign_string_element_len` | Wrote 21-byte little-endian WKB to a `DUCKDB_TYPE_GEOMETRY` vector | **DuckDB hangs** — the internal GEOMETRY storage format (confirmed by DuckDB's C++ `geometry.hpp`) uses a `string_t` blob but with a header/layer beyond raw WKB (see `GeometryStorageType`, `Geometry::FromBinary`/`ToBinary`). Raw WKB bytes cannot be written directly. |
+| Path | Capability | Column Type | Content | Cast Needed |
+|------|-----------|-------------|---------|-------------|
+| **v2 typed** | `ILI_CAP_TYPED_CLASS_SCAN` | `GEOMETRY` | hex-WKB (decoded C-side) | No |
+| **v1 fallback** | (absent) | `VARCHAR` | WKT text | `::GEOMETRY` |
 
-There is no `duckdb_vector_assign_geometry`, `duckdb_vector_assign_blob`, or any C API function to create GEOMETRY values for table function vectors.
+The v2 typed path sends hex-encoded WKB from Java through the typed TSV protocol. The C extension decodes it and writes binary WKB directly to `DUCKDB_TYPE_GEOMETRY` vectors via `duckdb_vector_assign_string_element_len`. Failed geometry conversions produce SQL NULL or query errors, never text error markers in GEOMETRY columns.
 
-Consequence: `read_xtf_class(...)` returns geometry attributes as `VARCHAR` (WKT) with the `_geom` suffix. Users must cast to `GEOMETRY` explicitly:
+When the native library lacks `ILI_CAP_TYPED_CLASS_SCAN`, the v1 VARCHAR path is used as fallback. An extension info message is logged at load time indicating which path is active.
 
-```sql
-SELECT Lage_geom::GEOMETRY FROM read_xtf_class(...);
-```
-
-Future DuckDB C API versions may add `duckdb_create_geometry_value` or GEOMETRY vector assignment, at which point the extension can register geometry columns as native `GEOMETRY` without requiring an explicit cast.
+Note: `read_xtf_objects(...)` always returns `geom_json` as VARCHAR JSON regardless of path — it does not use native GEOMETRY columns due to the heterogeneous per-row geometry types.

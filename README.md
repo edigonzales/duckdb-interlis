@@ -157,7 +157,8 @@ scripts/dev-duckdb.sh < sql/examples/01-version.sql
 |---|---|
 | [docs/installation.md](docs/installation.md) | Installation, setup, and environment variables |
 | [docs/security.md](docs/security.md) | Security architecture: hash verification, atomic extraction, symlink rejection |
-| [docs/functions.md](docs/functions.md) | Complete function reference with examples |
+| [docs/functions.md](docs/functions.md) | Complete function reference with examples (15 SQL functions) |
+| [docs/current-api.md](docs/current-api.md) | Phase 0 baseline: all functions with signatures, NULL/error behaviour, known limitations |
 | [docs/validation-profiles.md](docs/validation-profiles.md) | Validation profiles: FULL, STRUCTURAL, FAST |
 | [docs/error-handling.md](docs/error-handling.md) | Error codes, error visibility, common scenarios |
 | [docs/limitations.md](docs/limitations.md) | Known limitations: file size, memory, parallelism, construct coverage |
@@ -165,6 +166,8 @@ scripts/dev-duckdb.sh < sql/examples/01-version.sql
 | [docs/troubleshooting.md](docs/troubleshooting.md) | Common problems and solutions |
 | [docs/native-abi.md](docs/native-abi.md) | Native ABI reference (for developers) |
 | [docs/architecture.md](docs/architecture.md) | System architecture overview |
+| [docs/production-readiness.md](docs/production-readiness.md) | Production readiness checklist |
+| [docs/VERSIONS.md](docs/VERSIONS.md) | Version types and compatibility |
 
 ## Debug Mode
 

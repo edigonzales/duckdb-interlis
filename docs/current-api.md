@@ -11,17 +11,18 @@
 | 1 | `ili_extension_version()` | Scalar | VARCHAR |
 | 2 | `ili_native_version()` | Scalar | VARCHAR (JSON) |
 | 3 | `ili_validate_summary_json(path, modeldir)` | Scalar | VARCHAR (JSON) |
-| 4 | `ili_validate(path, modeldir =>)` | Table | 13 columns |
+| 4 | `ili_validate(path, modeldir =>, profile =>, max_messages =>)` | Table | 13 columns |
 | 5 | `ili_models(modeldir, model =>, class =>)` | Table | 5 columns |
 | 6 | `ili_topics(modeldir, model =>, class =>)` | Table | 3 columns |
 | 7 | `ili_classes(modeldir, model =>, class =>)` | Table | 7 columns |
 | 8 | `ili_attributes(modeldir, model =>, class =>)` | Table | 9 columns |
 | 9 | `ili_enumerations(modeldir, model =>, class =>)` | Table | 5 columns |
-| 10 | `read_xtf_objects(input, modeldir =>, models =>)` | Table | 9 columns |
-| 11 | `read_xtf_class(input, class =>, modeldir =>, nested =>)` | Table | Dynamic |
-| 12 | `read_xtf_structures(class =>, modeldir =>)` | Table | 5 columns |
-| 13 | `read_xtf_association(input, association =>, modeldir =>)` | Table | Dynamic |
-| 14 | `ili_generate_import_sql(input, schema =>, modeldir =>, mapping =>, mode =>)` | Table | 1 column |
+| 10 | `ili_geometry_attributes(modeldir, model =>, class =>)` | Table | 21 columns |
+| 11 | `read_xtf_objects(input, modeldir =>, models =>)` | Table | 9 columns |
+| 12 | `read_xtf_class(input, class =>, modeldir =>, nested =>)` | Table | Dynamic |
+| 13 | `read_xtf_structures(class =>, modeldir =>)` | Table | 5 columns |
+| 14 | `read_xtf_association(input, association =>, modeldir =>)` | Table | Dynamic |
+| 15 | `ili_generate_import_sql(input, schema =>, modeldir =>, mapping =>, mode =>)` | Table | 1 column |
 
 ---
 
@@ -106,7 +107,7 @@
 
 ### `ili_validate(path, modeldir =>)`
 
-**Signature:** `ili_validate(path VARCHAR, modeldir => VARCHAR) → TABLE(...)`
+**Signature:** `ili_validate(path VARCHAR, modeldir => VARCHAR, profile => VARCHAR, max_messages => INTEGER) → TABLE(...)`
 
 **Description:** Validates an XTF file and returns one row per validation message.
 
@@ -116,6 +117,8 @@
 |---|------|------|----------|-------------|
 | 1 | `path` | positional | Yes | Path to XTF file |
 | 2 | `modeldir` | named | No | ILI model directory or semicolon-separated URLs |
+| 3 | `profile` | named | No | Validation profile: `full` (default), `structural`, or `fast` |
+| 4 | `max_messages` | named | No | Maximum detail rows returned. Use -1 or omit for unlimited. Does NOT affect validity. |
 
 **Return columns:**
 
@@ -144,10 +147,9 @@
 - File not found → returned as an ERROR-level validation message, not as a DuckDB error.
 
 **Known limitations:**
-- CONSTRAINT + AREA validation are both **disabled** (Phase 6 fix).
+- CONSTRAINT + AREA validation are both **disabled** in all profiles (Phase 6 fix).
 - Validation log CSV is parsed with `split(",", -1)` which breaks on quoted commas (Phase 6 fix).
 - Entries with `code` set are discarded by the parser — only the first 2 fields per CSV line are used as `fields[0]` and `fields[1]`, the actual ilivalidator `Type` field is in column 2.
-- No `profile` or `maxMessages` parameter at SQL level.
 - Temp CSV file is created for each validation call — potential for name collision under parallel use.
 
 ---
@@ -271,6 +273,57 @@
 | `element_line` | VARCHAR |
 
 **Parameters, NULL behaviour, error behaviour, known limitations:** Same as `ili_models`.
+
+---
+
+### `ili_geometry_attributes(modeldir, model =>, class =>)`
+
+**Signature:** `ili_geometry_attributes(modeldir VARCHAR, model => VARCHAR, class => VARCHAR) → TABLE(...)`
+
+**Description:** Lists geometry attributes found in INTERLIS models. Returns metadata including geometry kind, dimension, coordinate domain, CRS, cardinality, and encoding info. No XTF input needed — pure model introspection.
+
+**Parameters:**
+
+| # | Name | Kind | Required | Description |
+|---|------|------|----------|-------------|
+| 1 | `modeldir` | positional | No | ILI model directory |
+| 2 | `model` | named | No | Filter by model name |
+| 3 | `class` | named | No | Filter by class name |
+
+**Return columns:**
+
+| Column | Type |
+|--------|------|
+| `model_name` | VARCHAR |
+| `topic_name` | VARCHAR |
+| `class_name` | VARCHAR |
+| `class_fqn` | VARCHAR |
+| `attribute_name` | VARCHAR |
+| `attribute_fqn` | VARCHAR |
+| `geometry_kind` | VARCHAR |
+| `dimension` | INTEGER |
+| `coordinate_domain` | VARCHAR |
+| `coordinate_domain_fqn` | VARCHAR |
+| `crs_auth_name` | VARCHAR |
+| `crs_code` | VARCHAR |
+| `srid` | INTEGER |
+| `is_mandatory` | VARCHAR |
+| `card_min` | VARCHAR |
+| `card_max` | VARCHAR |
+| `supports_arcs` | VARCHAR |
+| `is_area_type` | VARCHAR |
+| `is_multi_type` | VARCHAR |
+| `transport_encoding` | VARCHAR |
+| `duckdb_spatial_function` | VARCHAR |
+
+**NULL behaviour:** Empty strings for missing metadata. `crs_auth_name`, `crs_code`, `srid` are NULL when no CRS mapping is configured.
+
+**Error behaviour:**
+- Native library init failure → `duckdb_init_set_error(g_error_buf)`.
+- Model compilation failure → DuckDB error with NativeError message.
+
+**Known limitations:**
+- `transport_encoding` and `duckdb_spatial_function` are hardcoded (`WKT`/`ST_GeomFromText`) and don't yet reflect the v2 hex-WKB typed path.
 
 ---
 
@@ -456,6 +509,8 @@ Plus: one column per scalar attribute, `*_geom` for geometry attributes (WKT), `
 - Only `"relational"` mapping is supported.
 - `DECIMAL(p,s)` precision not yet derived from INTERLIS `NUMERIC` bounds; decimal types use `DOUBLE`.
 - Generated INSERT statements reference `read_xtf_class`/`read_xtf_association` which currently use TSV encoding.
+- Geometry columns are mapped to `GEOMETRY` (bare); CRS-typed `GEOMETRY('EPSG:xxxx')` is generated only when `ILI_GEOMETRY_CRS_MAP` or `ILI_GEOMETRY_CRS_FILE` is configured.
+- The generated DDL expects the v2 typed path (`ILI_CAP_TYPED_CLASS_SCAN`) for native GEOMETRY columns; with v1 VARCHAR fallback, manual `::GEOMETRY` casts would be needed in INSERT statements.
 
 ---
 

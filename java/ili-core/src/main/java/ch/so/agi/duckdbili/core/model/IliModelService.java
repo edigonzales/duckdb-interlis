@@ -270,7 +270,7 @@ public class IliModelService {
     public String getGeometryAttributes(String modelDir, String modelFilter, String classFilter) {
         TransferDescription td = compileIli(modelDir);
         InterlisGeometryTypeResolver typeResolver = new InterlisGeometryTypeResolver();
-        GeometryCrsResolver crsResolver = new NoopGeometryCrsResolver();
+        GeometryCrsResolver crsResolver = new MapGeometryCrsResolver();
         GeometryAttributeMetadataService service = new GeometryAttributeMetadataService(typeResolver, crsResolver);
 
         List<GeometryMetadata> attrs = service.listGeometryAttributes(td, modelFilter, classFilter);

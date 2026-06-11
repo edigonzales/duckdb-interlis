@@ -455,6 +455,76 @@ FROM ili_enumerations('testdata/synthetic/simple',
 
 ---
 
+### `ili_geometry_attributes()`
+
+**Signature:**
+
+```sql
+ili_geometry_attributes(modeldir VARCHAR, model => VARCHAR, class => VARCHAR) → TABLE(...)
+```
+
+**Description:** Lists geometry attributes found in INTERLIS models. Returns metadata for each geometry attribute including type, dimension, coordinate domain, CRS, cardinality, and encoding info. This is a pure introspection function — no XTF input needed.
+
+**Parameters:**
+
+| # | Name | Kind | Type | Erforderlich | Beschreibung |
+|---|---|---|---|---|---|
+| 1 | `modeldir` | positional | VARCHAR | Nein | Verzeichnis mit ILI-Dateien. Default: `https://models.interlis.ch`, überschreibbar via `ILI_DEFAULT_MODELDIR` |
+| 2 | `model` | named | VARCHAR | Nein | Optional: nach Modellnamen filtern |
+| 3 | `class` | named | VARCHAR | Nein | Optional: nach Klassennamen filtern |
+
+**Return columns:**
+
+| Column | Type | Beschreibung |
+|---|---|---|
+| `model_name` | VARCHAR | Modellname |
+| `topic_name` | VARCHAR | Topic-Name |
+| `class_name` | VARCHAR | Klassenname |
+| `class_fqn` | VARCHAR | Voll qualifizierter Klassenname (`Model.Topic.Class`) |
+| `attribute_name` | VARCHAR | Attributname |
+| `attribute_fqn` | VARCHAR | Voll qualifizierter Attributname |
+| `geometry_kind` | VARCHAR | Geometrietyp: `POINT`, `MULTIPOINT`, `LINESTRING`, `MULTILINESTRING`, `POLYGON`, `MULTIPOLYGON`, `AREA`, `MULTIAREA` |
+| `dimension` | INTEGER | Koordinatendimension: 2 (XY) oder 3 (XYZ) |
+| `coordinate_domain` | VARCHAR | INTERLIS-Koordinatendomäne (Kurzname) |
+| `coordinate_domain_fqn` | VARCHAR | Voll qualifizierter Name der Koordinatendomäne |
+| `crs_auth_name` | VARCHAR | CRS-Authority (z.B. `EPSG`), oder NULL |
+| `crs_code` | VARCHAR | CRS-Code (z.B. `2056`), oder NULL |
+| `srid` | INTEGER | SRID, oder NULL |
+| `is_mandatory` | VARCHAR | `true` wenn Pflichtattribut, sonst `false` |
+| `card_min` | VARCHAR | Minimale Kardinalität |
+| `card_max` | VARCHAR | Maximale Kardinalität |
+| `supports_arcs` | VARCHAR | `true` wenn Bögen (ARC) unterstützt, sonst `false` |
+| `is_area_type` | VARCHAR | `true` wenn AREA/MULTIAREA-Typ, sonst `false` |
+| `is_multi_type` | VARCHAR | `true` wenn Multi-Typ (MULTICOORD, MULTIPOLYLINE etc.), sonst `false` |
+| `transport_encoding` | VARCHAR | Encoding des Geometrie-Transports (`WKT`) |
+| `duckdb_spatial_function` | VARCHAR | Empfohlene DuckDB-Funktion (`ST_GeomFromText`) |
+
+**Examples:**
+
+```sql
+-- 1. List all geometry attributes in a model
+SELECT class_name, attribute_name, geometry_kind, dimension
+FROM ili_geometry_attributes('testdata/synthetic/geometries');
+```
+
+```sql
+-- 2. Filter by model and class
+SELECT attribute_name, geometry_kind, dimension,
+       is_mandatory, card_min, card_max
+FROM ili_geometry_attributes('testdata/synthetic/geometries',
+    model := 'SO_AGI_Geometries_20260605',
+    class := 'PunktObjekt');
+```
+
+```sql
+-- 3. Find all 3D geometry attributes
+SELECT class_name, attribute_name, geometry_kind, dimension
+FROM ili_geometry_attributes('testdata/synthetic/geometries')
+WHERE dimension = 3;
+```
+
+---
+
 ### `read_xtf_objects()`
 
 **Signature:**
@@ -531,7 +601,7 @@ FROM read_xtf_objects('testdata/synthetic/simple/valid.xtf',
 read_xtf_class(input VARCHAR, class => VARCHAR, modeldir => VARCHAR, nested => VARCHAR) → TABLE(...)
 ```
 
- **Description:** Reads an XTF file and returns rows for a specific INTERLIS class. Columns are dynamically determined from the class schema. Scalar attributes appear as individual columns of type VARCHAR. STRUCTURE attributes appear as `*_json` columns. BAG OF STRUCTURE attributes appear as `*_json` columns (JSON array). Geometry attributes appear as `*_geom` columns (WKT strings).
+ **Description:** Reads an XTF file and returns rows for a specific INTERLIS class. Columns are dynamically determined from the class schema. Scalar attributes appear as individual columns of type VARCHAR. STRUCTURE attributes appear as `*_json` columns. BAG OF STRUCTURE attributes appear as `*_json` columns (JSON array). Geometry attributes appear as `*_geom` columns: native `GEOMETRY` type (v2 typed path) with hex-WKB internally, or `VARCHAR` WKT (v1 fallback). Use `::GEOMETRY` cast only with the v1 fallback path.
 
 **Parameters:**
 
@@ -540,7 +610,7 @@ read_xtf_class(input VARCHAR, class => VARCHAR, modeldir => VARCHAR, nested => V
 | 1 | `input` | positional | VARCHAR | Ja | Pfad zur XTF-Datei |
 | 2 | `class` | named | VARCHAR | Ja | Voll qualifizierter Klassenname, z.B. `Model.Topic.Class` |
 | 3 | `modeldir` | named | VARCHAR | Nein | Verzeichnis mit ILI-Modelldateien oder semikolon-getrennte URLs. Default: Verzeichnis der XTF-Datei + `https://models.interlis.ch`, überschreibbar via `ILI_DEFAULT_MODELDIR` |
-| 4 | `nested` | named | VARCHAR | Nein (Default: `"json"`) | Nesting-Modus: `'json'` (Default) oder `'flat'` |
+| 4 | `nested` | named | VARCHAR | Nein (Default: `"json"`) | Nesting-Modus: `'json'` (Default, Struktur-Spalten mit `_json`-Suffix) oder `'duckdb'` (ohne Suffix) |
 
 **Return columns:** Dynamic, plus always:
 - `xtf_bid` | VARCHAR
@@ -585,12 +655,11 @@ FROM (
 ```
 
 ```sql
--- 4. Read a class with geometry (WKT column)
--- Geometries are returned as Well-Known Text (WKT) strings in VARCHAR columns.
--- Cast to GEOMETRY with ::GEOMETRY, or use ST_GeomFromText() with the spatial extension.
+-- 4. Read a class with geometry
+-- v2 typed path: native GEOMETRY columns (no cast needed)
+-- v1 fallback path: WKT VARCHAR columns, cast with ::GEOMETRY
 SELECT xtf_tid, Name, Lage_geom,
-       Lage_geom::GEOMETRY AS geom,
-       ST_GeometryType(Lage_geom::GEOMETRY) AS geometry_type
+       ST_GeometryType(Lage_geom) AS geometry_type
 FROM read_xtf_class('testdata/synthetic/geometries/valid.xtf',
     class := 'SO_AGI_Geometries_20260605.Topic.PunktObjekt',
     modeldir := 'testdata/synthetic/geometries');
@@ -735,7 +804,7 @@ SELECT * FROM read_xtf_association(
 ili_generate_import_sql(input VARCHAR, schema => VARCHAR, modeldir => VARCHAR, mapping => VARCHAR, mode => VARCHAR) → TABLE(sql_statement VARCHAR)
 ```
 
-**Description:** Generates typed SQL DDL (`CREATE TABLE`) and DML (`INSERT INTO`) statements for importing an XTF file into a DuckDB schema. The output is wrapped in `BEGIN TRANSACTION` / `COMMIT`. Numeric types are mapped to `BIGINT`/`DOUBLE`, text and geometry to `VARCHAR`, booleans to `BOOLEAN`, dates to `DATE`, timestamps to `TIMESTAMP`.
+**Description:** Generates typed SQL DDL (`CREATE TABLE`) and DML (`INSERT INTO`) statements for importing an XTF file into a DuckDB schema. The output is wrapped in `BEGIN TRANSACTION` / `COMMIT`. Type mapping: integers without decimals → `BIGINT`, numerics with decimals → `DOUBLE`, text → `VARCHAR`, geometry → `GEOMETRY` (or `GEOMETRY('EPSG:xxxx')` with CRS mapping via `ILI_GEOMETRY_CRS_MAP`/`ILI_GEOMETRY_CRS_FILE`), booleans → `BOOLEAN`, dates → `DATE`, timestamps → `TIMESTAMP`, dates+times → `TIMESTAMP`, times → `TIME`.
 
 **Breaking change:** Renamed from `ili_import_xtf` in Phase 10. Table names now use `topic__class` naming (e.g., `topic__gemeinde` instead of `gemeinde`) to avoid collisions across topics.
 
