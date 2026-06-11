@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TRANSFER xmlns="http://www.interlis.ch/INTERLIS2.3">
+  <HEADERSECTION VERSION="2.3" SENDER="duckdb-interlis-test">
+    <MODELS>
+      <MODEL NAME="SO_AGI_TypedScalars_20260611" VERSION="2026-06-11" URI="https://models.interlis.ch"/>
+    </MODELS>
+  </HEADERSECTION>
+  <DATASECTION>
+    <SO_AGI_TypedScalars_20260611.Topic BID="typed-basket">
+      <SO_AGI_TypedScalars_20260611.Topic.Messung TID="m1">
+        <Name>Volle Messung</Name>
+        <Aktiv>true</Aktiv>
+        <Anzahl>42</Anzahl>
+        <Genauigkeit>12.345</Genauigkeit>
+        <Stichtag>2026-06-11</Stichtag>
+        <Uhrzeit>14:15:16.123</Uhrzeit>
+        <Zeitstempel>2026-06-11T14:15:16.123</Zeitstempel>
+      </SO_AGI_TypedScalars_20260611.Topic.Messung>
+      <SO_AGI_TypedScalars_20260611.Topic.Messung TID="m2">
+        <Name>Leere Messung</Name>
+      </SO_AGI_TypedScalars_20260611.Topic.Messung>
+    </SO_AGI_TypedScalars_20260611.Topic>
+  </DATASECTION>
+</TRANSFER>

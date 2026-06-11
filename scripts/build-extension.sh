@@ -52,8 +52,17 @@ detect_lib_suffix() {
 
 PLATFORM="${DUCKDB_PLATFORM:-$(detect_platform)}"
 LIB_SUFFIX="${NATIVE_LIB_SUFFIX:-$(detect_lib_suffix)}"
+SOURCE_NATIVE_LIB="${DUCKDB_ILI_NATIVE_LIB:-$REPO_ROOT/java/ili-native/build/native/libduckdb_ili_native.$LIB_SUFFIX}"
+EMBED_NATIVE_DIR="$BUILD_DIR/native/current"
+EMBED_NATIVE_LIB="$EMBED_NATIVE_DIR/libduckdb_ili_native.$LIB_SUFFIX"
 
 mkdir -p "$BUILD_DIR"
+
+if [[ -f "$SOURCE_NATIVE_LIB" ]]; then
+    mkdir -p "$EMBED_NATIVE_DIR"
+    cp "$SOURCE_NATIVE_LIB" "$EMBED_NATIVE_LIB"
+    echo "Synced native library into extension build directory: $EMBED_NATIVE_LIB"
+fi
 
 echo "Building DuckDB extension for platform: $PLATFORM"
 echo "C_STRUCT ABI version: $DUCKDB_ABI_VERSION"

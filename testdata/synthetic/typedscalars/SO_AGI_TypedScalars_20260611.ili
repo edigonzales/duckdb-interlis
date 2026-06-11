@@ -1,0 +1,21 @@
+INTERLIS 2.3;
+
+!!@ technicalContact=mailto:test@example.com
+
+MODEL SO_AGI_TypedScalars_20260611 (de)
+AT "https://models.interlis.ch"
+VERSION "2026-06-11" =
+  IMPORTS INTERLIS;
+
+  TOPIC Topic =
+    CLASS Messung =
+      Name : MANDATORY TEXT*80;
+      Aktiv : BOOLEAN;
+      Anzahl : 0 .. 9999;
+      Genauigkeit : 0.000 .. 9999.999;
+      Stichtag : INTERLIS.XMLDate;
+      Uhrzeit : INTERLIS.XMLTime;
+      Zeitstempel : INTERLIS.XMLDateTime;
+    END Messung;
+  END Topic;
+END SO_AGI_TypedScalars_20260611.

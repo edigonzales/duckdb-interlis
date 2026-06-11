@@ -13,9 +13,10 @@ import ch.interlis.iox_j.IoxSyntaxException;
 import ch.interlis.iox_j.utility.ReaderFactory;
 import ch.so.agi.duckdbili.core.geometry.*;
 import ch.so.agi.duckdbili.core.logging.IliLogger;
-import ch.so.agi.duckdbili.core.transport.TsvCodec;
+import ch.so.agi.duckdbili.core.model.InterlisLogicalTypeMapper;
 import ch.so.agi.duckdbili.core.model.ModelCache;
 import ch.so.agi.duckdbili.core.model.ModelRepositoryResolver;
+import ch.so.agi.duckdbili.core.transport.TsvCodec;
 
 import java.io.File;
 import java.util.*;
@@ -31,6 +32,48 @@ public class XtfObjectReader {
     private final InterlisGeometryEncoder geometryEncoder;
     private final GeometryConversionOptions geometryOptions;
     private final GeometryCrsResolver crsResolver;
+    private final InterlisLogicalTypeMapper logicalTypeMapper;
+
+    private enum ReaderColumnKind {
+        XTF_BID,
+        XTF_TID,
+        XTF_CLASS,
+        SCALAR,
+        GEOMETRY,
+        STRUCTURE_JSON,
+        BAG_JSON,
+        ROLE_REF,
+        UNSUPPORTED_JSON
+    }
+
+    private record ReaderColumnSpec(
+            String columnName,
+            InterlisLogicalTypeMapper.LogicalType logicalType,
+            String wireEncoding,
+            boolean nullable,
+            ReaderColumnKind kind,
+            String sourceName,
+            AttributeDef attributeDef,
+            GeometryMetadata geometryMetadata,
+            String geometryKind,
+            String crsAuth,
+            String crsCode) {
+    }
+
+    private record StructureRow(
+            String rootClassFqn,
+            String structureFqn,
+            String structureName,
+            String attributeFqn,
+            String attributeName,
+            String interlisType,
+            String logicalType,
+            String kind,
+            Boolean isMandatory,
+            Integer cardMin,
+            Long cardMax,
+            String enumValuesJson) {
+    }
 
     public XtfObjectReader() {
         this.geometryTypeResolver = new InterlisGeometryTypeResolver();
@@ -40,6 +83,7 @@ public class XtfObjectReader {
                 new InterlisGeometryExtractor(),
                 geometryOptions);
         this.crsResolver = new MapGeometryCrsResolver();
+        this.logicalTypeMapper = new InterlisLogicalTypeMapper();
     }
 
     public XtfObjectReader(
@@ -62,6 +106,7 @@ public class XtfObjectReader {
         this.geometryEncoder = geometryEncoder;
         this.geometryOptions = geometryOptions;
         this.crsResolver = crsResolver;
+        this.logicalTypeMapper = new InterlisLogicalTypeMapper();
     }
 
     /**
@@ -78,11 +123,24 @@ public class XtfObjectReader {
      * subsequent lines = data rows.
      */
     public String readClass(String xtfPath, String className, String modelDir) {
-        return readXtf(xtfPath, modelDir, extractModelName(className), className, "json");
+        return readNamedViewable(
+                xtfPath,
+                modelDir,
+                className,
+                "json",
+                false,
+                buildClassColumnSpecs(className, modelDir, "json"));
     }
 
     public String readClass(String xtfPath, String className, String modelDir, String nested) {
-        return readXtf(xtfPath, modelDir, extractModelName(className), className, nested != null ? nested : "json");
+        String effectiveNested = nested != null ? nested : "json";
+        return readNamedViewable(
+                xtfPath,
+                modelDir,
+                className,
+                effectiveNested,
+                false,
+                buildClassColumnSpecs(className, modelDir, effectiveNested));
     }
 
     /**
@@ -93,35 +151,7 @@ public class XtfObjectReader {
     }
 
     public String readClassSchema(String className, String modelDir, String nested) {
-        TransferDescription td = compileModel(modelDir, extractModelName(className));
-        
-
-        String[] parts = className.split("\\.");
-        if (parts.length < 3) throw new IllegalArgumentException("Class name must be fully qualified (Model.Topic.Class), got: " + className);
-
-        AbstractClassDef cdef = findClass(td, parts[0], parts[1], parts[2]);
-        if (cdef == null) throw new IllegalArgumentException("Class not found in model: " + className);
-
-        String colSuffix = "duckdb".equals(nested) ? "" : "_json";
-
-        StringBuilder sb = new StringBuilder();
-        sb.append("xtf_bid\txtf_tid\txtf_class");
-        Iterator<?> ait = cdef.getAttributesAndRoles2();
-        while (ait.hasNext()) {
-            ViewableTransferElement vte = (ViewableTransferElement) ait.next();
-            if (vte.obj instanceof AttributeDef ad) {
-                if (geometryTypeResolver.isGeometryAttribute(ad))
-                    sb.append('\t').append(TsvCodec.encodeNullable(ad.getName() + "_geom"));
-                else if (isStructureDomain(ad) || isCompositionDomain(ad))
-                    sb.append('\t').append(TsvCodec.encodeNullable(ad.getName() + colSuffix));
-                else
-                    sb.append('\t').append(TsvCodec.encodeNullable(ad.getName()));
-            } else if (vte.obj instanceof RoleDef rd) {
-                sb.append('\t').append(TsvCodec.encodeNullable(rd.getName() + "_ref"));
-            }
-        }
-        sb.append("\tunsupported_json");
-        return sb.toString();
+        return renderHeader(buildClassColumnSpecs(className, modelDir, nested));
     }
 
     /**
@@ -133,62 +163,7 @@ public class XtfObjectReader {
      * This is the basis for typed bind in C (DUCKDB_TYPE_GEOMETRY vs DUCKDB_TYPE_VARCHAR).
      */
     public String readClassSchemaV2(String className, String modelDir) {
-        TransferDescription td = compileModel(modelDir, extractModelName(className));
-
-        String[] parts = className.split("\\.");
-        if (parts.length < 3) throw new IllegalArgumentException("Class name must be fully qualified (Model.Topic.Class), got: " + className);
-
-        AbstractClassDef cdef = findClass(td, parts[0], parts[1], parts[2]);
-        if (cdef == null) throw new IllegalArgumentException("Class not found in model: " + className);
-
-        StringBuilder sb = new StringBuilder();
-
-        // Fixed columns: always VARCHAR/TEXT, non-nullable
-        appendSchemaRow(sb, "xtf_bid", "VARCHAR", "TEXT", "false", "", "", "");
-        appendSchemaRow(sb, "xtf_tid", "VARCHAR", "TEXT", "false", "", "", "");
-        appendSchemaRow(sb, "xtf_class", "VARCHAR", "TEXT", "false", "", "", "");
-
-        Iterator<?> ait = cdef.getAttributesAndRoles2();
-        while (ait.hasNext()) {
-            ViewableTransferElement vte = (ViewableTransferElement) ait.next();
-            if (vte.obj instanceof AttributeDef ad) {
-                String colName;
-                boolean isGeom = geometryTypeResolver.isGeometryAttribute(ad);
-                if (isGeom) {
-                    colName = ad.getName() + "_geom";
-                    GeometryKind kind = geometryTypeResolver.resolveGeometryKind(ad);
-                    Model model = findModel(td, parts[0]);
-                    Topic topic = (model != null) ? findTopic(model, parts[1]) : null;
-                    GeometryMetadata meta = geometryTypeResolver.resolveMetadata(
-                            model, topic, cdef, ad);
-                    String crsAuth = "";
-                    String crsCode = "";
-                    if (meta != null && meta.coordinateDomainFqn() != null) {
-                        GeometryMetadataContext ctx = new GeometryMetadataContext(
-                                parts[0], parts[1], parts[2], ad.getName(), meta.coordinateDomainFqn());
-                        var crs = crsResolver.resolve(ctx);
-                        if (crs.isPresent()) {
-                            crsAuth = crs.get().authority();
-                            crsCode = crs.get().code();
-                        }
-                    }
-                    appendSchemaRow(sb, colName, "GEOMETRY", "HEX_WKB", "true",
-                            kind != null ? kind.name() : "UNKNOWN",
-                            crsAuth, crsCode);
-                } else if (isStructureDomain(ad) || isCompositionDomain(ad)) {
-                    colName = ad.getName() + "_json";
-                    appendSchemaRow(sb, colName, "VARCHAR", "TEXT", "true", "", "", "");
-                } else {
-                    colName = ad.getName();
-                    appendSchemaRow(sb, colName, "VARCHAR", "TEXT", "true", "", "", "");
-                }
-            } else if (vte.obj instanceof RoleDef rd) {
-                appendSchemaRow(sb, rd.getName() + "_ref", "VARCHAR", "TEXT", "true", "", "", "");
-            }
-        }
-
-        appendSchemaRow(sb, "unsupported_json", "VARCHAR", "TEXT", "true", "", "", "");
-        return sb.toString();
+        return renderSchemaV2(buildClassColumnSpecs(className, modelDir, "json"));
     }
 
     /**
@@ -199,7 +174,13 @@ public class XtfObjectReader {
      */
     public String readClassV2(String xtfPath, String className, String modelDir, String nested) {
         String effectiveNested = nested != null ? nested : "json";
-        return readXtfInternal(xtfPath, modelDir, extractModelName(className), className, effectiveNested, true);
+        return readNamedViewable(
+                xtfPath,
+                modelDir,
+                className,
+                effectiveNested,
+                true,
+                buildClassColumnSpecs(className, modelDir, effectiveNested));
     }
 
     // -----------------------------------------------------------------------
@@ -217,6 +198,280 @@ public class XtfObjectReader {
         sb.append(TsvCodec.encodeNullable(geometryKind.isEmpty() ? null : geometryKind)).append('\t');
         sb.append(TsvCodec.encodeNullable(crsAuth.isEmpty() ? null : crsAuth)).append('\t');
         sb.append(TsvCodec.encodeNullable(crsCode.isEmpty() ? null : crsCode));
+    }
+
+    private String renderHeader(List<ReaderColumnSpec> columns) {
+        StringBuilder sb = new StringBuilder();
+        boolean first = true;
+        for (ReaderColumnSpec column : columns) {
+            if (!first) sb.append('\t');
+            first = false;
+            sb.append(TsvCodec.encodeNullable(column.columnName()));
+        }
+        return sb.toString();
+    }
+
+    private String renderSchemaV2(List<ReaderColumnSpec> columns) {
+        StringBuilder sb = new StringBuilder();
+        for (ReaderColumnSpec column : columns) {
+            appendSchemaRow(
+                    sb,
+                    column.columnName(),
+                    column.logicalType().sqlTypeName(),
+                    column.wireEncoding(),
+                    column.nullable() ? "true" : "false",
+                    column.geometryKind() != null ? column.geometryKind() : "",
+                    column.crsAuth() != null ? column.crsAuth() : "",
+                    column.crsCode() != null ? column.crsCode() : "");
+        }
+        return sb.toString();
+    }
+
+    private List<ReaderColumnSpec> buildClassColumnSpecs(String className, String modelDir, String nested) {
+        TransferDescription td = compileModel(modelDir, extractModelName(className));
+        String[] parts = splitViewableName(className, "Class");
+        AbstractClassDef cdef = findClass(td, parts[0], parts[1], parts[2]);
+        if (cdef == null) throw new IllegalArgumentException("Class not found in model: " + className);
+        Model model = findModel(td, parts[0]);
+        Topic topic = model != null ? findTopic(model, parts[1]) : null;
+        return buildViewableColumnSpecs(model, topic, cdef, parts[2], nested);
+    }
+
+    private List<ReaderColumnSpec> buildAssociationColumnSpecs(String associationName, String modelDir) {
+        TransferDescription td = compileModel(modelDir, extractModelName(associationName));
+        String[] parts = splitViewableName(associationName, "Association");
+        AssociationDef adef = findAssociation(td, parts[0], parts[1], parts[2]);
+        if (adef == null) throw new IllegalArgumentException("Association not found in model: " + associationName);
+        Model model = findModel(td, parts[0]);
+        Topic topic = model != null ? findTopic(model, parts[1]) : null;
+        return buildViewableColumnSpecs(model, topic, adef, parts[2], "json");
+    }
+
+    private List<ReaderColumnSpec> buildViewableColumnSpecs(
+            Model model,
+            Topic topic,
+            AbstractClassDef classDef,
+            String shortClassName,
+            String nested) {
+
+        String jsonSuffix = "duckdb".equals(nested) ? "" : "_json";
+        List<ReaderColumnSpec> columns = new ArrayList<>();
+        columns.add(new ReaderColumnSpec("xtf_bid", InterlisLogicalTypeMapper.LogicalType.VARCHAR, "TEXT", false,
+                ReaderColumnKind.XTF_BID, null, null, null, null, null, null));
+        columns.add(new ReaderColumnSpec("xtf_tid", InterlisLogicalTypeMapper.LogicalType.VARCHAR, "TEXT", false,
+                ReaderColumnKind.XTF_TID, null, null, null, null, null, null));
+        columns.add(new ReaderColumnSpec("xtf_class", InterlisLogicalTypeMapper.LogicalType.VARCHAR, "TEXT", false,
+                ReaderColumnKind.XTF_CLASS, shortClassName, null, null, null, null, null));
+
+        Iterator<?> ait = classDef.getAttributesAndRoles2();
+        while (ait.hasNext()) {
+            ViewableTransferElement vte = (ViewableTransferElement) ait.next();
+            if (vte.obj instanceof AttributeDef ad) {
+                if (geometryTypeResolver.isGeometryAttribute(ad)) {
+                    columns.add(buildGeometryColumnSpec(model, topic, classDef, ad));
+                } else if (isStructureDomain(ad)) {
+                    columns.add(new ReaderColumnSpec(ad.getName() + jsonSuffix,
+                            InterlisLogicalTypeMapper.LogicalType.VARCHAR, "TEXT", true,
+                            ReaderColumnKind.STRUCTURE_JSON, ad.getName(), ad, null, null, null, null));
+                } else if (isCompositionDomain(ad)) {
+                    columns.add(new ReaderColumnSpec(ad.getName() + jsonSuffix,
+                            InterlisLogicalTypeMapper.LogicalType.VARCHAR, "TEXT", true,
+                            ReaderColumnKind.BAG_JSON, ad.getName(), ad, null, null, null, null));
+                } else {
+                    InterlisLogicalTypeMapper.LogicalType logicalType = logicalTypeMapper.mapAttribute(ad);
+                    columns.add(new ReaderColumnSpec(ad.getName(), logicalType, "TEXT", true,
+                            ReaderColumnKind.SCALAR, ad.getName(), ad, null, null, null, null));
+                }
+            } else if (vte.obj instanceof RoleDef rd) {
+                columns.add(new ReaderColumnSpec(rd.getName() + "_ref",
+                        InterlisLogicalTypeMapper.LogicalType.VARCHAR, "TEXT", true,
+                        ReaderColumnKind.ROLE_REF, rd.getName(), null, null, null, null, null));
+            }
+        }
+        columns.add(new ReaderColumnSpec("unsupported_json", InterlisLogicalTypeMapper.LogicalType.VARCHAR, "TEXT", true,
+                ReaderColumnKind.UNSUPPORTED_JSON, null, null, null, null, null, null));
+        return columns;
+    }
+
+    private ReaderColumnSpec buildGeometryColumnSpec(
+            Model model,
+            Topic topic,
+            AbstractClassDef classDef,
+            AttributeDef attributeDef) {
+        GeometryMetadata meta = geometryTypeResolver.resolveMetadata(model, topic, classDef, attributeDef);
+        String crsAuth = null;
+        String crsCode = null;
+        if (meta != null && meta.coordinateDomainFqn() != null) {
+            GeometryMetadataContext ctx = new GeometryMetadataContext(
+                    meta.modelName(),
+                    meta.topicName(),
+                    meta.className(),
+                    meta.attributeName(),
+                    meta.coordinateDomainFqn());
+            var crs = crsResolver.resolve(ctx);
+            if (crs.isPresent()) {
+                crsAuth = crs.get().authority();
+                crsCode = crs.get().code();
+            }
+        }
+        return new ReaderColumnSpec(
+                attributeDef.getName() + "_geom",
+                InterlisLogicalTypeMapper.LogicalType.GEOMETRY,
+                "HEX_WKB",
+                true,
+                ReaderColumnKind.GEOMETRY,
+                attributeDef.getName(),
+                attributeDef,
+                meta,
+                meta != null && meta.geometryKind() != null ? meta.geometryKind().name() : "UNKNOWN",
+                crsAuth,
+                crsCode);
+    }
+
+    private String[] splitViewableName(String name, String label) {
+        String[] parts = name.split("\\.");
+        if (parts.length < 3) {
+            throw new IllegalArgumentException(label + " name must be fully qualified (Model.Topic." + label + "), got: " + name);
+        }
+        return parts;
+    }
+
+    private String readNamedViewable(
+            String xtfPath,
+            String modelDir,
+            String viewableName,
+            String nested,
+            boolean useHexWkb,
+            List<ReaderColumnSpec> columns) {
+        long startNanos = System.nanoTime();
+
+        String xtfDir = "";
+        try { xtfDir = new File(xtfPath).getAbsoluteFile().getParent(); } catch (Exception ignored) {}
+        String md = (modelDir != null && !modelDir.isBlank()) ? modelDir
+                : (!xtfDir.isBlank() ? xtfDir + ";" + DEFAULT_MODELDIR : DEFAULT_MODELDIR);
+
+        long xtfFileSize = -1;
+        try { xtfFileSize = Files.size(Path.of(xtfPath)); } catch (Exception ignored) {}
+
+        if (IliLogger.isDebugEnabled()) {
+            System.err.println("[ili-debug] Reading named XTF viewable: " + xtfPath
+                    + " (size=" + xtfFileSize + " bytes, viewable=" + viewableName + ", nested=" + nested + ")");
+        }
+
+        TransferDescription td = compileModel(md, extractModelName(viewableName));
+        Set<String> knownSourceNames = buildKnownSourceNames(columns);
+
+        StringBuilder sb = new StringBuilder();
+        sb.append(renderHeader(columns)).append('\n');
+
+        IoxReader reader = null;
+        boolean sawEndBasket = false;
+        try {
+            reader = new ReaderFactory().createReader(new File(xtfPath), null);
+            if (reader == null) reader = new Xtf24Reader(new File(xtfPath));
+            if (reader instanceof IoxIliReader iliReader) iliReader.setModel(td);
+
+            String currentBid = "";
+            IoxEvent event;
+            while ((event = reader.read()) != null) {
+                if (event instanceof StartBasketEvent sbe) {
+                    currentBid = sbe.getBid() != null ? sbe.getBid() : "";
+                } else if (event instanceof EndBasketEvent) {
+                    sawEndBasket = true;
+                } else if (event instanceof ObjectEvent oe) {
+                    IomObject obj = oe.getIomObject();
+                    if (obj == null) continue;
+                    String tag = obj.getobjecttag();
+                    if (tag == null || !tag.equals(viewableName)) continue;
+                    appendNamedViewableRow(sb, obj, currentBid, knownSourceNames, columns, useHexWkb);
+                    sb.append('\n');
+                }
+            }
+        } catch (Exception ex) {
+            if (sawEndBasket && ex instanceof IoxSyntaxException ise
+                    && (ise.getMessage() == null || ise.getMessage().isBlank())) {
+                if (IliLogger.isDebugEnabled()) {
+                    System.err.println("[ili-debug] Ignoring trailing IoxSyntaxException after file end");
+                }
+            } else {
+                throw new RuntimeException("XTF read error for " + xtfPath + ": " + ex.getMessage(), ex);
+            }
+        } finally {
+            if (reader != null) { try { reader.close(); } catch (Exception ignored) {} }
+        }
+
+        String result = sb.toString();
+        if (IliLogger.isDebugEnabled()) {
+            long durationMs = (System.nanoTime() - startNanos) / 1_000_000;
+            int rowCount = 0;
+            for (int i = 0; i < result.length(); i++) {
+                if (result.charAt(i) == '\n') rowCount++;
+            }
+            System.err.println("[ili-debug] Named XTF viewable read completed: " + durationMs + " ms, "
+                    + rowCount + " data rows, " + result.length() + " chars (file=" + xtfFileSize + " bytes)");
+        }
+        return result;
+    }
+
+    private void appendNamedViewableRow(
+            StringBuilder sb,
+            IomObject obj,
+            String currentBid,
+            Set<String> knownSourceNames,
+            List<ReaderColumnSpec> columns,
+            boolean useHexWkb) {
+        String tag = obj.getobjecttag();
+        String shortClassName = tag != null && tag.contains(".")
+                ? tag.substring(tag.lastIndexOf('.') + 1)
+                : tag;
+        String tid = obj.getobjectoid();
+        if (tid == null) tid = "";
+
+        for (int i = 0; i < columns.size(); i++) {
+            ReaderColumnSpec column = columns.get(i);
+            if (i > 0) sb.append('\t');
+            switch (column.kind()) {
+                case XTF_BID -> sb.append(TsvCodec.encodeNullable(currentBid));
+                case XTF_TID -> sb.append(TsvCodec.encodeNullable(tid));
+                case XTF_CLASS -> sb.append(TsvCodec.encodeNullable(shortClassName));
+                case SCALAR -> sb.append(TsvCodec.encodeNullable(obj.getattrvalue(column.sourceName())));
+                case GEOMETRY -> sb.append(TsvCodec.encodeNullable(
+                        extractGeometryValue(obj, column.attributeDef(), column.geometryMetadata(), useHexWkb)));
+                case STRUCTURE_JSON -> sb.append(TsvCodec.encodeNullable(buildSingleStructureJson(obj, column.sourceName())));
+                case BAG_JSON -> sb.append(TsvCodec.encodeNullable(buildBagStructureJson(obj, column.sourceName())));
+                case ROLE_REF -> sb.append(TsvCodec.encodeNullable(getRoleRef(obj, column.sourceName())));
+                case UNSUPPORTED_JSON -> sb.append(TsvCodec.encodeNullable(buildUnsupported(obj, knownSourceNames)));
+            }
+        }
+    }
+
+    private String extractGeometryValue(
+            IomObject obj,
+            AttributeDef attributeDef,
+            GeometryMetadata meta,
+            boolean useHexWkb) {
+        if (useHexWkb) {
+            Optional<GeometryValue> value = geometryEncoder.encodeAttribute(obj, attributeDef, meta);
+            return value.map(GeometryValue::hexWkbLE).orElse(null);
+        }
+        try {
+            Optional<GeometryValue> value = geometryEncoder.encodeAttribute(obj, attributeDef, meta);
+            return value.map(GeometryValue::wkt).orElse(null);
+        } catch (GeometryConversionException e) {
+            return "{\"_geometry_error\":\"" + escJson(e.getMessage()) + "\"}";
+        } catch (Exception e) {
+            return "{\"_geometry_error\":\"" + escJson(e.getClass().getSimpleName() + ": " + e.getMessage()) + "\"}";
+        }
+    }
+
+    private Set<String> buildKnownSourceNames(List<ReaderColumnSpec> columns) {
+        Set<String> known = new LinkedHashSet<>();
+        for (ReaderColumnSpec column : columns) {
+            if (column.sourceName() != null && !column.sourceName().isBlank()) {
+                known.add(column.sourceName());
+            }
+        }
+        return known;
     }
 
     private String readXtf(String xtfPath, String modelDir, String modelNames, String className) {
@@ -514,7 +769,7 @@ public class XtfObjectReader {
         return null;
     }
 
-    private String buildUnsupported(IomObject obj, List<String> known) {
+    private String buildUnsupported(IomObject obj, Collection<String> known) {
         Set<String> knownSet = new HashSet<>(known);
         StringBuilder sb = new StringBuilder("{");
         boolean first = true;
@@ -748,7 +1003,7 @@ public class XtfObjectReader {
 
     private String buildBagStructureJson(IomObject obj, String attrName) {
         int count = obj.getattrvaluecount(attrName);
-        if (count == 0) return "[]";
+        if (count == 0) return hasAttribute(obj, attrName) ? "[]" : null;
         StringBuilder sb = new StringBuilder("[");
         for (int i = 0; i < count; i++) {
             if (i > 0) sb.append(",");
@@ -760,6 +1015,14 @@ public class XtfObjectReader {
         }
         sb.append("]");
         return sb.toString();
+    }
+
+    private static boolean hasAttribute(IomObject obj, String attrName) {
+        int n = obj.getattrcount();
+        for (int i = 0; i < n; i++) {
+            if (attrName.equals(obj.getattrname(i))) return true;
+        }
+        return false;
     }
 
     private static String buildStructObjJson(IomObject structObj) {
@@ -782,65 +1045,171 @@ public class XtfObjectReader {
     }
 
     /**
-     * Returns TSV with all STRUCTURE definitions used by a class.
-     * Columns: structure_name, attr_name, attr_type, card_min, card_max
+     * Returns TSV with all recursively reachable STRUCTURE definitions used by a class.
      */
     public String readStructures(String className, String modelDir) {
         TransferDescription td = compileModel(modelDir, extractModelName(className));
-        
-
-        String[] parts = className.split("\\.");
-        if (parts.length < 3) throw new IllegalArgumentException("Class name must be fully qualified (Model.Topic.Class), got: " + className);
+        String[] parts = splitViewableName(className, "Class");
 
         AbstractClassDef cdef = findClass(td, parts[0], parts[1], parts[2]);
         if (cdef == null) throw new IllegalArgumentException("Class not found in model: " + className);
 
-        Set<String> seen = new HashSet<>();
         StringBuilder sb = new StringBuilder();
-        sb.append("structure_name\tattr_name\tattr_type\tcard_min\tcard_max\n");
+        sb.append("root_class_fqn\tstructure_fqn\tstructure_name\tattribute_fqn\tattribute_name\tinterlis_type\tlogical_type\tkind\tis_mandatory\tcard_min\tcard_max\tenum_values_json\n");
 
-        Iterator<?> ait = cdef.getAttributesAndRoles2();
+        for (StructureRow row : collectStructureRows(className, cdef)) {
+            sb.append(TsvCodec.encodeNullable(row.rootClassFqn())).append('\t');
+            sb.append(TsvCodec.encodeNullable(row.structureFqn())).append('\t');
+            sb.append(TsvCodec.encodeNullable(row.structureName())).append('\t');
+            sb.append(TsvCodec.encodeNullable(row.attributeFqn())).append('\t');
+            sb.append(TsvCodec.encodeNullable(row.attributeName())).append('\t');
+            sb.append(TsvCodec.encodeNullable(row.interlisType())).append('\t');
+            sb.append(TsvCodec.encodeNullable(row.logicalType())).append('\t');
+            sb.append(TsvCodec.encodeNullable(row.kind())).append('\t');
+            sb.append(TsvCodec.encodeNullableBoolean(row.isMandatory())).append('\t');
+            sb.append(TsvCodec.encodeNullableInteger(row.cardMin())).append('\t');
+            sb.append(TsvCodec.encodeNullableLong(row.cardMax())).append('\t');
+            sb.append(TsvCodec.encodeNullable(row.enumValuesJson())).append('\n');
+        }
+        return sb.toString();
+    }
+
+    private List<StructureRow> collectStructureRows(String rootClassFqn, AbstractClassDef rootClass) {
+        List<StructureRow> rows = new ArrayList<>();
+        Deque<Table> queue = new ArrayDeque<>();
+        Set<String> seenStructures = new LinkedHashSet<>();
+
+        Iterator<?> ait = rootClass.getAttributesAndRoles2();
         while (ait.hasNext()) {
             ViewableTransferElement vte = (ViewableTransferElement) ait.next();
-            if (!(vte.obj instanceof AttributeDef ad)) continue;
-            Type domain = ad.getDomain();
-            if (!(domain instanceof CompositionType ct) && !(domain instanceof ObjectType)) continue;
-
-            Table structTable = null;
-            if (domain instanceof CompositionType ct2) structTable = ct2.getComponentType();
-            else if (domain instanceof ObjectType ot) {
-                Viewable<?> ref = ot.getRef();
-                if (ref instanceof Table t) structTable = t;
+            if (vte.obj instanceof AttributeDef ad) {
+                Table table = resolveStructureTable(ad);
+                if (table != null) queue.add(table);
             }
-            if (structTable == null || seen.contains(structTable.getName())) continue;
-            seen.add(structTable.getName());
+        }
 
-            Iterator<?> sait = structTable.getAttributesAndRoles2();
+        while (!queue.isEmpty()) {
+            Table structureTable = queue.removeFirst();
+            String structureFqn = structureTable.getScopedName(null);
+            if (structureFqn == null || !seenStructures.add(structureFqn)) continue;
+
+            Iterator<?> sait = structureTable.getAttributesAndRoles2();
             while (sait.hasNext()) {
                 ViewableTransferElement svte = (ViewableTransferElement) sait.next();
                 if (!(svte.obj instanceof AttributeDef sad)) continue;
-                Type sat = sad.getDomain();
-                Cardinality card = sad.getCardinality();
-                String typeName = "";
-                if (sat instanceof EnumerationType et) {
-                    StringBuilder etb = new StringBuilder("(");
-                    boolean first = true;
-                    ch.interlis.ili2c.metamodel.Enumeration consolidated = et.getConsolidatedEnumeration();
-                    for (Iterator<?> eit = consolidated.getElements(); eit.hasNext(); ) {
-                        if (!first) etb.append(", ");
-                        first = false;
-                        etb.append(TsvCodec.encodeNullable(((ch.interlis.ili2c.metamodel.Enumeration.Element) eit.next()).getName()));
-                    }
-                    etb.append(")");
-                    typeName = etb.toString();
-                }
-                sb.append(TsvCodec.encodeNullable(structTable.getName())).append('\t');
-                sb.append(TsvCodec.encodeNullable(sad.getName())).append('\t');
-                sb.append(TsvCodec.encodeNullable(typeName)).append('\t');
-                sb.append(card != null ? String.valueOf(card.getMinimum()) : "0").append('\t');
-                sb.append(card != null ? String.valueOf(card.getMaximum()) : "1").append('\n');
+
+                Table nestedTable = resolveStructureTable(sad);
+                if (nestedTable != null) queue.add(nestedTable);
+
+                Cardinality cardinality = sad.getCardinality();
+                long max = cardinality != null ? cardinality.getMaximum() : 1L;
+                Long cardMax = max == Cardinality.UNBOUND ? null : max;
+                rows.add(new StructureRow(
+                        rootClassFqn,
+                        structureFqn,
+                        structureTable.getName(),
+                        sad.getScopedName(null),
+                        sad.getName(),
+                        resolveInterlisTypeName(sad),
+                        resolveStructureLogicalType(sad).sqlTypeName(),
+                        resolveStructureKind(sad),
+                        cardinality != null ? cardinality.getMinimum() >= 1 : false,
+                        cardinality != null ? (int) cardinality.getMinimum() : 0,
+                        cardMax,
+                        enumValuesJson(sad)));
             }
         }
+        return rows;
+    }
+
+    private Table resolveStructureTable(AttributeDef attributeDef) {
+        Type domain = attributeDef.getDomain();
+        if (domain instanceof CompositionType compositionType) {
+            return compositionType.getComponentType();
+        }
+        if (domain instanceof ObjectType objectType && !objectType.isObjects()) {
+            Viewable<?> ref = objectType.getRef();
+            if (ref instanceof Table table) return table;
+        }
+        return null;
+    }
+
+    private InterlisLogicalTypeMapper.LogicalType resolveStructureLogicalType(AttributeDef attributeDef) {
+        if (geometryTypeResolver.isGeometryAttribute(attributeDef)) {
+            return InterlisLogicalTypeMapper.LogicalType.GEOMETRY;
+        }
+        if (isStructureDomain(attributeDef) || isCompositionDomain(attributeDef)) {
+            return InterlisLogicalTypeMapper.LogicalType.VARCHAR;
+        }
+        return logicalTypeMapper.mapAttribute(attributeDef);
+    }
+
+    private String resolveStructureKind(AttributeDef attributeDef) {
+        if (geometryTypeResolver.isGeometryAttribute(attributeDef)) return "GEOMETRY";
+        if (isStructureDomain(attributeDef)) return "STRUCTURE";
+        if (isCompositionDomain(attributeDef)) return "COMPOSITION";
+
+        Type base = logicalTypeMapper.resolveToBaseType(attributeDef);
+        if (base instanceof EnumerationType) return "ENUM";
+        if (base instanceof ReferenceType) return "REFERENCE";
+        if (attributeDef.getDomain() instanceof ObjectType objectType && objectType.isObjects()) return "REFERENCE";
+        return "SCALAR";
+    }
+
+    private String resolveInterlisTypeName(AttributeDef attributeDef) {
+        Type domain = attributeDef.getDomain();
+        if (domain instanceof TypeAlias typeAlias) {
+            Domain aliasing = typeAlias.getAliasing();
+            if (aliasing != null) {
+                String scopedName = aliasing.getScopedName(null);
+                if (scopedName != null) return scopedName;
+                if (aliasing.getName() != null) return aliasing.getName();
+            }
+        }
+        if (domain instanceof CompositionType compositionType) {
+            Table componentType = compositionType.getComponentType();
+            return componentType != null ? componentType.getScopedName(null) : "COMPOSITION";
+        }
+        if (domain instanceof ObjectType objectType && !objectType.isObjects()) {
+            Viewable<?> ref = objectType.getRef();
+            return ref != null ? ref.getScopedName(null) : "STRUCTURE";
+        }
+        Type base = logicalTypeMapper.resolveToBaseType(attributeDef);
+        if (base instanceof EnumerationType) {
+            String scopedName = base.getScopedName(null);
+            return scopedName != null ? scopedName : "ENUM";
+        }
+        if (base instanceof NumericType) return "NUMERIC";
+        if (base instanceof TextType) return "TEXT";
+        if (base instanceof ReferenceType) return "REFERENCE";
+        if (base instanceof MultiCoordType) return "MULTICOORD";
+        if (base instanceof MultiPolylineType) return "MULTIPOLYLINE";
+        if (base instanceof MultiSurfaceType) return "MULTISURFACE";
+        if (base instanceof MultiAreaType) return "MULTIAREA";
+        if (base instanceof AbstractCoordType) return "COORD";
+        if (base instanceof LineType) return "POLYLINE";
+        if (base instanceof AbstractSurfaceOrAreaType) return "SURFACE_OR_AREA";
+        String scopedName = base != null ? base.getScopedName(null) : null;
+        if (scopedName != null) return scopedName;
+        String name = base != null ? base.getName() : null;
+        return name != null ? name : "UNKNOWN";
+    }
+
+    private String enumValuesJson(AttributeDef attributeDef) {
+        Type base = logicalTypeMapper.resolveToBaseType(attributeDef);
+        if (!(base instanceof EnumerationType enumerationType)) return null;
+
+        StringBuilder sb = new StringBuilder("[");
+        boolean first = true;
+        ch.interlis.ili2c.metamodel.Enumeration consolidated = enumerationType.getConsolidatedEnumeration();
+        for (Iterator<?> it = consolidated.getElements(); it.hasNext(); ) {
+            ch.interlis.ili2c.metamodel.Enumeration.Element element =
+                    (ch.interlis.ili2c.metamodel.Enumeration.Element) it.next();
+            if (!first) sb.append(',');
+            first = false;
+            sb.append('"').append(escJson(element.getName())).append('"');
+        }
+        sb.append(']');
         return sb.toString();
     }
 
@@ -862,104 +1231,31 @@ public class XtfObjectReader {
     // -----------------------------------------------------------------------
 
     public String readAssociationSchema(String associationName, String modelDir) {
-        TransferDescription td = compileModel(modelDir, extractModelName(associationName));
-        
-
-        String[] parts = associationName.split("\\.");
-        if (parts.length < 3) throw new IllegalArgumentException("Association name must be fully qualified (Model.Topic.Association), got: " + associationName);
-
-        AssociationDef adef = findAssociation(td, parts[0], parts[1], parts[2]);
-        if (adef == null) throw new IllegalArgumentException("Association not found in model: " + associationName);
-
-        StringBuilder sb = new StringBuilder();
-        sb.append("xtf_bid\txtf_tid\txtf_class");
-        Iterator<?> ait = adef.getAttributesAndRoles2();
-        while (ait.hasNext()) {
-            ViewableTransferElement vte = (ViewableTransferElement) ait.next();
-            if (vte.obj instanceof RoleDef rd) {
-                sb.append('\t').append(TsvCodec.encodeNullable(rd.getName() + "_ref"));
-            } else if (vte.obj instanceof AttributeDef ad) {
-                sb.append('\t').append(TsvCodec.encodeNullable(ad.getName()));
-            }
-        }
-        sb.append("\tunsupported_json");
-        return sb.toString();
+        return renderHeader(buildAssociationColumnSpecs(associationName, modelDir));
     }
 
     public String readAssociation(String xtfPath, String associationName, String modelDir) {
-        TransferDescription td = compileModel(modelDir, extractModelName(associationName));
-        
+        return readNamedViewable(
+                xtfPath,
+                modelDir,
+                associationName,
+                "json",
+                false,
+                buildAssociationColumnSpecs(associationName, modelDir));
+    }
 
-        String[] parts = associationName.split("\\.");
-        if (parts.length < 3) throw new IllegalArgumentException("Association name must be fully qualified (Model.Topic.Association), got: " + associationName);
+    public String readAssociationSchemaV2(String associationName, String modelDir) {
+        return renderSchemaV2(buildAssociationColumnSpecs(associationName, modelDir));
+    }
 
-        AssociationDef assocDef = findAssociation(td, parts[0], parts[1], parts[2]);
-        if (assocDef == null) throw new IllegalArgumentException("Association not found in model: " + associationName);
-
-        List<String> roleNames = new ArrayList<>();
-        List<String> attrNames = new ArrayList<>();
-        List<String> allNames = new ArrayList<>();
-        Iterator<?> ait = assocDef.getAttributesAndRoles2();
-        while (ait.hasNext()) {
-            ViewableTransferElement vte = (ViewableTransferElement) ait.next();
-            if (vte.obj instanceof RoleDef rd) {
-                roleNames.add(rd.getName());
-                allNames.add(rd.getName());
-            } else if (vte.obj instanceof AttributeDef ad) {
-                attrNames.add(ad.getName());
-                allNames.add(ad.getName());
-            }
-        }
-
-        String xtfDir = "";
-        try { xtfDir = new File(xtfPath).getAbsoluteFile().getParent(); } catch (Exception ignored) {}
-        String md = (modelDir != null && !modelDir.isBlank()) ? modelDir
-                : (!xtfDir.isBlank() ? xtfDir + ";" + DEFAULT_MODELDIR : DEFAULT_MODELDIR);
-        td = compileModel(md, extractModelName(associationName));
-        
-
-        StringBuilder sb = new StringBuilder();
-        sb.append("xtf_bid\txtf_tid\txtf_class");
-        for (String rn : roleNames) sb.append('\t').append(TsvCodec.encodeNullable(rn + "_ref"));
-        for (String an : attrNames) sb.append('\t').append(TsvCodec.encodeNullable(an));
-        sb.append("\tunsupported_json\n");
-
-        IoxReader reader = null;
-        try {
-            reader = new ReaderFactory().createReader(new File(xtfPath), null);
-            if (reader == null) reader = new Xtf24Reader(new File(xtfPath));
-            if (reader instanceof IoxIliReader iliReader) iliReader.setModel(td);
-
-            String currentBid = "";
-            IoxEvent event;
-            while ((event = reader.read()) != null) {
-                if (event instanceof StartBasketEvent sbe) {
-                    currentBid = sbe.getBid() != null ? sbe.getBid() : "";
-                } else if (event instanceof ObjectEvent oe) {
-                    IomObject obj = oe.getIomObject();
-                    if (obj == null) continue;
-                    String tag = obj.getobjecttag();
-                    if (tag == null) continue;
-                    if (!tag.equals(associationName)) continue;
-
-                    String cn = tag.contains(".") ? tag.substring(tag.lastIndexOf('.') + 1) : tag;
-                    String tid = obj.getobjectoid();
-                    if (tid == null) tid = "";
-
-                    sb.append(TsvCodec.encodeNullable(currentBid)).append('\t').append(TsvCodec.encodeNullable(tid)).append('\t').append(TsvCodec.encodeNullable(cn));
-                    for (String rn : roleNames)
-                        sb.append('\t').append(TsvCodec.encodeNullable(getRoleRef(obj, rn)));
-                    for (String an : attrNames)
-                        sb.append('\t').append(TsvCodec.encodeNullable(obj.getattrvalue(an)));
-                    sb.append('\t').append(TsvCodec.encodeNullable(buildUnsupported(obj, allNames))).append('\n');
-                }
-            }
-        } catch (Exception ex) {
-            throw new RuntimeException("XTF association read error for " + xtfPath + ": " + ex.getMessage(), ex);
-        } finally {
-            if (reader != null) { try { reader.close(); } catch (Exception ignored) {} }
-        }
-        return sb.toString();
+    public String readAssociationV2(String xtfPath, String associationName, String modelDir) {
+        return readNamedViewable(
+                xtfPath,
+                modelDir,
+                associationName,
+                "json",
+                true,
+                buildAssociationColumnSpecs(associationName, modelDir));
     }
 
     private AssociationDef findAssociation(TransferDescription td, String mn, String tn, String an) {

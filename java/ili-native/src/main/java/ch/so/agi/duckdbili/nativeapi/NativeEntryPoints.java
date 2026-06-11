@@ -616,6 +616,75 @@ public class NativeEntryPoints {
         }
     }
 
+    @CEntryPoint(name = "ili_native_read_xtf_association_schema_v2")
+    public static int nativeReadXtfAssociationSchemaV2(
+            IsolateThread thread,
+            IliRequest request,
+            CCharPointerPointer outPayload) {
+
+        NativeError verr = NativeRequestValidator.requireRequest(request, NativeRequestValidator.expectedStructSize(), "read_xtf_association_schema_v2");
+        if (verr != null) {
+            outPayload.write(allocCString(verr.toJson()));
+            return verr.status();
+        }
+
+        String associationName = getField(request.association());
+        String modelDir = getField(request.modeldir());
+
+        if (associationName == null) {
+            NativeError err = NativeError.invalidArgument("read_xtf_association_schema_v2",
+                    "Missing required field", "association");
+            outPayload.write(allocCString(err.toJson()));
+            return NativeStatus.INVALID_ARGUMENT;
+        }
+        try {
+            String tsv = getXtfReader().readAssociationSchemaV2(associationName, modelDir);
+            outPayload.write(allocCString(tsv));
+            return NativeStatus.OK;
+        } catch (Exception e) {
+            NativeError err = NativeError.modelError("read_xtf_association_schema_v2",
+                    "Schema v2 read failed: " + (e.getMessage() != null ? e.getMessage() : e.getClass().getName()),
+                    e.toString(), modelDir);
+            outPayload.write(allocCString(err.toJson()));
+            return NativeStatus.MODEL_ERROR;
+        }
+    }
+
+    @CEntryPoint(name = "ili_native_read_xtf_association_v2")
+    public static int nativeReadXtfAssociationV2(
+            IsolateThread thread,
+            IliRequest request,
+            CCharPointerPointer outPayload) {
+
+        NativeError verr = NativeRequestValidator.requireRequest(request, NativeRequestValidator.expectedStructSize(), "read_xtf_association_v2");
+        if (verr != null) {
+            outPayload.write(allocCString(verr.toJson()));
+            return verr.status();
+        }
+
+        String input = getField(request.input());
+        String associationName = getField(request.association());
+        String modelDir = getField(request.modeldir());
+
+        if (input == null || associationName == null) {
+            String missing = input == null ? "input" : "association";
+            NativeError err = NativeError.invalidArgument("read_xtf_association_v2", "Missing required field", missing);
+            outPayload.write(allocCString(err.toJson()));
+            return NativeStatus.INVALID_ARGUMENT;
+        }
+        try {
+            String tsv = getXtfReader().readAssociationV2(input, associationName, modelDir);
+            outPayload.write(allocCString(tsv));
+            return NativeStatus.OK;
+        } catch (Exception e) {
+            NativeError err = NativeError.ioError("read_xtf_association_v2",
+                    "Association read v2 failed: " + (e.getMessage() != null ? e.getMessage() : e.getClass().getName()),
+                    e.toString(), input);
+            outPayload.write(allocCString(err.toJson()));
+            return NativeStatus.IO_ERROR;
+        }
+    }
+
     // -----------------------------------------------------------------------
     // XTF import entry point
     // -----------------------------------------------------------------------
@@ -706,7 +775,8 @@ public class NativeEntryPoints {
             | (1L << 9)  // READ_XTF_ASSOC_SCHEMA
             | (1L << 10) // IMPORT_XTF
             | (1L << 11) // FREE_STRING
-            | (1L << 12); // TYPED_CLASS_SCAN
+            | (1L << 12) // TYPED_CLASS_SCAN
+            | (1L << 13); // TYPED_ASSOC_SCAN
 
         // Return ABI metadata as simple JSON
         String json = "{\"abi_version\":" + ABI_VERSION + ",\"capabilities\":" + capabilities + "}";

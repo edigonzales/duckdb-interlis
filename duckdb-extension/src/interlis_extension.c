@@ -131,6 +131,8 @@ static native_struct_fn g_native_read_xtf_association_schema = NULL;
 static native_struct_fn g_native_generate_import_sql = NULL;
 native_struct_fn g_native_read_xtf_class_schema_v2 = NULL;
 native_struct_fn g_native_read_xtf_class_v2 = NULL;
+native_struct_fn g_native_read_xtf_association_schema_v2 = NULL;
+native_struct_fn g_native_read_xtf_association_v2 = NULL;
 static native_free_fn g_native_free = NULL;
 
 // ABI handshake result
@@ -138,6 +140,7 @@ static ili_api_v1 g_handshake = {0};
 
 // Typed class scan availability (determined at init, based on capability bit 12)
 static bool g_has_typed_class_scan = false;
+static bool g_has_typed_assoc_scan = false;
 
 // --- Thread-safe initialization state ---
 static bool g_init_done = false;
@@ -724,6 +727,21 @@ static bool init_native_library_locked(void) {
         ILI_DEBUG_LOG("Typed class scan v2 not available (ILI_CAP_TYPED_CLASS_SCAN absent); using v1 VARCHAR path");
     }
 
+    if (g_handshake.capabilities & ILI_CAP_TYPED_ASSOC_SCAN) {
+        g_native_read_xtf_association_schema_v2 =
+            (native_struct_fn)dlsym(g_native_handle, "ili_native_read_xtf_association_schema_v2");
+        g_native_read_xtf_association_v2 =
+            (native_struct_fn)dlsym(g_native_handle, "ili_native_read_xtf_association_v2");
+        if (g_native_read_xtf_association_schema_v2 && g_native_read_xtf_association_v2) {
+            g_has_typed_assoc_scan = true;
+            ILI_DEBUG_LOG("Typed association scan v2 enabled (ILI_CAP_TYPED_ASSOC_SCAN present)");
+        } else {
+            ILI_DEBUG_LOG("ILI_CAP_TYPED_ASSOC_SCAN claimed but v2 symbols not found; using v1 fallback");
+        }
+    } else {
+        ILI_DEBUG_LOG("Typed association scan v2 not available (ILI_CAP_TYPED_ASSOC_SCAN absent); using v1 VARCHAR path");
+    }
+
     // Detach the init thread since DuckDB will attach its own threads
     g_detach_thread(init_thread);
 
@@ -820,8 +838,11 @@ static void shutdown_native_library(void) {
     g_native_generate_import_sql = NULL;
     g_native_read_xtf_class_schema_v2 = NULL;
     g_native_read_xtf_class_v2 = NULL;
+    g_native_read_xtf_association_schema_v2 = NULL;
+    g_native_read_xtf_association_v2 = NULL;
     g_native_free = NULL;
     g_has_typed_class_scan = false;
+    g_has_typed_assoc_scan = false;
     memset(&g_handshake, 0, sizeof(g_handshake));
     g_create_isolate = NULL;
     g_attach_thread = NULL;
@@ -2100,8 +2121,17 @@ static void xtf_structures_bind(duckdb_bind_info info) {
     char *cls = ili_bind_copy_named_varchar_or_error(info, "class");
     char *modeldir = ili_bind_copy_named_varchar_or_error(info, "modeldir");
 
-    static const char *fixed_cols[] = {"structure_name", "attr_name", "attr_type", "card_min", "card_max"};
-    static const int n_fixed = 5;
+    static const char *fixed_cols[] = {
+        "root_class_fqn", "structure_fqn", "structure_name", "attribute_fqn",
+        "attribute_name", "interlis_type", "logical_type", "kind",
+        "is_mandatory", "card_min", "card_max", "enum_values_json"
+    };
+    static const duckdb_type fixed_types[] = {
+        DUCKDB_TYPE_VARCHAR, DUCKDB_TYPE_VARCHAR, DUCKDB_TYPE_VARCHAR, DUCKDB_TYPE_VARCHAR,
+        DUCKDB_TYPE_VARCHAR, DUCKDB_TYPE_VARCHAR, DUCKDB_TYPE_VARCHAR, DUCKDB_TYPE_VARCHAR,
+        DUCKDB_TYPE_BOOLEAN, DUCKDB_TYPE_INTEGER, DUCKDB_TYPE_BIGINT, DUCKDB_TYPE_VARCHAR
+    };
+    static const int n_fixed = 12;
 
     xtf_structures_bind_data *bd = ili_calloc_or_error_bind(info, 1, sizeof(*bd), "xtf_structures_bind_data");
     if (!bd) {
@@ -2125,10 +2155,11 @@ static void xtf_structures_bind(duckdb_bind_info info) {
         }
     }
 
-    duckdb_logical_type vt = duckdb_create_logical_type(DUCKDB_TYPE_VARCHAR);
-    for (int i = 0; i < bd->col_count; i++)
-        duckdb_bind_add_result_column(info, bd->col_names[i], vt);
-    duckdb_destroy_logical_type(&vt);
+    for (int i = 0; i < bd->col_count; i++) {
+        duckdb_logical_type lt = duckdb_create_logical_type(fixed_types[i]);
+        duckdb_bind_add_result_column(info, bd->col_names[i], lt);
+        duckdb_destroy_logical_type(&lt);
+    }
     duckdb_bind_set_bind_data(info, bd, xtf_structures_bind_destroy);
 }
 
@@ -2187,6 +2218,68 @@ static void xtf_structures_init(duckdb_init_info info) {
     }
     free(result);
     duckdb_init_set_init_data(info, id, mi_init_destroy);
+}
+
+static void xtf_structures_function(duckdb_function_info tfinfo, duckdb_data_chunk output) {
+    mi_init_data *id = (mi_init_data *)duckdb_function_get_init_data(tfinfo);
+    if (!id || id->current_row >= id->row_count) {
+        duckdb_data_chunk_set_size(output, 0);
+        return;
+    }
+
+    idx_t count = id->row_count - id->current_row;
+    if (count > 1024) count = 1024;
+
+    for (idx_t i = 0; i < count; i++) {
+        char *row = id->rows[id->current_row + i];
+        const char *end = row + strlen(row);
+        const char *cursor = row;
+        ili_tsv_field field;
+
+        for (idx_t c = 0; c < duckdb_data_chunk_get_column_count(output); c++) {
+            duckdb_vector vec = duckdb_data_chunk_get_vector(output, c);
+            if (!ili_tsv_next_field(&cursor, end, &field)) break;
+
+            bool ok = false;
+            switch (c) {
+                case 0:
+                case 1:
+                case 2:
+                case 3:
+                case 4:
+                case 5:
+                case 6:
+                case 7:
+                case 11:
+                    ok = ili_tsv_assign_varchar(vec, i, &field);
+                    break;
+                case 8:
+                    ok = ili_tsv_assign_boolean(vec, i, &field);
+                    break;
+                case 9:
+                    ok = ili_tsv_assign_int32(vec, i, &field);
+                    break;
+                case 10:
+                    ok = ili_tsv_assign_bigint(vec, i, &field);
+                    break;
+                default:
+                    ok = false;
+                    break;
+            }
+
+            if (!ok) {
+                char err_buf[256];
+                snprintf(err_buf, sizeof(err_buf),
+                    "Failed to assign read_xtf_structures column %lld", (long long)c);
+                duckdb_function_set_error(tfinfo, err_buf);
+                duckdb_data_chunk_set_size(output, 0);
+                return;
+            }
+        }
+    }
+
+    duckdb_data_chunk_set_size(output, count);
+    id->current_row += count;
 }
 
 // ---------------------------------------------------------------------------
@@ -2532,7 +2625,7 @@ DUCKDB_EXTENSION_ENTRYPOINT(duckdb_connection connection, duckdb_extension_info 
         duckdb_table_function_add_named_parameter(fn, "modeldir", vt);
         duckdb_table_function_set_bind(fn, xtf_structures_bind);
         duckdb_table_function_set_init(fn, xtf_structures_init);
-        duckdb_table_function_set_function(fn, mi_function);
+        duckdb_table_function_set_function(fn, xtf_structures_function);
         duckdb_register_table_function(connection, fn);
         duckdb_destroy_table_function(&fn);
         duckdb_destroy_logical_type(&vt);
@@ -2546,9 +2639,17 @@ DUCKDB_EXTENSION_ENTRYPOINT(duckdb_connection connection, duckdb_extension_info 
         duckdb_table_function_add_parameter(fn, vt);
         duckdb_table_function_add_named_parameter(fn, "association", vt);
         duckdb_table_function_add_named_parameter(fn, "modeldir", vt);
-        duckdb_table_function_set_bind(fn, xtf_assoc_bind);
-        duckdb_table_function_set_init(fn, xtf_assoc_init);
-        duckdb_table_function_set_function(fn, mi_function);
+        if (g_has_typed_assoc_scan) {
+            duckdb_table_function_set_bind(fn, xtf_assoc_typed_bind);
+            duckdb_table_function_set_init(fn, xtf_assoc_typed_init);
+            duckdb_table_function_set_function(fn, xtf_assoc_typed_function);
+            ILI_DEBUG_LOG("read_xtf_association: using typed v2 path");
+        } else {
+            duckdb_table_function_set_bind(fn, xtf_assoc_bind);
+            duckdb_table_function_set_init(fn, xtf_assoc_init);
+            duckdb_table_function_set_function(fn, mi_function);
+            ILI_DEBUG_LOG("read_xtf_association: using v1 path (VARCHAR columns)");
+        }
         duckdb_register_table_function(connection, fn);
         duckdb_destroy_table_function(&fn);
         duckdb_destroy_logical_type(&vt);

@@ -196,6 +196,20 @@ class XtfObjectReaderTest {
     private static final String GEOM_XTF = GEOM_DIR.resolve("valid.xtf").toString();
     private static final String PUNKT_KLASSE = "SO_AGI_Geometries_20260605.Topic.PunktObjekt";
     private static final String FLAECHEN_KLASSE = "SO_AGI_Geometries_20260605.Topic.FlaechenObjekt";
+    private static final Path TYPED_DIR;
+    static {
+        Path cwd = Path.of("").toAbsolutePath();
+        if (Files.isRegularFile(cwd.resolve("testdata/synthetic/typedscalars/SO_AGI_TypedScalars_20260611.ili"))) {
+            TYPED_DIR = cwd.resolve("testdata/synthetic/typedscalars");
+        } else if (Files.isRegularFile(cwd.getParent().resolve("testdata/synthetic/typedscalars/SO_AGI_TypedScalars_20260611.ili"))) {
+            TYPED_DIR = cwd.getParent().resolve("testdata/synthetic/typedscalars");
+        } else {
+            TYPED_DIR = cwd.getParent().getParent().resolve("testdata/synthetic/typedscalars");
+        }
+    }
+    private static final String TYPED_MODELDIR = TYPED_DIR.toString();
+    private static final String TYPED_XTF = TYPED_DIR.resolve("valid.xtf").toString();
+    private static final String TYPED_CLASS = "SO_AGI_TypedScalars_20260611.Topic.Messung";
 
     @Test
     void readClassSchemaV2_geometryColumnsMarkedAsGEOMETRY() {
@@ -269,6 +283,84 @@ class XtfObjectReaderTest {
                     "Hex WKB should not contain spaces (WKT)");
             }
         }
+    }
+
+    @Test
+    void readClassSchemaV2_scalarColumnsUseNativeTypes() {
+        String schema = reader.readClassSchemaV2(TYPED_CLASS, TYPED_MODELDIR);
+        assertTrue(schema.contains("Aktiv\tBOOLEAN\tTEXT\ttrue"), "BOOLEAN column should be exposed in schema v2");
+        assertTrue(schema.contains("Anzahl\tBIGINT\tTEXT\ttrue"), "BIGINT column should be exposed in schema v2");
+        assertTrue(schema.contains("Genauigkeit\tDOUBLE\tTEXT\ttrue"), "DOUBLE column should be exposed in schema v2");
+        assertTrue(schema.contains("Stichtag\tDATE\tTEXT\ttrue"), "DATE column should be exposed in schema v2");
+        assertTrue(schema.contains("Uhrzeit\tTIME\tTEXT\ttrue"), "TIME column should be exposed in schema v2");
+        assertTrue(schema.contains("Zeitstempel\tTIMESTAMP\tTEXT\ttrue"), "TIMESTAMP column should be exposed in schema v2");
+    }
+
+    @Test
+    void readClassV2_missingScalarValuesUseNullSentinel() {
+        String result = reader.readClassV2(TYPED_XTF, TYPED_CLASS, TYPED_MODELDIR, "json");
+        String[] lines = result.split("\n");
+        assertTrue(lines.length >= 3, "Should have header plus two rows");
+
+        String[] header = lines[0].split("\t", -1);
+        int aktivIdx = -1;
+        int dateIdx = -1;
+        int tsIdx = -1;
+        for (int i = 0; i < header.length; i++) {
+            if (header[i].equals("Aktiv")) aktivIdx = i;
+            if (header[i].equals("Stichtag")) dateIdx = i;
+            if (header[i].equals("Zeitstempel")) tsIdx = i;
+        }
+        assertTrue(aktivIdx > 0 && dateIdx > 0 && tsIdx > 0, "Should expose typed scalar columns");
+
+        for (int i = 1; i < lines.length; i++) {
+            String[] fields = lines[i].split("\t", -1);
+            if (fields[1].equals("m1")) {
+                assertEquals("true", fields[aktivIdx]);
+                assertEquals("2026-06-11", fields[dateIdx]);
+                assertEquals("2026-06-11T14:15:16.123", fields[tsIdx]);
+            } else if (fields[1].equals("m2")) {
+                assertEquals("\\N", fields[aktivIdx], "Missing BOOLEAN should be NULL sentinel");
+                assertEquals("\\N", fields[dateIdx], "Missing DATE should be NULL sentinel");
+                assertEquals("\\N", fields[tsIdx], "Missing TIMESTAMP should be NULL sentinel");
+            }
+        }
+    }
+
+    @Test
+    void readAssociationSchemaV2_usesTypedScalars() {
+        String schema = reader.readAssociationSchemaV2(ASSOC_BESITZ, ASSOC_MODELDIR);
+        assertTrue(schema.contains("besitzer_ref\tVARCHAR\tTEXT\ttrue"), "Role refs should stay VARCHAR");
+        assertTrue(schema.contains("Anteil\tBIGINT\tTEXT\ttrue"), "Association numeric scalar should be BIGINT");
+    }
+
+    @Test
+    void readAssociationV2_returnsDataRows() {
+        String result = reader.readAssociationV2(ASSOC_XTF, ASSOC_BESITZ, ASSOC_MODELDIR);
+        String[] lines = result.split("\n");
+        assertTrue(lines.length >= 2, "Should have header plus rows");
+        assertTrue(lines[0].contains("Anteil"));
+        assertTrue(result.contains("100"), "Association v2 should preserve numeric text payload for typed scan");
+    }
+
+    @Test
+    void readStructures_returnsMachineReadableSchema() {
+        String result = reader.readStructures(CLASS_NAME, MODELDIR);
+        String[] lines = result.split("\n");
+        assertTrue(lines.length >= 3, "Should have header plus structure rows");
+        assertEquals(
+                "root_class_fqn\tstructure_fqn\tstructure_name\tattribute_fqn\tattribute_name\tinterlis_type\tlogical_type\tkind\tis_mandatory\tcard_min\tcard_max\tenum_values_json",
+                lines[0]);
+        assertTrue(result.contains("SO_AGI_Structures_20260605.Topic.Adresse\tAdresse\tSO_AGI_Structures_20260605.Topic.Adresse.Strasse"),
+                "Should include Adresse structure rows");
+        assertTrue(result.contains("\tPLZ\t"),
+                "Should include PLZ attribute");
+        assertTrue(result.contains("\tBIGINT\tSCALAR\t"),
+                "Numeric structure attribute should map to BIGINT/SCALAR");
+        assertTrue(result.contains("\t[\"privat\",\"geschaeftlich\"]"),
+                "Enum values should be exposed as JSON array");
+        assertFalse(result.contains("\tUNKNOWN\t"),
+                "interlis_type should stay machine-readable for scalar structure attributes");
     }
 
     // -------------------------------------------------------------------

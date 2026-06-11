@@ -8,7 +8,7 @@ if [[ -f "$SCRIPT_DIR/env.sh" ]]; then
     source "$SCRIPT_DIR/env.sh"
 fi
 
-DUCKDB="${DUCKDB_CLI:-~/bin/duckdb}"
+DUCKDB="${DUCKDB_CLI:-$HOME/bin/duckdb}"
 EXTENSION="${DUCKDB_ILI_EXTENSION:-$REPO_ROOT/duckdb-extension/build/interlis.duckdb_extension}"
 NATIVE_LIB="${DUCKDB_ILI_NATIVE_LIB:-$REPO_ROOT/java/ili-native/build/native/libduckdb_ili_native.dylib}"
 TESTDATA="$REPO_ROOT/testdata/synthetic/simple"
@@ -20,8 +20,11 @@ echo "Extension: $EXTENSION"
 echo "Native lib: $NATIVE_LIB"
 echo ""
 
-PASS=0
-FAIL=0
+RESULT_DIR="$(mktemp -d)"
+PASS_FILE="$RESULT_DIR/pass"
+FAIL_FILE="$RESULT_DIR/fail"
+touch "$PASS_FILE" "$FAIL_FILE"
+trap 'rm -rf "$RESULT_DIR"' EXIT
 
 # Helper: run a single query and check exit code
 run_query() {
@@ -32,11 +35,11 @@ run_query() {
     local rc=$?
     if [ $rc -eq 0 ]; then
         echo "  [$id] PASS: $query"
-        ((PASS++)) || true
+        echo 1 >> "$PASS_FILE"
     else
         echo "  [$id] FAIL (rc=$rc): $query"
         echo "    $out" | head -5
-        ((FAIL++)) || true
+        echo 1 >> "$FAIL_FILE"
     fi
 }
 
@@ -76,6 +79,8 @@ wait
 echo ""
 
 echo ""
+PASS=$(wc -l < "$PASS_FILE")
+FAIL=$(wc -l < "$FAIL_FILE")
 echo "=== Results: $PASS passed, $FAIL failed ==="
 
 if [ "$FAIL" -gt 0 ]; then

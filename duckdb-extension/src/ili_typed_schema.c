@@ -12,6 +12,12 @@ static char *strdup_safe(const char *s) {
 
 static ili_column_kind parse_kind(const char *s, char **out_error) {
     if (!s || strcmp(s, "VARCHAR") == 0) return ILI_COLUMN_VARCHAR;
+    if (strcmp(s, "BIGINT") == 0) return ILI_COLUMN_BIGINT;
+    if (strcmp(s, "DOUBLE") == 0) return ILI_COLUMN_DOUBLE;
+    if (strcmp(s, "BOOLEAN") == 0) return ILI_COLUMN_BOOLEAN;
+    if (strcmp(s, "DATE") == 0) return ILI_COLUMN_DATE;
+    if (strcmp(s, "TIME") == 0) return ILI_COLUMN_TIME;
+    if (strcmp(s, "TIMESTAMP") == 0) return ILI_COLUMN_TIMESTAMP;
     if (strcmp(s, "GEOMETRY") == 0) return ILI_COLUMN_GEOMETRY;
 
     if (out_error) {
@@ -149,15 +155,7 @@ bool ili_typed_schema_parse(const char *tsv,
         ili_wire_encoding enc = parse_encoding(fields[2], out_error);
 
         // Validate kind matches encoding
-        if (kind == ILI_COLUMN_GEOMETRY && fields[1] && strcmp(fields[1], "GEOMETRY") == 0) {
-            if (out_error && *out_error) {
-                // parse_kind already set an error for unknown kind
-                for (int f = 0; f < 7; f++) free(fields[f]);
-                ili_typed_schema_free(cols, i);
-                return false;
-            }
-        }
-        if (kind == ILI_COLUMN_VARCHAR && fields[1] && strcmp(fields[1], "VARCHAR") != 0) {
+        if (out_error && *out_error) {
             // Unknown kind — parse_kind already set error
             for (int f = 0; f < 7; f++) free(fields[f]);
             ili_typed_schema_free(cols, i);

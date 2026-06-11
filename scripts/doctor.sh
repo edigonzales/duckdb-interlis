@@ -46,14 +46,18 @@ fi
 
 echo ""
 echo "--- Build Tools ---"
-command -v gradle >/dev/null 2>&1 && check_ok "gradle ($(command -v gradle))" || check_fail "gradle not found"
-if [[ -x "${DUCKDB_CLI:-~/bin/duckdb}" ]]; then
-    check_ok "DuckDB CLI ($DUCKDB_CLI)"
+if command -v gradle >/dev/null 2>&1; then
+    check_ok "gradle ($(command -v gradle))"
+elif [[ -x "$REPO_ROOT/gradlew" ]]; then
+    check_ok "gradlew ($REPO_ROOT/gradlew)"
+else
+    check_fail "gradle/gradlew not found"
+fi
+DUCKDB_BIN="${DUCKDB_CLI:-$HOME/bin/duckdb}"
+if [[ -x "$DUCKDB_BIN" ]]; then
+    check_ok "DuckDB CLI ($DUCKDB_BIN)"
     echo -n "  DuckDB version ... "
-    "$DUCKDB_CLI" --version
-elif [[ -x ~/bin/duckdb ]]; then
-    check_ok "DuckDB CLI (~/bin/duckdb)"
-    ~/bin/duckdb --version
+    "$DUCKDB_BIN" --version
 else
     check_fail "DuckDB CLI not found"
 fi

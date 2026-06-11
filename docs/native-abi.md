@@ -280,7 +280,7 @@ int ili_native_read_xtf_class(graal_isolatethread_t*, char* request_json, char**
 - **Returns:** 0 on success, 1 on error.
 - **Success payload:** TSV with header line + data rows.
 - **Error payload:** `{"status":"IO_ERROR","operation":"read_xtf_class","message":"...","detail":"...","path":"..."}` (status 2)
-- **Issues:** `endsWith` class matching and NULL semantics to be fixed in Phase 7. Read exceptions throw (no more partial results).
+- **Notes:** Exact FQN matching is used. Missing optional values are encoded as TSV NULL sentinel `\N`.
 
 ### 5.8 `ili_native_read_xtf_class_schema`
 
@@ -293,6 +293,30 @@ int ili_native_read_xtf_class_schema(graal_isolatethread_t*, char* request_json,
 - **Returns:** 0 on success, 1 on error.
 - **Success payload:** Tab-separated column names.
 - **Error payload:** `{"status":"INVALID_ARGUMENT","operation":"read_xtf_class_schema","message":"Missing required field","detail":"class"}` (status 1)
+
+### 5.8a `ili_native_read_xtf_class_schema_v2`
+
+```c
+int ili_native_read_xtf_class_schema_v2(graal_isolatethread_t*, char* request_json, char** out_payload);
+```
+
+- **Purpose:** Get the typed v2 schema descriptor for a class.
+- **Input:** `{"class":"Model.Topic.Class","modeldir":"...","nested":"json"}`
+- **Returns:** 0 on success, 1 on error.
+- **Success payload:** One TSV row per column with fields `name`, `logical_type`, `wire_encoding`, `nullable`, `geometry_kind`, `crs_auth_name`, `crs_code`.
+- **Availability:** Optional capability `ILI_CAP_TYPED_CLASS_SCAN` (bit 12).
+
+### 5.8b `ili_native_read_xtf_class_v2`
+
+```c
+int ili_native_read_xtf_class_v2(graal_isolatethread_t*, char* request_json, char** out_payload);
+```
+
+- **Purpose:** Read a class from XTF using the typed v2 transport.
+- **Input:** `{"input":"path.xtf","class":"Model.Topic.Class","modeldir":"...","nested":"json"}`
+- **Returns:** 0 on success, 1 on error.
+- **Success payload:** TSV with header line + data rows. Scalars use textual wire values, geometry uses hex-WKB, missing optional values use `\N`.
+- **Availability:** Optional capability `ILI_CAP_TYPED_CLASS_SCAN` (bit 12).
 
 ### 5.9 `ili_native_read_xtf_structures`
 
@@ -317,7 +341,7 @@ int ili_native_read_xtf_association(graal_isolatethread_t*, char* request_json, 
 - **Returns:** 0 on success, 1 on error.
 - **Success payload:** TSV with header + data rows.
 - **Error payload:** `{"status":"IO_ERROR","operation":"read_xtf_association","message":"...","detail":"...","path":"..."}` (status 2)
-- **Issues:** `endsWith` class matching to be fixed in Phase 7. Read exceptions throw (no partial results).
+- **Notes:** Exact FQN matching is used. Missing optional values are encoded as TSV NULL sentinel `\N`.
 
 ### 5.11 `ili_native_read_xtf_association_schema`
 
@@ -330,6 +354,30 @@ int ili_native_read_xtf_association_schema(graal_isolatethread_t*, char* request
 - **Returns:** 0 on success, 1 on error.
 - **Success payload:** Tab-separated column names.
 - **Error payload:** `{"status":"INVALID_ARGUMENT","operation":"read_xtf_association_schema","message":"Missing required field","detail":"association"}` (status 1)
+
+### 5.11a `ili_native_read_xtf_association_schema_v2`
+
+```c
+int ili_native_read_xtf_association_schema_v2(graal_isolatethread_t*, char* request_json, char** out_payload);
+```
+
+- **Purpose:** Get the typed v2 schema descriptor for an association.
+- **Input:** `{"association":"Model.Topic.Assoc","modeldir":"..."}`
+- **Returns:** 0 on success, 1 on error.
+- **Success payload:** One TSV row per column with fields `name`, `logical_type`, `wire_encoding`, `nullable`, `geometry_kind`, `crs_auth_name`, `crs_code`.
+- **Availability:** Optional capability `ILI_CAP_TYPED_ASSOC_SCAN` (bit 13).
+
+### 5.11b `ili_native_read_xtf_association_v2`
+
+```c
+int ili_native_read_xtf_association_v2(graal_isolatethread_t*, char* request_json, char** out_payload);
+```
+
+- **Purpose:** Read an association from XTF using the typed v2 transport.
+- **Input:** `{"input":"path.xtf","association":"Model.Topic.Assoc","modeldir":"..."}`
+- **Returns:** 0 on success, 1 on error.
+- **Success payload:** TSV with header line + data rows. Scalars use textual wire values, missing optional values use `\N`.
+- **Availability:** Optional capability `ILI_CAP_TYPED_ASSOC_SCAN` (bit 13).
 
 ### 5.12 `ili_native_generate_import_sql`
 
@@ -424,9 +472,9 @@ Most data flows use tab-separated values with escape sequences:
 
 ### Parser (C Side)
 
-- `parse_tsv_field()`: Extracts a single field, unescapes sequences, returns `malloc`'d string.
-- `parse_tsv_int()`: Parses an integer field.
-- No handling of NULL sentinels — empty fields are returned as empty strings.
+- `ili_tsv_next_field()`: Extracts a single field and preserves whether it was encoded as the TSV NULL sentinel `\N`.
+- Typed assignment helpers decode NULL sentinels into SQL `NULL`.
+- Unescaping remains textual for non-null scalar payloads.
 
 ## 9. Request Format (JSON)
 
@@ -535,9 +583,15 @@ public final class NativeRequestValidator {
 | 9 | `ILI_CAP_READ_XTF_ASSOC_SCHEMA` | `read_xtf_association_schema` |
 | 10 | `ILI_CAP_IMPORT_XTF` | `generate_import_sql` |
 | 11 | `ILI_CAP_FREE_STRING` | `free_string` |
+| 12 | `ILI_CAP_TYPED_CLASS_SCAN` | `read_xtf_class_schema_v2` + `read_xtf_class_v2` |
+| 13 | `ILI_CAP_TYPED_ASSOC_SCAN` | `read_xtf_association_schema_v2` + `read_xtf_association_v2` |
 
-**Required capabilities (ABI v1 — all 12 mandatory):**
+**Required capabilities (ABI v1 — 12 mandatory, typed scans optional):**
 `ILI_CAP_VERSION | ILI_CAP_VALIDATE | ILI_CAP_VALIDATE_TSV | ILI_CAP_MODEL_INFO | ILI_CAP_READ_XTF | ILI_CAP_READ_XTF_CLASS | ILI_CAP_READ_XTF_CLASS_SCHEMA | ILI_CAP_READ_XTF_STRUCTURES | ILI_CAP_READ_XTF_ASSOCIATION | ILI_CAP_READ_XTF_ASSOC_SCHEMA | ILI_CAP_IMPORT_XTF | ILI_CAP_FREE_STRING`
+
+Optional capabilities:
+- `ILI_CAP_TYPED_CLASS_SCAN`
+- `ILI_CAP_TYPED_ASSOC_SCAN`
 
 **Backward/forward compatibility:**
 

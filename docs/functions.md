@@ -601,7 +601,7 @@ FROM read_xtf_objects('testdata/synthetic/simple/valid.xtf',
 read_xtf_class(input VARCHAR, class => VARCHAR, modeldir => VARCHAR, nested => VARCHAR) → TABLE(...)
 ```
 
- **Description:** Reads an XTF file and returns rows for a specific INTERLIS class. Columns are dynamically determined from the class schema. Scalar attributes appear as individual columns of type VARCHAR. STRUCTURE attributes appear as `*_json` columns. BAG OF STRUCTURE attributes appear as `*_json` columns (JSON array). Geometry attributes appear as `*_geom` columns: native `GEOMETRY` type (v2 typed path) with hex-WKB internally, or `VARCHAR` WKT (v1 fallback). Use `::GEOMETRY` cast only with the v1 fallback path.
+ **Description:** Reads an XTF file and returns rows for a specific INTERLIS class. Columns are dynamically determined from the class schema. Scalar attributes are exposed as model-aware DuckDB types (`VARCHAR`, `BIGINT`, `DOUBLE`, `BOOLEAN`, `DATE`, `TIME`, `TIMESTAMP`). STRUCTURE attributes appear as `*_json` columns. BAG OF STRUCTURE attributes appear as `*_json` columns (JSON array). Geometry attributes appear as `*_geom` columns: native `GEOMETRY` type (v2 typed path) with hex-WKB internally, or `VARCHAR` WKT (v1 fallback). Use `::GEOMETRY` cast only with the v1 fallback path. Missing optional values are returned as SQL `NULL`.
 
 **Parameters:**
 
@@ -629,7 +629,15 @@ FROM read_xtf_class('testdata/synthetic/simple/valid.xtf',
 ```
 
 ```sql
--- 2. Read a class with STRUCTURE and BAG (JSON extraction)
+-- 2. Read a class with typed scalar columns
+SELECT xtf_tid, Aktiv, Anzahl, Genauigkeit, Stichtag, Uhrzeit, Zeitstempel
+FROM read_xtf_class('testdata/synthetic/typedscalars/valid.xtf',
+    class := 'SO_AGI_TypedScalars_20260611.Topic.Messung',
+    modeldir := 'testdata/synthetic/typedscalars');
+```
+
+```sql
+-- 3. Read a class with STRUCTURE and BAG (JSON extraction)
 SELECT Name,
     json_extract_string(Adresse_json, '$.Strasse') AS Strasse,
     json_extract_string(Adresse_json, '$.PLZ') AS PLZ,
@@ -641,7 +649,7 @@ FROM read_xtf_class('testdata/synthetic/structures/valid.xtf',
 ```
 
 ```sql
--- 3. Unnest BAG OF STRUCTURE elements
+-- 4. Unnest BAG OF STRUCTURE elements
 SELECT Name,
     json_extract_string(unnested, '$.Typ') AS KontaktTyp,
     json_extract_string(unnested, '$.Telefon') AS Telefon,
@@ -655,7 +663,7 @@ FROM (
 ```
 
 ```sql
--- 4. Read a class with geometry
+-- 5. Read a class with geometry
 -- v2 typed path: native GEOMETRY columns (no cast needed)
 -- v1 fallback path: WKT VARCHAR columns, cast with ::GEOMETRY
 SELECT xtf_tid, Name, Lage_geom,
@@ -666,7 +674,7 @@ FROM read_xtf_class('testdata/synthetic/geometries/valid.xtf',
 ```
 
 ```sql
--- 5. nested-Modus explizit setzen (entspricht Default "json")
+-- 6. nested-Modus explizit setzen (entspricht Default "json")
 SELECT Name, Adresse_json
 FROM read_xtf_class('testdata/synthetic/structures/valid.xtf',
     class := 'SO_AGI_Structures_20260605.Topic.Betrieb',
@@ -684,7 +692,7 @@ FROM read_xtf_class('testdata/synthetic/structures/valid.xtf',
 read_xtf_structures(class => VARCHAR, modeldir => VARCHAR) → TABLE(...)
 ```
 
-**Description:** Introspects INTERLIS STRUCTURE definitions used by a class. This function has **no positional parameters** — both parameters are named.
+**Description:** Introspects all recursively reachable INTERLIS STRUCTURE definitions used by a class. This function has **no positional parameters** — both parameters are named.
 
 **Parameters:**
 
@@ -697,17 +705,24 @@ read_xtf_structures(class => VARCHAR, modeldir => VARCHAR) → TABLE(...)
 
 | Column | Type |
 |---|---|
+| `root_class_fqn` | VARCHAR |
+| `structure_fqn` | VARCHAR |
 | `structure_name` | VARCHAR |
-| `attr_name` | VARCHAR |
-| `attr_type` | VARCHAR |
-| `card_min` | VARCHAR |
-| `card_max` | VARCHAR |
+| `attribute_fqn` | VARCHAR |
+| `attribute_name` | VARCHAR |
+| `interlis_type` | VARCHAR |
+| `logical_type` | VARCHAR |
+| `kind` | VARCHAR |
+| `is_mandatory` | BOOLEAN |
+| `card_min` | INTEGER |
+| `card_max` | BIGINT |
+| `enum_values_json` | VARCHAR |
 
 **Examples:**
 
 ```sql
 -- 1. List all structures used by a class
-SELECT structure_name, attr_name, attr_type, card_min, card_max
+SELECT structure_name, attribute_name, interlis_type, logical_type, kind, card_min, card_max
 FROM read_xtf_structures(
     class := 'SO_AGI_Structures_20260605.Topic.Betrieb',
     modeldir := 'testdata/synthetic/structures'
@@ -716,7 +731,7 @@ FROM read_xtf_structures(
 
 ```sql
 -- 2. Filter to a specific structure
-SELECT attr_name, attr_type, card_min, card_max
+SELECT attribute_name, logical_type, kind, enum_values_json
 FROM read_xtf_structures(
     class := 'SO_AGI_Structures_20260605.Topic.Betrieb',
     modeldir := 'testdata/synthetic/structures'
@@ -734,7 +749,7 @@ WHERE structure_name = 'Adresse';
 read_xtf_association(input VARCHAR, association => VARCHAR, modeldir => VARCHAR) → TABLE(...)
 ```
 
-**Description:** Reads an INTERLIS association from an XTF file. Columns are dynamically determined from the association schema. Role references appear as `*_ref` columns.
+**Description:** Reads an INTERLIS association from an XTF file. Columns are dynamically determined from the association schema. Role references appear as `*_ref` columns. Scalar attributes are exposed as model-aware DuckDB types (`VARCHAR`, `BIGINT`, `DOUBLE`, `BOOLEAN`, `DATE`, `TIME`, `TIMESTAMP`). Missing optional values are returned as SQL `NULL`.
 
 **Parameters:**
 
@@ -754,7 +769,8 @@ read_xtf_association(input VARCHAR, association => VARCHAR, modeldir => VARCHAR)
 
 ```sql
 -- 1. Read an association table
-SELECT * FROM read_xtf_association(
+SELECT xtf_tid, besitzer_ref, grundstueck_ref, Anteil
+FROM read_xtf_association(
     'testdata/synthetic/associations/valid.xtf',
     association := 'SO_AGI_Associations_20260605.Topic.Besitz',
     modeldir := 'testdata/synthetic/associations'
@@ -787,11 +803,11 @@ JOIN grundstueck ON besitz.grundstueck_ref = grundstueck.xtf_tid;
 
 ```sql
 -- 3. Inspect association schema (column names)
-SELECT * FROM read_xtf_association(
+DESCRIBE SELECT * FROM read_xtf_association(
     'testdata/synthetic/associations/valid.xtf',
     association := 'SO_AGI_Associations_20260605.Topic.Besitz',
     modeldir := 'testdata/synthetic/associations'
-) LIMIT 0;
+);
 ```
 
 ---
@@ -851,4 +867,3 @@ FROM ili_generate_import_sql('testdata/synthetic/simple/valid.xtf',
     modeldir := 'testdata/synthetic/simple',
     mode := 'append');
 ```
-

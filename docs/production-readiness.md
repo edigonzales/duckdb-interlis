@@ -40,8 +40,8 @@
 
 | # | Requirement | Status | Phase |
 |---|-------------|--------|-------|
-| 18 | Full qualified class name comparison (not `endsWith`) | ❌ | 7 |
-| 19 | NULL vs empty string distinguished | ❌ | 7 |
+| 18 | Full qualified class name comparison (not `endsWith`) | ✅ | 7 |
+| 19 | NULL vs empty string distinguished | ✅ | 7 |
 | 20 | Corrupt file produces error, not partial result | ❌ | 7 |
 | 21 | Geometry errors not silently swallowed | ❌ | 7 |
 | 22 | Multiple baskets tested and correct | ⚠️ | 7 |

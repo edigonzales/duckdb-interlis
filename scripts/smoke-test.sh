@@ -8,7 +8,7 @@ if [[ -f "$SCRIPT_DIR/env.sh" ]]; then
     source "$SCRIPT_DIR/env.sh"
 fi
 
-DUCKDB="${DUCKDB_CLI:-~/bin/duckdb}"
+DUCKDB="${DUCKDB_CLI:-$HOME/bin/duckdb}"
 EXTENSION="${DUCKDB_ILI_EXTENSION:-$REPO_ROOT/duckdb-extension/build/interlis.duckdb_extension}"
 NATIVE_LIB="${DUCKDB_ILI_NATIVE_LIB:-$REPO_ROOT/java/ili-native/build/native/libduckdb_ili_native.dylib}"
 

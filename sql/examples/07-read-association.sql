@@ -13,7 +13,8 @@ SELECT * FROM read_xtf_class('testdata/synthetic/associations/valid.xtf',
     modeldir := 'testdata/synthetic/associations');
 
 SELECT '=== Association: Besitz (raw) ===' AS example;
-SELECT * FROM read_xtf_association(
+SELECT xtf_tid, besitzer_ref, grundstueck_ref, Anteil
+FROM read_xtf_association(
     'testdata/synthetic/associations/valid.xtf',
     association := 'SO_AGI_Associations_20260605.Topic.Besitz',
     modeldir := 'testdata/synthetic/associations');

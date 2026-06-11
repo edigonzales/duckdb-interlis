@@ -13,6 +13,12 @@ extern "C" {
  */
 typedef enum {
     ILI_COLUMN_VARCHAR,
+    ILI_COLUMN_BIGINT,
+    ILI_COLUMN_DOUBLE,
+    ILI_COLUMN_BOOLEAN,
+    ILI_COLUMN_DATE,
+    ILI_COLUMN_TIME,
+    ILI_COLUMN_TIMESTAMP,
     ILI_COLUMN_GEOMETRY
 } ili_column_kind;
 

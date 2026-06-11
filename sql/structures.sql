@@ -19,16 +19,16 @@ FROM read_xtf_class(
 SELECT '=== Struktur-Werte (JSON-Extraktion) ===' AS test;
 SELECT
     Name,
-    CASE WHEN Adresse_json != ''
+    CASE WHEN Adresse_json IS NOT NULL
         THEN json_extract_string(Adresse_json, '$.Strasse')
         ELSE NULL END AS Strasse,
-    CASE WHEN Adresse_json != ''
+    CASE WHEN Adresse_json IS NOT NULL
         THEN json_extract_string(Adresse_json, '$.PLZ')
         ELSE NULL END AS PLZ,
-    CASE WHEN Adresse_json != ''
+    CASE WHEN Adresse_json IS NOT NULL
         THEN json_extract_string(Adresse_json, '$.Ort')
         ELSE NULL END AS Ort,
-    CASE WHEN Kontakte_json != ''
+    CASE WHEN Kontakte_json IS NOT NULL
         THEN json_array_length(Kontakte_json)
         ELSE NULL END AS Anzahl_Kontakte
 FROM read_xtf_class(
@@ -55,7 +55,7 @@ FROM (
 SELECT '=== Missing/Empty Test ===' AS test;
 SELECT
     Name,
-    Adresse_json = '' AS adresse_missing,
+    Adresse_json IS NULL AS adresse_missing,
     Kontakte_json = '[]' AS kontakte_empty
 FROM read_xtf_class(
     'testdata/synthetic/structures/valid.xtf',
@@ -63,7 +63,7 @@ FROM read_xtf_class(
     modeldir := 'testdata/synthetic/structures'
 );
 
-SELECT '=== unsupported_json (should be empty) ===' AS test;
+SELECT '=== unsupported_json (should be NULL) ===' AS test;
 SELECT
     Name,
     unsupported_json

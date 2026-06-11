@@ -14,6 +14,12 @@ FROM read_xtf_class('testdata/synthetic/simple/valid.xtf',
     class := 'SO_AGI_Simple_20260605.Topic.Abbaustelle',
     modeldir := 'testdata/synthetic/simple');
 
+SELECT '=== Typed scalars: Messung ===' AS example;
+SELECT xtf_tid, Aktiv, Anzahl, Genauigkeit, Stichtag, Uhrzeit, Zeitstempel
+FROM read_xtf_class('testdata/synthetic/typedscalars/valid.xtf',
+    class := 'SO_AGI_TypedScalars_20260611.Topic.Messung',
+    modeldir := 'testdata/synthetic/typedscalars');
+
 SELECT '=== Structures: Betrieb (raw JSON columns) ===' AS example;
 SELECT Name, Adresse_json, Kontakte_json
 FROM read_xtf_class('testdata/synthetic/structures/valid.xtf',
@@ -48,7 +54,7 @@ FROM (
 
 SELECT '=== Structures: missing/empty detection ===' AS example;
 SELECT Name,
-    Adresse_json = '' AS adresse_missing,
+    Adresse_json IS NULL AS adresse_missing,
     Kontakte_json = '[]' AS kontakte_empty
 FROM read_xtf_class('testdata/synthetic/structures/valid.xtf',
     class := 'SO_AGI_Structures_20260605.Topic.Betrieb',

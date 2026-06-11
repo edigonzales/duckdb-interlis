@@ -8,7 +8,7 @@ extern "C" {
 #endif
 
 /*
- * Typed class scan callbacks for read_xtf_class (v2).
+ * Typed scan callbacks for read_xtf_class/read_xtf_association (v2).
  *
  * These replace the generic VARCHAR-only path when the native library
  * supports ILI_CAP_TYPED_CLASS_SCAN.
@@ -34,6 +34,10 @@ void xtf_class_typed_init(duckdb_init_info info);
  * (TEXT → VARCHAR assignment, HEX_WKB → GEOMETRY assignment).
  */
 void xtf_class_typed_function(duckdb_function_info tfinfo, duckdb_data_chunk output);
+
+void xtf_assoc_typed_bind(duckdb_bind_info info);
+void xtf_assoc_typed_init(duckdb_init_info info);
+void xtf_assoc_typed_function(duckdb_function_info tfinfo, duckdb_data_chunk output);
 
 #ifdef __cplusplus
 }

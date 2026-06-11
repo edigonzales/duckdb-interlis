@@ -7,6 +7,7 @@ import ch.interlis.ili2c.metamodel.*;
 import ch.interlis.ilirepository.IliManager;
 import ch.so.agi.duckdbili.core.geometry.*;
 import ch.so.agi.duckdbili.core.logging.IliLogger;
+import ch.so.agi.duckdbili.core.model.InterlisLogicalTypeMapper;
 import ch.so.agi.duckdbili.core.model.ModelCache;
 import ch.so.agi.duckdbili.core.model.ModelRepositoryResolver;
 import ch.so.agi.duckdbili.core.sql.SqlIdentifiers;
@@ -23,10 +24,12 @@ public class IliImportService {
 
     private final GeometryCrsResolver crsResolver;
     private final InterlisGeometryTypeResolver geometryTypeResolver;
+    private final InterlisLogicalTypeMapper logicalTypeMapper;
 
     public IliImportService() {
         this.crsResolver = new MapGeometryCrsResolver();
         this.geometryTypeResolver = new InterlisGeometryTypeResolver();
+        this.logicalTypeMapper = new InterlisLogicalTypeMapper();
     }
 
     public String generateImportSql(String xtfPath, String modelDir, String schema, String mapping, String mode) {
@@ -73,7 +76,7 @@ public class IliImportService {
                         String assocFqn = model.getName() + "." + topic.getName() + "." + assocDef.getName();
                         String tableName = buildTableName(topic, assocDef.getName());
                         ensureNoTableCollision(tableName, assocFqn, tableNames);
-                        List<ColInfo> cols = buildAssociationColumns(assocDef);
+                        List<ColInfo> cols = buildAssociationColumns(model, topic, assocDef);
                         if (effectiveMode.equals("replace")) {
                             sql.append("DROP TABLE IF EXISTS ").append(SqlIdentifiers.quoteIdent(schema)).append(".")
                               .append(SqlIdentifiers.quoteIdent(tableName)).append(";\n");
@@ -137,15 +140,15 @@ public class IliImportService {
         while (ait.hasNext()) {
             ViewableTransferElement vte = (ViewableTransferElement) ait.next();
             if (vte.obj instanceof AttributeDef ad) {
-                if (isGeometryDomain(ad) || isMultiGeometryDomain(ad)) {
+                InterlisLogicalTypeMapper.LogicalType logicalType = logicalTypeMapper.mapAttribute(ad);
+                if (logicalType == InterlisLogicalTypeMapper.LogicalType.GEOMETRY) {
                     String geomType = resolveGeometryType(ad, model, topic, cdef);
                     cols.add(new ColInfo(ad.getScopedName(null), ad.getName() + "_geom", geomType));
                 } else if (isStructureDomain(ad) || isCompositionDomain(ad)) {
-                    String type = mapScalarType(ad);
-                    cols.add(new ColInfo(ad.getScopedName(null), ad.getName() + "_json", type));
+                    cols.add(new ColInfo(ad.getScopedName(null), ad.getName() + "_json",
+                            InterlisLogicalTypeMapper.LogicalType.VARCHAR.sqlTypeName()));
                 } else {
-                    String type = mapScalarType(ad);
-                    cols.add(new ColInfo(ad.getScopedName(null), ad.getName(), type));
+                    cols.add(new ColInfo(ad.getScopedName(null), ad.getName(), logicalType.sqlTypeName()));
                 }
             } else if (vte.obj instanceof RoleDef rd) {
                 cols.add(new ColInfo(rd.getScopedName(null), rd.getName() + "_ref", "VARCHAR"));
@@ -176,7 +179,7 @@ public class IliImportService {
         return "GEOMETRY";
     }
 
-    private List<ColInfo> buildAssociationColumns(AssociationDef adef) {
+    private List<ColInfo> buildAssociationColumns(Model model, Topic topic, AssociationDef adef) {
         List<ColInfo> cols = new ArrayList<>();
         for (String tc : TECH_COLS) cols.add(new ColInfo("<technical>", tc, "VARCHAR"));
 
@@ -186,7 +189,16 @@ public class IliImportService {
             if (vte.obj instanceof RoleDef rd) {
                 cols.add(new ColInfo(rd.getScopedName(null), rd.getName() + "_ref", "VARCHAR"));
             } else if (vte.obj instanceof AttributeDef ad) {
-                cols.add(new ColInfo(ad.getScopedName(null), ad.getName(), mapScalarType(ad)));
+                InterlisLogicalTypeMapper.LogicalType logicalType = logicalTypeMapper.mapAttribute(ad);
+                if (logicalType == InterlisLogicalTypeMapper.LogicalType.GEOMETRY) {
+                    cols.add(new ColInfo(ad.getScopedName(null), ad.getName() + "_geom",
+                            resolveGeometryType(ad, model, topic, adef)));
+                } else if (isStructureDomain(ad) || isCompositionDomain(ad)) {
+                    cols.add(new ColInfo(ad.getScopedName(null), ad.getName() + "_json",
+                            InterlisLogicalTypeMapper.LogicalType.VARCHAR.sqlTypeName()));
+                } else {
+                    cols.add(new ColInfo(ad.getScopedName(null), ad.getName(), logicalType.sqlTypeName()));
+                }
             }
         }
         cols.add(new ColInfo("<technical>", "unsupported_json", "VARCHAR"));
@@ -270,43 +282,6 @@ public class IliImportService {
     // -----------------------------------------------------------------------
     // Type mapping from INTERLIS domain to DuckDB
     // -----------------------------------------------------------------------
-
-    private static String mapScalarType(AttributeDef ad) {
-        Type domain = resolveToBaseType(ad);
-        if (domain == null) return "VARCHAR";
-
-        if (domain instanceof NumericType nt) {
-            PrecisionDecimal min = nt.getMinimum();
-            PrecisionDecimal max = nt.getMaximum();
-            boolean hasDecimals = (min != null && min.getExponent() < 0)
-                               || (max != null && max.getExponent() < 0);
-            return hasDecimals ? "DOUBLE" : "BIGINT";
-        }
-        if (domain instanceof TextType) return "VARCHAR";
-        if (domain instanceof EnumerationType) return "VARCHAR";
-
-        if (domain.isBoolean()) return "BOOLEAN";
-
-        String typeName = domain.getScopedName(null);
-        if (typeName == null) typeName = domain.getName();
-        if (typeName != null) {
-            if (typeName.contains("DATETIME")) return "TIMESTAMP";
-            if (typeName.contains("TIME") && !typeName.contains("DATETIME")) return "TIME";
-            if (typeName.contains("DATE") && !typeName.contains("DATETIME")) return "DATE";
-        }
-
-        if (domain instanceof AbstractCoordType
-                || domain instanceof LineType
-                || domain instanceof AbstractSurfaceOrAreaType
-                || domain instanceof MultiCoordType
-                || domain instanceof MultiSurfaceType
-                || domain instanceof MultiPolylineType
-                || domain instanceof MultiAreaType) return "GEOMETRY";
-        if (domain instanceof ObjectType || domain instanceof CompositionType) return "VARCHAR";
-        if (domain instanceof ReferenceType) return "VARCHAR";
-
-        return "VARCHAR";
-    }
 
     private static void ensureNoColumnCollisions(String ownerFqn, List<ColInfo> columns) {
         Map<String, ColInfo> seen = new LinkedHashMap<>();
@@ -437,33 +412,6 @@ public class IliImportService {
             return card == null || card.getMaximum() > 1;
         }
         return false;
-    }
-
-    private static boolean isGeometryDomain(AttributeDef ad) {
-        Type domain = resolveToBaseType(ad);
-        return domain instanceof AbstractCoordType
-            || domain instanceof LineType
-            || domain instanceof AbstractSurfaceOrAreaType;
-    }
-
-    private static boolean isMultiGeometryDomain(AttributeDef ad) {
-        Type domain = resolveToBaseType(ad);
-        return domain instanceof MultiCoordType
-            || domain instanceof MultiSurfaceType
-            || domain instanceof MultiPolylineType
-            || domain instanceof MultiAreaType;
-    }
-
-    private static Type resolveToBaseType(AttributeDef ad) {
-        Type domain = ad.getDomainResolvingAll();
-        if (domain == null) domain = ad.getDomain();
-        for (int i = 0; i < 5 && domain != null; i++) {
-            if (domain instanceof TypeAlias ta) {
-                Domain aliasing = ta.getAliasing();
-                if (aliasing != null) domain = aliasing.getType();
-            }
-        }
-        return domain;
     }
 
     private static String resolveModelDir(String modelDir, String xtfPath) {

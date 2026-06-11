@@ -1,6 +1,6 @@
 # DuckDB-Interlis Current API Reference
 
-> **Phase 0 Baseline Document.** Generated 2026-06-07.
+> **Phase 0 Baseline Document.** Generated 2026-06-11.
 > Documents all SQL functions as they currently exist in version 0.1.0-dev.
 > For each function: signature, parameters, return columns, NULL behaviour, error behaviour, known limitations.
 
@@ -20,7 +20,7 @@
 | 10 | `ili_geometry_attributes(modeldir, model =>, class =>)` | Table | 21 columns |
 | 11 | `read_xtf_objects(input, modeldir =>, models =>)` | Table | 9 columns |
 | 12 | `read_xtf_class(input, class =>, modeldir =>, nested =>)` | Table | Dynamic |
-| 13 | `read_xtf_structures(class =>, modeldir =>)` | Table | 5 columns |
+| 13 | `read_xtf_structures(class =>, modeldir =>)` | Table | 12 columns |
 | 14 | `read_xtf_association(input, association =>, modeldir =>)` | Table | Dynamic |
 | 15 | `ili_generate_import_sql(input, schema =>, modeldir =>, mapping =>, mode =>)` | Table | 1 column |
 
@@ -377,7 +377,7 @@
 
 **Signature:** `read_xtf_class(input VARCHAR, class => VARCHAR, modeldir => VARCHAR, nested => VARCHAR) → TABLE(...)`
 
-**Description:** Reads an XTF file and returns rows for a specific INTERLIS class. Columns are dynamically determined from the class schema.
+**Description:** Reads an XTF file and returns rows for a specific INTERLIS class. Columns are dynamically determined from the class schema. Scalar attributes are exposed as model-aware DuckDB types (`VARCHAR`, `BIGINT`, `DOUBLE`, `BOOLEAN`, `DATE`, `TIME`, `TIMESTAMP`). Geometry attributes use native `GEOMETRY` on the typed v2 path and `VARCHAR` WKT on the fallback path.
 
 **Parameters:**
 
@@ -397,9 +397,9 @@
 | `xtf_class` | VARCHAR | Short class name |
 | `unsupported_json` | VARCHAR | JSON with attributes not in the schema |
 
-Plus: one column per scalar attribute, `*_geom` for geometry attributes (WKT), `*_json` for STRUCTURE/BAG attributes, `*_ref` for role references.
+Plus: one column per scalar attribute, `*_geom` for geometry attributes, `*_json` for STRUCTURE/BAG attributes, `*_ref` for role references.
 
-**NULL behaviour:** Missing attribute values are returned as **empty strings** (`""`), not NULL. Missing geometry returns `""`, not NULL. Missing integer values return `""`, not NULL.
+**NULL behaviour:** Missing optional values are returned as SQL `NULL`. Empty strings remain empty strings. STRUCTURE/BAG columns return SQL `NULL` when absent, and BAG columns return `'[]'` only when the attribute is present but empty.
 
 **Error behaviour:**
 - Native library init failure → `duckdb_init_set_error(g_error_buf)`.
@@ -410,11 +410,9 @@ Plus: one column per scalar attribute, `*_geom` for geometry attributes (WKT), `
 - Schema call failure in bind phase → fallback columns used (`xtf_bid`, `xtf_tid`, `xtf_class`) **without any warning**.
 
 **Known limitations:**
-- **Class matching uses `endsWith(".ClassName")`** — two classes with the same short name in different topics will produce merged/incorrect results (Phase 7 fix).
-- **NULL vs empty string cannot be distinguished** — missing values and actual empty strings are both returned as `""` (Phase 7 fix).
-- Missing numeric values appear as empty strings, not NULL — precludes proper type casting.
-- Geometry conversion errors return empty string `""` silently, not NULL or error.
 - Column names use unqualified attribute names — potential collision in complex schemas.
+- The fallback path without `ILI_CAP_TYPED_CLASS_SCAN` still exposes geometry as WKT `VARCHAR`.
+- Table-function result columns remain nullable even for `MANDATORY` INTERLIS attributes because DuckDB 1.5.3 does not expose NOT NULL binding metadata in the C API.
 
 ---
 
@@ -422,7 +420,7 @@ Plus: one column per scalar attribute, `*_geom` for geometry attributes (WKT), `
 
 **Signature:** `read_xtf_structures(class => VARCHAR, modeldir => VARCHAR) → TABLE(...)`
 
-**Description:** Introspects INTERLIS STRUCTURE definitions used by a class. No positional parameters — both are named.
+**Description:** Introspects all recursively reachable INTERLIS STRUCTURE definitions used by a class. No positional parameters — both are named.
 
 **Parameters:**
 
@@ -435,20 +433,27 @@ Plus: one column per scalar attribute, `*_geom` for geometry attributes (WKT), `
 
 | Column | Type |
 |--------|------|
+| `root_class_fqn` | VARCHAR |
+| `structure_fqn` | VARCHAR |
 | `structure_name` | VARCHAR |
-| `attr_name` | VARCHAR |
-| `attr_type` | VARCHAR |
-| `card_min` | VARCHAR |
-| `card_max` | VARCHAR |
+| `attribute_fqn` | VARCHAR |
+| `attribute_name` | VARCHAR |
+| `interlis_type` | VARCHAR |
+| `logical_type` | VARCHAR |
+| `kind` | VARCHAR |
+| `is_mandatory` | BOOLEAN |
+| `card_min` | INTEGER |
+| `card_max` | BIGINT |
+| `enum_values_json` | VARCHAR |
 
-**NULL behaviour:** Empty strings for missing fields.
+**NULL behaviour:** `card_max` is SQL `NULL` for unbounded multiplicities. `enum_values_json` is SQL `NULL` for non-enum attributes.
 
 **Error behaviour:**
 - Native library init failure → `duckdb_init_set_error(g_error_buf)`.
 - Missing `class` → `duckdb_init_set_error("Missing class")`.
 - Native call failure → DuckDB error with extracted NativeError message (Phase 2 fix).
 
-**Known limitations:** Same as other model-aware functions. No XTF input needed — only uses the model directory.
+**Known limitations:** No XTF input is needed — the function is purely model-based and only uses the model directory.
 
 ---
 
@@ -456,7 +461,7 @@ Plus: one column per scalar attribute, `*_geom` for geometry attributes (WKT), `
 
 **Signature:** `read_xtf_association(input VARCHAR, association => VARCHAR, modeldir => VARCHAR) → TABLE(...)`
 
-**Description:** Reads an INTERLIS association from an XTF file. Columns are dynamically determined from the association schema.
+**Description:** Reads an INTERLIS association from an XTF file. Columns are dynamically determined from the association schema. Scalar attributes are exposed as model-aware DuckDB types (`VARCHAR`, `BIGINT`, `DOUBLE`, `BOOLEAN`, `DATE`, `TIME`, `TIMESTAMP`); role references remain `VARCHAR`.
 
 **Parameters:**
 
@@ -468,7 +473,13 @@ Plus: one column per scalar attribute, `*_geom` for geometry attributes (WKT), `
 
 **Return columns:** Dynamic, always includes `xtf_bid`, `xtf_tid`, `xtf_class`, `unsupported_json`.
 
-**NULL behaviour, error behaviour, known limitations:** Same as `read_xtf_class`. Additionally uses `endsWith` for tag matching — same collision risk.
+**NULL behaviour:** Same as `read_xtf_class`.
+
+**Error behaviour:** Same as `read_xtf_class`.
+
+**Known limitations:**
+- Role references stay `VARCHAR` because they are transfer IDs, not foreign-key typed columns.
+- The typed association path requires `ILI_CAP_TYPED_ASSOC_SCAN`; without it, the fallback path exposes all association columns as `VARCHAR`.
 
 ---
 

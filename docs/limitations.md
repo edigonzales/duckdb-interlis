@@ -49,6 +49,12 @@ SELECT * FROM ili_validate('/data/file.xtf', modeldir := '/local/models/');
 
 INTERLIS numeric types with decimal places are mapped to DuckDB `DOUBLE`, which may lose precision for very large or very precise decimal values. Types without decimal places are mapped to `BIGINT`.
 
+## Typed Scalar Output
+
+`read_xtf_class(...)` and `read_xtf_association(...)` expose model-aware scalar columns as `VARCHAR`, `BIGINT`, `DOUBLE`, `BOOLEAN`, `DATE`, `TIME`, or `TIMESTAMP` when the native library advertises `ILI_CAP_TYPED_CLASS_SCAN` and `ILI_CAP_TYPED_ASSOC_SCAN`. Missing optional scalar values are returned as SQL `NULL`.
+
+`read_xtf_objects(...)` intentionally remains generic and schemaless: it still returns JSON/VARCHAR payloads rather than widening each object into typed columns.
+
 ## Identifier Quoting
 
 Table and column names use the `topic__class` pattern with lowercase sanitization. Very long names may be truncated or cause collisions. Always verify generated SQL before executing in production.
@@ -124,7 +130,7 @@ The following INTERLIS constructs are explicitly rejected with `UnsupportedGeome
 
 ## MANDATORY / NOT NULL Constraints
 
-The DuckDB 1.5.3 C API does not provide `duckdb_bind_set_column_not_null` or equivalent for table function result columns. Therefore, `MANDATORY` INTERLIS attributes produce `VARCHAR` columns that are **nullable** in DuckDB, even though the model declares them mandatory. Applications should enforce constraints downstream if needed.
+The DuckDB 1.5.3 C API does not provide `duckdb_bind_set_column_not_null` or equivalent for table function result columns. Therefore, `MANDATORY` INTERLIS attributes still produce **nullable** DuckDB result columns, even though the model declares them mandatory. Applications should enforce constraints downstream if needed.
 
 Future DuckDB versions may add this capability.
 

@@ -45,6 +45,6 @@ tasks.register('nativeSharedLibrary', Exec) {
         mainClass
     )
 
-    inputs.files(sourceSets.main.output)
+    inputs.files(sourceSets.main.output, sourceSets.main.runtimeClasspath)
     outputs.file(outputFile)
 }

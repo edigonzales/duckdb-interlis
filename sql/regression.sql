@@ -65,17 +65,15 @@ FROM ili_validate('testdata/synthetic/simple/invalid.xtf',
 -- Phase 7: XTF Reader
 -- ============================================================================
 
--- REGRESSION-6: Class name matching uses short names only
--- Currently: uses endsWith(".ClassName") — collisions possible
--- After Phase 7: full FQN comparison
+-- REGRESSION-6: Class name matching uses full FQNs
+-- This query guards against reintroducing short-name matching.
 SELECT '--- REGRESSION-6: Class matching by short name ---' AS test;
 SELECT xtf_class, xtf_tid
 FROM read_xtf_class('testdata/synthetic/simple/valid.xtf',
     class := 'SO_AGI_Simple_20260605.Topic.Gemeinde',
     modeldir := 'testdata/synthetic/simple');
 
--- REGRESSION-7: NULL vs empty string not distinguished
--- Currently: both returned as ""
+-- REGRESSION-7: NULL vs empty string are distinguished
 -- After Phase 7: NULL sentinel (\N) for actual NULL values
 SELECT '--- REGRESSION-7: NULL vs empty distinction ---' AS test;
 SELECT xtf_tid, Name, bfs_nr
