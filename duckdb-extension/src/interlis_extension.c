@@ -742,7 +742,15 @@ cleanup_handshake_fail:
 }
 
 // Thread-safe initialization. Returns true if native library is ready.
-// Stores persistent error in g_init_error on failure; does NOT retry.
+//
+// DESIGN NOTE: This function stores a persistent error in g_init_error on
+// failure and does NOT retry. The native library state (GraalVM isolate,
+// dlopen handle, function pointers) is held for the lifetime of the process.
+// This is intentional: DuckDB does not provide a reliable extension-unload
+// lifecycle, so cleanup is delegated to the OS at process exit.
+//
+// For leak-checking with Valgrind/ASAN, use ili_shutdown_native_for_tests()
+// to explicitly tear down the native library and free all resources.
 bool ensure_native_ready(void) {
     ili_mutex_lock(&g_init_lock);
 
@@ -773,9 +781,15 @@ const char *get_init_error(void) {
 }
 
 // ---------------------------------------------------------------------------
-// Shutdown (for manual use in tests; not called automatically by DuckDB)
-// NOTE: DuckDB does not provide a reliable extension-unload lifecycle.
-// Cleanup (isolate teardown, dlclose) happens at process exit via OS.
+// Shutdown — tears down the GraalVM isolate, closes the native library,
+// frees g_init_error, and resets all global state to allow re-initialization.
+//
+// DESIGN NOTE: This is NOT called automatically. DuckDB does not provide a
+// reliable extension-unload lifecycle, so the native library state is held
+// for process lifetime by design. Cleanup happens at process exit via OS.
+//
+// Use ili_shutdown_native_for_tests() for Valgrind/ASAN leak detection
+// and for testing re-initialization paths. Not intended for production use.
 // ---------------------------------------------------------------------------
 static void shutdown_native_library(void) {
     ili_mutex_lock(&g_init_lock);
@@ -817,6 +831,28 @@ static void shutdown_native_library(void) {
     g_init_error = NULL;
     g_init_done = false;
     ili_mutex_unlock(&g_init_lock);
+}
+
+// ---------------------------------------------------------------------------
+// SQL function: ili_shutdown_native_for_tests()
+//
+// Tears down the native library (GraalVM isolate, dlclose) and resets all
+// global state. Intended for Valgrind/ASAN leak detection and testing
+// re-initialization paths. NOT for production use — after calling this,
+// the next query will transparently re-initialize the native library.
+// ---------------------------------------------------------------------------
+static void ili_shutdown_native_for_tests_fn(duckdb_function_info info,
+                                             duckdb_data_chunk input,
+                                             duckdb_vector output) {
+    idx_t size = duckdb_data_chunk_get_size(input);
+    duckdb_vector_ensure_validity_writable(output);
+    uint64_t *validity = duckdb_vector_get_validity(output);
+
+    for (idx_t row = 0; row < size; row++) {
+        shutdown_native_library();
+        duckdb_validity_set_row_valid(validity, row);
+        duckdb_vector_assign_string_element(output, row, "ok");
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1241,6 +1277,20 @@ static void register_functions(duckdb_connection connection) {
         duckdb_destroy_logical_type(&rt);
 
         duckdb_scalar_function_set_function(fn, ili_validate_summary_json_fn);
+        duckdb_register_scalar_function(connection, fn);
+        duckdb_destroy_scalar_function(&fn);
+    }
+
+    // ili_shutdown_native_for_tests() -> VARCHAR
+    // Test-only: tears down the native library and resets all state.
+    // NOT for production use. Intended for Valgrind/ASAN leak detection.
+    {
+        duckdb_scalar_function fn = duckdb_create_scalar_function();
+        duckdb_scalar_function_set_name(fn, "ili_shutdown_native_for_tests");
+        duckdb_logical_type rt = duckdb_create_logical_type(DUCKDB_TYPE_VARCHAR);
+        duckdb_scalar_function_set_return_type(fn, rt);
+        duckdb_destroy_logical_type(&rt);
+        duckdb_scalar_function_set_function(fn, ili_shutdown_native_for_tests_fn);
         duckdb_register_scalar_function(connection, fn);
         duckdb_destroy_scalar_function(&fn);
     }
