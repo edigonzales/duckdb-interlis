@@ -65,7 +65,7 @@ SELECT ili_native_version();
 
 ### Production: Install from Repository
 
-> **Wichtig**: Die Extension ist **unsigniert**. DuckDB muss zwingend mit `-unsigned` gestartet werden, sonst schlagen `INSTALL` und `LOAD` fehl.
+> **Note**: The extension is **unsigned**. DuckDB must be started with `-unsigned`, otherwise `INSTALL` and `LOAD` will fail.
 
 ```bash
 duckdb -unsigned
@@ -76,7 +76,7 @@ INSTALL interlis FROM 'https://duckdb-ext.interlis.guru';
 LOAD interlis;
 ```
 
-Falls DuckDB bereits ohne `-unsigned` läuft:
+If DuckDB is already running without `-unsigned`:
 
 ```sql
 SET allow_unsigned_extensions = true;
@@ -84,7 +84,7 @@ INSTALL interlis FROM 'https://duckdb-ext.interlis.guru';
 LOAD interlis;
 ```
 
-Die Extension wird nach `~/.duckdb/extensions/v1.2.0/{PLATFORM}/` installiert und beim ersten Laden automatisch die native GraalVM-Library extrahiert.
+The extension installs to `~/.duckdb/extensions/v1.2.0/{PLATFORM}/`. On first `LOAD`, the native GraalVM library is extracted automatically to the same directory.
 
 ### Production: Manual Load from Release Binary
 
@@ -137,6 +137,8 @@ The extension finds the GraalVM native library in this order:
 
 ## Usage
 
+New to duckdb-interlis? Start with **[docs/getting-started.md](docs/getting-started.md)** for a step-by-step walkthrough.
+
 See **[docs/functions.md](docs/functions.md)** for a complete function reference with examples for every function.
 
 Quick start examples are in **`sql/examples/`** — run them with:
@@ -151,11 +153,14 @@ or with the dev helper:
 scripts/dev-duckdb.sh < sql/examples/01-version.sql
 ```
 
+See **[sql/examples/README.md](sql/examples/README.md)** for an index of all examples and the recommended order.
+
 ## Documentation
 
 | Document | Description |
 |---|---|
-| [docs/installation.md](docs/installation.md) | Installation, setup, and environment variables |
+| [docs/getting-started.md](docs/getting-started.md) | Step-by-step guide for new users |
+| [docs/installation.md](docs/installation.md) | Detailed installation, environment variables |
 | [docs/security.md](docs/security.md) | Security architecture: hash verification, atomic extraction, symlink rejection |
 | [docs/functions.md](docs/functions.md) | Complete function reference with examples (15 SQL functions) |
 | [docs/current-api.md](docs/current-api.md) | Phase 0 baseline: all functions with signatures, NULL/error behaviour, known limitations |
@@ -168,6 +173,7 @@ scripts/dev-duckdb.sh < sql/examples/01-version.sql
 | [docs/architecture.md](docs/architecture.md) | System architecture overview |
 | [docs/production-readiness.md](docs/production-readiness.md) | Production readiness checklist |
 | [docs/VERSIONS.md](docs/VERSIONS.md) | Version types and compatibility |
+| [CHANGELOG.md](CHANGELOG.md) | Release history and changes |
 
 ## Debug Mode
 
@@ -183,14 +189,15 @@ See [docs/performance.md](docs/performance.md) and [docs/troubleshooting.md](doc
 
 ```
 duckdb-ili/
-├── java/                  # Java business logic (GraalVM)
-│   ├── ili-core/          # Core services
-│   └── ili-native/        # GraalVM native image C API
-├── duckdb-extension/      # DuckDB C API extension
-├── scripts/               # Build & dev scripts
-├── sql/                   # SQL examples
-├── testdata/              # Test data (synthetic + external)
-└── docs/                  # Architecture & design docs
+├── CHANGELOG.md            # Release history
+├── java/                   # Java business logic (GraalVM)
+│   ├── ili-core/           # Core services
+│   └── ili-native/         # GraalVM native image C API
+├── duckdb-extension/       # DuckDB C API extension
+├── scripts/                # Build & dev scripts
+├── sql/                    # SQL examples (see sql/examples/README.md)
+├── testdata/               # Test data (synthetic + external)
+└── docs/                   # Documentation
 ```
 
 ## License

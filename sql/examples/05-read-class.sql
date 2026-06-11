@@ -62,17 +62,22 @@ FROM read_xtf_class('testdata/synthetic/structures/valid.xtf',
     nested := 'json');
 
 SELECT '=== Geometry: class with COORD ===' AS example;
+-- v2 typed path: native GEOMETRY type (requires spatial extension for functions)
+-- v1 fallback: VARCHAR WKT (cast with ::GEOMETRY)
+INSTALL spatial;
+LOAD spatial;
 SELECT xtf_tid, Name,
-    CASE WHEN Lage_geom != '' THEN 'has geometry' ELSE 'no geometry' END AS has_geom,
-    length(Lage_geom) AS wkt_length
+       ST_GeometryType(Lage_geom) AS geometry_type,
+       ST_AsText(Lage_geom) AS wkt
 FROM read_xtf_class('testdata/synthetic/geometries/valid.xtf',
     class := 'SO_AGI_Geometries_20260605.Topic.PunktObjekt',
     modeldir := 'testdata/synthetic/geometries');
 
 SELECT '=== Geometry: class with SURFACE ===' AS example;
 SELECT xtf_tid, Name,
-    CASE WHEN Flaeche_geom != '' THEN 'has geometry' ELSE 'no geometry' END AS has_geom,
-    length(Flaeche_geom) AS wkt_length
+       ST_GeometryType(Flaeche_geom) AS geometry_type,
+       ST_Area(Flaeche_geom) AS area,
+       ST_IsValid(Flaeche_geom) AS is_valid
 FROM read_xtf_class('testdata/synthetic/geometries/valid.xtf',
     class := 'SO_AGI_Geometries_20260605.Topic.FlaechenObjekt',
     modeldir := 'testdata/synthetic/geometries');

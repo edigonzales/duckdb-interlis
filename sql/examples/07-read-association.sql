@@ -44,11 +44,8 @@ JOIN grundstueck ON besitz.grundstueck_ref = grundstueck.xtf_tid
 ORDER BY person_name, grundstueck_nummer;
 
 SELECT '=== Association schema inspection ===' AS example;
-SELECT column_name, data_type
-FROM (
-    SELECT * FROM read_xtf_association(
-        'testdata/synthetic/associations/valid.xtf',
-        association := 'SO_AGI_Associations_20260605.Topic.Besitz',
-        modeldir := 'testdata/synthetic/associations'
-    ) LIMIT 0
-) LIMIT 0;
+DESCRIBE SELECT * FROM read_xtf_association(
+    'testdata/synthetic/associations/valid.xtf',
+    association := 'SO_AGI_Associations_20260605.Topic.Besitz',
+    modeldir := 'testdata/synthetic/associations'
+);

@@ -57,3 +57,16 @@ FROM ili_validate('testdata/synthetic/simple/invalid.xtf',
 WHERE severity IN ('ERROR', 'WARNING')
   AND attribute_name IS NOT NULL
 ORDER BY severity, line;
+
+SELECT '=== Validate: with profile=structural ===' AS example;
+SELECT severity, message, line
+FROM ili_validate('testdata/synthetic/simple/invalid.xtf',
+    modeldir := 'testdata/synthetic/simple',
+    profile := 'structural')
+ORDER BY line;
+
+SELECT '=== Validate: with max_messages limit ===' AS example;
+SELECT severity, message, line
+FROM ili_validate('testdata/synthetic/simple/invalid.xtf',
+    modeldir := 'testdata/synthetic/simple',
+    max_messages := 5);
