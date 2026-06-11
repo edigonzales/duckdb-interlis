@@ -14,6 +14,18 @@ char *ili_bind_copy_named_varchar(
     const char *name
 );
 
+// OOM-safe variants: set duckdb_bind_set_error when strdup fails
+char *ili_bind_copy_parameter_varchar_or_error(
+    duckdb_bind_info info,
+    idx_t parameter_index,
+    const char *param_name
+);
+
+char *ili_bind_copy_named_varchar_or_error(
+    duckdb_bind_info info,
+    const char *param_name
+);
+
 bool ili_bind_get_named_int32(
     duckdb_bind_info info,
     const char *name,

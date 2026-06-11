@@ -1,4 +1,5 @@
 #include "ili_duckdb_utils.h"
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -33,6 +34,59 @@ char *ili_bind_copy_named_varchar(
     }
     char *raw = duckdb_get_varchar(dv);
     char *copy = raw ? strdup(raw) : NULL;
+    duckdb_free(raw);
+    duckdb_destroy_value(&dv);
+    return copy;
+}
+
+char *ili_bind_copy_parameter_varchar_or_error(
+    duckdb_bind_info info,
+    idx_t parameter_index,
+    const char *param_name
+) {
+    duckdb_value dv = duckdb_bind_get_parameter(info, parameter_index);
+    if (!dv) return NULL;
+    if (duckdb_is_null_value(dv)) {
+        duckdb_destroy_value(&dv);
+        return NULL;
+    }
+    char *raw = duckdb_get_varchar(dv);
+    if (!raw) {
+        duckdb_destroy_value(&dv);
+        return NULL;
+    }
+    char *copy = strdup(raw);
+    if (!copy) {
+        char err[256];
+        snprintf(err, sizeof(err), "Out of memory copying parameter '%s'", param_name);
+        duckdb_bind_set_error(info, err);
+    }
+    duckdb_free(raw);
+    duckdb_destroy_value(&dv);
+    return copy;
+}
+
+char *ili_bind_copy_named_varchar_or_error(
+    duckdb_bind_info info,
+    const char *param_name
+) {
+    duckdb_value dv = duckdb_bind_get_named_parameter(info, param_name);
+    if (!dv) return NULL;
+    if (duckdb_is_null_value(dv)) {
+        duckdb_destroy_value(&dv);
+        return NULL;
+    }
+    char *raw = duckdb_get_varchar(dv);
+    if (!raw) {
+        duckdb_destroy_value(&dv);
+        return NULL;
+    }
+    char *copy = strdup(raw);
+    if (!copy) {
+        char err[256];
+        snprintf(err, sizeof(err), "Out of memory copying parameter '%s'", param_name);
+        duckdb_bind_set_error(info, err);
+    }
     duckdb_free(raw);
     duckdb_destroy_value(&dv);
     return copy;

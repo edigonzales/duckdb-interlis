@@ -63,10 +63,10 @@ static void xtf_class_typed_init_destroy(void *d) {
 // Bind
 // ---------------------------------------------------------------------------
 void xtf_class_typed_bind(duckdb_bind_info info) {
-    char *input = ili_bind_copy_parameter_varchar(info, 0);
-    char *cls = ili_bind_copy_named_varchar(info, "class");
-    char *modeldir = ili_bind_copy_named_varchar(info, "modeldir");
-    char *nested = ili_bind_copy_named_varchar(info, "nested");
+    char *input = ili_bind_copy_parameter_varchar_or_error(info, 0, "input");
+    char *cls = ili_bind_copy_named_varchar_or_error(info, "class");
+    char *modeldir = ili_bind_copy_named_varchar_or_error(info, "modeldir");
+    char *nested = ili_bind_copy_named_varchar_or_error(info, "nested");
 
     xtf_class_typed_bind_data *bd = ili_calloc_or_error_bind(info, 1, sizeof(*bd), "xtf_class_typed_bind_data");
     if (!bd) {
