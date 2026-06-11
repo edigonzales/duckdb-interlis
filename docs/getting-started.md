@@ -16,10 +16,12 @@ This guide walks you through installing the extension and running your first INT
 
 ### Prerequisites
 
-- **DuckDB** 1.5.3 or later
+- **DuckDB** `1.5.3` is the current pinned development/test version
 - One of: Linux x86_64, Linux ARM64, macOS ARM64, Windows x86_64
 
 No Java, GraalVM, or other runtimes needed — the extension is self-contained.
+
+The repository can publish binaries for multiple DuckDB product versions side by side. DuckDB resolves downloads by product version, while `C_STRUCT` compatibility is checked separately from the extension metadata.
 
 ### Install from Repository
 
@@ -43,6 +45,10 @@ SET allow_unsigned_extensions = true;
 INSTALL interlis FROM 'https://duckdb-ext.interlis.guru';
 LOAD interlis;
 ```
+
+DuckDB uses the repository root above and appends the DuckDB product-version path automatically. For example, DuckDB `1.5.3` requests `.../v1.5.3/osx_arm64/interlis.duckdb_extension`.
+
+If the same `C_STRUCT`-compatible binary works for multiple DuckDB releases, it can be published under multiple release directories. Otherwise, each DuckDB product version needs its own rebuilt binary.
 
 ### Manual Install from Release
 

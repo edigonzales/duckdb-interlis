@@ -123,9 +123,14 @@ The GraalVM native library version is incompatible with the extension. This can 
 - Extension and native library were built from different versions
 - The native library was manually replaced with an incompatible version
 
-Delete the cache and re-extract:
+Delete the installed extension artifact and the separate native-library cache, then re-extract:
 ```bash
-rm -rf ~/.duckdb/extensions/*/interlis*
+if [ -d "${HOME}/.duckdb/extensions" ]; then
+  find "${HOME}/.duckdb/extensions" -type f \
+    \( -name 'interlis.duckdb_extension' \
+    -o -name 'interlis.duckdb_extension.info' \
+    -o -name '*libduckdb_ili_native.*' \) -delete
+fi
 ```
 
 ## Debug Mode

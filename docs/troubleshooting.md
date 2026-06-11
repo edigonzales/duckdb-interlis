@@ -54,13 +54,18 @@ Error: Native library not found.
 Error: ABI handshake failed: ...
 ```
 
-**Solution:** Clear the native library cache and retry:
+**Solution:** Remove both the installed extension and the hashed native-library cache, then retry:
 
 ```bash
-rm -rf ~/.duckdb/extensions/*/interlis*
+if [ -d "${HOME}/.duckdb/extensions" ]; then
+  find "${HOME}/.duckdb/extensions" -type f \
+    \( -name 'interlis.duckdb_extension' \
+    -o -name 'interlis.duckdb_extension.info' \
+    -o -name '*libduckdb_ili_native.*' \) -delete
+fi
 ```
 
-This forces re-extraction of the embedded native library on next load.
+This removes the DuckDB-installed extension artifact and the separately cached embedded native library. The next `INSTALL` or `LOAD` recreates the missing pieces as needed.
 
 ## Model Compilation Fails
 

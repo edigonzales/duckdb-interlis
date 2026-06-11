@@ -4,7 +4,7 @@
 
 | Component | Requirement |
 |---|---|
-| DuckDB | 1.5.3 or later |
+| DuckDB | `1.5.3` is the current pinned development/test version; additional DuckDB product versions can be supported when the repository publishes matching release directories |
 | Operating System | Linux x86_64, Linux aarch64, macOS aarch64, Windows x86_64 |
 
 The extension is self-contained — the GraalVM native library is embedded and extracted automatically on first use. No additional runtime dependencies are required.
@@ -32,7 +32,11 @@ INSTALL interlis FROM 'https://duckdb-ext.interlis.guru';
 LOAD interlis;
 ```
 
-The extension installs to `~/.duckdb/extensions/v1.2.0/{PLATFORM}/`. On first `LOAD`, the native GraalVM library is extracted automatically to the same directory.
+DuckDB treats `https://duckdb-ext.interlis.guru` as the repository root and appends the product-version path automatically. For example, DuckDB `1.5.3` requests `.../v1.5.3/osx_arm64/interlis.duckdb_extension` and installs the extension to `~/.duckdb/extensions/v1.5.3/osx_arm64/interlis.duckdb_extension`.
+
+The embedded GraalVM native library is cached separately. On first `LOAD`, it is extracted to the ABI-based cache, for example `~/.duckdb/extensions/v1.2.0/osx_arm64/{hashed_filename}`.
+
+If the `C_STRUCT` ABI remains compatible, the same extension binary may be published under multiple DuckDB release directories such as `v1.5.3/` and `v1.5.4/`. If compatibility changes, publish a newly built binary for that DuckDB product version.
 
 ### Production: Manual Load from Release Binary
 
@@ -93,5 +97,10 @@ UNLOAD interlis;
 
 To remove cached files:
 ```bash
-rm -rf ~/.duckdb/extensions/*/interlis*
+if [ -d "${HOME}/.duckdb/extensions" ]; then
+  find "${HOME}/.duckdb/extensions" -type f \
+    \( -name 'interlis.duckdb_extension' \
+    -o -name 'interlis.duckdb_extension.info' \
+    -o -name '*libduckdb_ili_native.*' \) -delete
+fi
 ```

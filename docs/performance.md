@@ -77,7 +77,7 @@ SELECT count(*) FROM ili_validate('/data/file.xtf');
 Debug output includes:
 
 ```
-[ili-debug] Native library cache HIT: /Users/.../.duckdb/extensions/v1/.../libduckdb_ili_native.dylib
+[ili-debug] Native library cache HIT: /Users/.../.duckdb/extensions/v1.2.0/osx_arm64/0.1.0-dev_v1.2.0_osx_arm64_abcd1234_libduckdb_ili_native.dylib
 [ili-debug] Native library initialized: ABI v1, capabilities=0x0000000000000fff, ext=0.1.0-dev
 [ili-debug] Validating: /data/file.xtf (size=2456789 bytes, profile=FULL)
 [ili-debug] Validation result payload: 45678 bytes

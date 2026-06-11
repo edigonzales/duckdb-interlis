@@ -84,7 +84,11 @@ INSTALL interlis FROM 'https://duckdb-ext.interlis.guru';
 LOAD interlis;
 ```
 
-The extension installs to `~/.duckdb/extensions/v1.2.0/{PLATFORM}/`. On first `LOAD`, the native GraalVM library is extracted automatically to the same directory.
+DuckDB uses the repository root `https://duckdb-ext.interlis.guru` and appends the product-version path automatically. For example, DuckDB `1.5.3` requests `.../v1.5.3/osx_arm64/interlis.duckdb_extension` and installs the downloaded extension to `~/.duckdb/extensions/v1.5.3/osx_arm64/interlis.duckdb_extension`.
+
+The embedded GraalVM native library is a separate artifact. On first `LOAD`, it is extracted into the ABI-based native cache, for example `~/.duckdb/extensions/v1.2.0/osx_arm64/{hashed_filename}`.
+
+This repository can publish multiple DuckDB product versions side by side. If the `C_STRUCT` ABI stays compatible, the same binary can be copied into multiple release directories such as `v1.5.3/` and `v1.5.4/`. If the ABI or behavior changes, publish a newly built binary for that DuckDB release.
 
 ### Production: Manual Load from Release Binary
 
@@ -106,7 +110,7 @@ LOAD '/path/to/interlis.duckdb_extension';
 SELECT ili_extension_version();
 ```
 
-The native library is extracted automatically to `~/.duckdb/extensions/v1.2.0/{PLATFORM}/` on first load.
+The native library is extracted automatically to the ABI-based cache `~/.duckdb/extensions/v1.2.0/{PLATFORM}/{hashed_filename}` on first load.
 
 ### Development: Build & Load Locally
 
@@ -130,7 +134,7 @@ The dev script sets `DUCKDB_ILI_NATIVE_LIB` so the extension finds the native li
 The extension finds the GraalVM native library in this order:
 
 1. **Environment variable** `DUCKDB_ILI_NATIVE_LIB` — used for local development
-2. **DuckDB extension cache** `~/.duckdb/extensions/v1.2.0/{PLATFORM}/libduckdb_ili_native.dylib` — extracted from the embedded blob on first load
+2. **DuckDB extension cache** `~/.duckdb/extensions/v1.2.0/{PLATFORM}/{EXT_VERSION}_{ABI_VERSION}_{PLATFORM}_{SHA256_SHORT}_libduckdb_ili_native.dylib` — extracted from the embedded blob on first load
 3. **Local fallback paths** `build/native/current/`, `../java/ili-native/build/native/`
 
 ---
@@ -206,4 +210,6 @@ MIT - see [LICENSE](LICENSE)
 
 ## DuckDB Version
 
-This extension targets **DuckDB 1.5.3**. Extension binaries are version-sensitive.
+Development and automated tests are currently pinned to **DuckDB 1.5.3**.
+
+For distribution, DuckDB resolves extension downloads by **DuckDB product version** such as `v1.5.3`, while `C_STRUCT` compatibility is checked separately through the embedded **DuckDB C API version** such as `v1.2.0`. Multiple DuckDB releases can be supported by publishing matching release directories in the repository. Reusing the same binary across releases is fine only when the `C_STRUCT` ABI and runtime behavior remain compatible.
