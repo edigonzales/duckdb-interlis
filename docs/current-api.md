@@ -18,7 +18,7 @@
 | 8 | `ili_attributes(modeldir, model =>, class =>)` | Table | 9 columns |
 | 9 | `ili_enumerations(modeldir, model =>, class =>)` | Table | 5 columns |
 | 10 | `ili_geometry_attributes(modeldir, model =>, class =>)` | Table | 21 columns |
-| 11 | `read_xtf_objects(input, modeldir =>, models =>)` | Table | 9 columns |
+| 11 | `read_xtf_objects(input, modeldir =>, models =>)` | Table | 11 columns |
 | 12 | `read_xtf_class(input, class =>, modeldir =>, nested =>)` | Table | Dynamic |
 | 13 | `read_xtf_structures(class =>, modeldir =>)` | Table | 12 columns |
 | 14 | `read_xtf_association(input, association =>, modeldir =>)` | Table | Dynamic |
@@ -128,17 +128,17 @@
 | `code` | VARCHAR | No | Always empty string currently |
 | `message` | VARCHAR | No | Validation message text |
 | `filename` | VARCHAR | No | Source file |
-| `line` | INTEGER | No | Line number (0 if unknown) |
-| `column` | INTEGER | No | Always 0 currently |
-| `xtf_tid` | VARCHAR | No | Transfer ID |
-| `xtf_bid` | VARCHAR | No | Always empty string currently |
-| `model` | VARCHAR | No | Model name |
-| `topic` | VARCHAR | No | Topic name |
-| `class_name` | VARCHAR | No | Class name |
-| `attribute_name` | VARCHAR | No | Attribute name |
+| `line` | INTEGER | Yes | Line number (NULL if unknown) |
+| `column` | INTEGER | Yes | Always NULL currently |
+| `xtf_tid` | VARCHAR | Yes | Transfer ID (NULL if unknown) |
+| `xtf_bid` | VARCHAR | Yes | Basket ID (NULL if unknown) |
+| `model` | VARCHAR | Yes | Model name (NULL if unknown) |
+| `topic` | VARCHAR | Yes | Topic name (NULL if unknown) |
+| `class_name` | VARCHAR | Yes | Class name (NULL if unknown) |
+| `attribute_name` | VARCHAR | Yes | Attribute name (NULL if unknown) |
 | `raw` | VARCHAR | No | Raw CSV line |
 
-**NULL behaviour:** No columns may be NULL; all are populated with empty strings or 0 as fallback. Missing values and empty strings **cannot be distinguished**.
+**NULL behaviour:** Missing integer values (e.g., `line`, `column`) are SQL `NULL`. Missing string values (e.g., `xtf_tid`, `xtf_bid`) are SQL `NULL`. Empty strings remain empty strings. `0` is a genuine value, distinct from `NULL`.
 
 **Error behaviour:**
 - Native library init failure → `duckdb_init_set_error(g_error_buf)`, empty result.
@@ -301,12 +301,12 @@
 | `attribute_name` | VARCHAR |
 | `attribute_fqn` | VARCHAR |
 | `geometry_kind` | VARCHAR |
-| `dimension` | INTEGER |
+| `dimension` | VARCHAR |
 | `coordinate_domain` | VARCHAR |
 | `coordinate_domain_fqn` | VARCHAR |
 | `crs_auth_name` | VARCHAR |
 | `crs_code` | VARCHAR |
-| `srid` | INTEGER |
+| `srid` | VARCHAR |
 | `is_mandatory` | VARCHAR |
 | `card_min` | VARCHAR |
 | `card_max` | VARCHAR |
@@ -348,8 +348,10 @@
 | `xtf_bid` | VARCHAR |
 | `xtf_topic` | VARCHAR |
 | `xtf_class` | VARCHAR |
+| `xtf_class_fqn` | VARCHAR |
 | `xtf_tid` | VARCHAR |
 | `operation` | VARCHAR |
+| `xtf_model` | VARCHAR |
 | `attributes_json` | VARCHAR |
 | `refs_json` | VARCHAR |
 | `geom_json` | VARCHAR |
@@ -366,8 +368,6 @@
 
 **Known limitations:**
 - Read errors now throw RuntimeException — no more partial results returned as success (Phase 2 fixed).
-- `xtf_model` column is **missing** from the result set — the model name is not available at the generic reader level.
-- No `xtf_class_fqn` column — only the short class name is provided.
 - Class short names can collide across topics/models (Phase 7 fix).
 - Operation column only populated for INSERT (3). Values for DELETE (1) and UPDATE (2) are not mapped.
 
