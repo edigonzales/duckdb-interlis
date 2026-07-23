@@ -7,33 +7,33 @@ SELECT '=== read_xtf_class: Person ===' AS test;
 SELECT * FROM read_xtf_class(
     'testdata/synthetic/associations/valid.xtf',
     class := 'SO_AGI_Associations_20260605.Topic.Person',
-    modeldir := 'testdata/synthetic/associations'
+    model_sources := 'testdata/synthetic/associations'
 );
 
 SELECT '=== read_xtf_class: Grundstueck ===' AS test;
 SELECT * FROM read_xtf_class(
     'testdata/synthetic/associations/valid.xtf',
     class := 'SO_AGI_Associations_20260605.Topic.Grundstueck',
-    modeldir := 'testdata/synthetic/associations'
+    model_sources := 'testdata/synthetic/associations'
 );
 
 SELECT '=== read_xtf_association: Besitz ===' AS test;
 SELECT * FROM read_xtf_association(
     'testdata/synthetic/associations/valid.xtf',
     association := 'SO_AGI_Associations_20260605.Topic.Besitz',
-    modeldir := 'testdata/synthetic/associations'
+    model_sources := 'testdata/synthetic/associations'
 );
 
 SELECT '=== JOIN: Person + Grundstueck + Besitz ===' AS test;
 WITH
 p AS (
-  SELECT * FROM read_xtf_class('testdata/synthetic/associations/valid.xtf', class := 'SO_AGI_Associations_20260605.Topic.Person', modeldir := 'testdata/synthetic/associations')
+  SELECT * FROM read_xtf_class('testdata/synthetic/associations/valid.xtf', class := 'SO_AGI_Associations_20260605.Topic.Person', model_sources := 'testdata/synthetic/associations')
 ),
 g AS (
-  SELECT * FROM read_xtf_class('testdata/synthetic/associations/valid.xtf', class := 'SO_AGI_Associations_20260605.Topic.Grundstueck', modeldir := 'testdata/synthetic/associations')
+  SELECT * FROM read_xtf_class('testdata/synthetic/associations/valid.xtf', class := 'SO_AGI_Associations_20260605.Topic.Grundstueck', model_sources := 'testdata/synthetic/associations')
 ),
 b AS (
-  SELECT * FROM read_xtf_association('testdata/synthetic/associations/valid.xtf', association := 'SO_AGI_Associations_20260605.Topic.Besitz', modeldir := 'testdata/synthetic/associations')
+  SELECT * FROM read_xtf_association('testdata/synthetic/associations/valid.xtf', association := 'SO_AGI_Associations_20260605.Topic.Besitz', model_sources := 'testdata/synthetic/associations')
 )
 SELECT p.name, g.nummer, b.anteil
 FROM b
@@ -44,5 +44,5 @@ SELECT '=== Association Schema ===' AS test;
 SELECT * FROM read_xtf_association(
     'testdata/synthetic/associations/valid.xtf',
     association := 'SO_AGI_Associations_20260605.Topic.Besitz',
-    modeldir := 'testdata/synthetic/associations'
+    model_sources := 'testdata/synthetic/associations'
 ) LIMIT 0;

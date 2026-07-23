@@ -75,7 +75,7 @@ This removes the DuckDB-installed extension artifact and the separately cached e
 Error: MODEL_ERROR: INTERLIS model compilation failed for modelDir=...
 ```
 
-**Check the `modeldir` parameter:**
+**Check the `model_sources` parameter:**
 - Is the path correct and accessible?
 - If using a URL, is the network reachable?
 - Do the `.ili` files exist in the specified directory?
@@ -89,8 +89,8 @@ files.
 **Solution:** Use explicit local model directories:
 
 ```sql
-SELECT * FROM ili_validate('/data/file.xtf',
-    modeldir := '/absolute/path/to/models/');
+SELECT * FROM validate_xtf('/data/file.xtf',
+    model_sources := '/absolute/path/to/models/');
 ```
 
 ### Symptom: "Model not found" for a known model
@@ -105,7 +105,7 @@ Try increasing the validation level:
 
 ```sql
 -- Run with FULL profile to catch issues that FAST/STRUCTURAL miss
-SELECT * FROM ili_validate('/data/file.xtf', profile := 'FULL');
+SELECT * FROM validate_xtf('/data/file.xtf', profile := 'FULL');
 ```
 
 ### Symptom: Too many validation messages
@@ -113,7 +113,7 @@ SELECT * FROM ili_validate('/data/file.xtf', profile := 'FULL');
 Limit output and focus on errors:
 
 ```sql
-SELECT * FROM ili_validate('/data/file.xtf', max_messages := 100)
+SELECT * FROM validate_xtf('/data/file.xtf', max_messages := 100)
 WHERE severity = 'ERROR';
 ```
 
@@ -122,7 +122,7 @@ WHERE severity = 'ERROR';
 Use a lighter profile for quick feedback:
 
 ```sql
-SELECT * FROM ili_validate('/data/file.xtf', profile := 'FAST');
+SELECT * FROM validate_xtf('/data/file.xtf', profile := 'FAST');
 ```
 
 ## XTF Reading Issues

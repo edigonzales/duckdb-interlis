@@ -37,11 +37,41 @@ class ModelRepositoryResolverTest {
 
         assertEquals(1, repositories.size());
         assertEquals(dir.toAbsolutePath().normalize().toString(), repositories.get(0));
+        assertEquals(ModelRepositoryResolver.SourceKind.LOCAL_ILI_FILE,
+                ModelRepositoryResolver.classify(file.toString()));
+        assertEquals(ModelRepositoryResolver.SourceKind.LOCAL_DIRECTORY,
+                ModelRepositoryResolver.classify(dir.toString()));
     }
 
     @Test
     void blankSourcesUseDefault() {
         assertTrue(ModelRepositoryResolver.resolve("", "https://default.example/models")
                 .contains("https://default.example/models"));
+    }
+
+    @Test
+    void splitListAcceptsBothSeparatorsAndRemovesDuplicates() {
+        assertEquals(
+                java.util.List.of("ModelA", "ModelB", "ModelC"),
+                ModelRepositoryResolver.splitList(" ModelA,ModelB; ModelA ; ModelC "));
+    }
+
+    @Test
+    void rejectsMissingLocalSource() {
+        org.junit.jupiter.api.Assertions.assertThrows(
+                IllegalArgumentException.class,
+                () -> ModelRepositoryResolver.validateSources(
+                        "/definitely/not/a/model-source", "https://default.example/models"));
+    }
+
+    @Test
+    void keepsRemoteRepositoriesAndDeduplicatesThem() {
+        assertEquals(
+                java.util.List.of("https://models.example/a", "https://models.example/b"),
+                ModelRepositoryResolver.resolve(
+                        "https://models.example/a, https://models.example/a;https://models.example/b",
+                        ""));
+        assertEquals(ModelRepositoryResolver.SourceKind.REMOTE_URL,
+                ModelRepositoryResolver.classify("https://models.example/a"));
     }
 }

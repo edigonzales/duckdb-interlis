@@ -76,9 +76,9 @@ Beispielausgabe für `ili_runtime_info()`:
 
 ```sql
 SELECT *
-FROM ili_validate(
+FROM validate_xtf(
   'testdata/external/ch.so.afu.abbaustellen.xtf',
-  modeldir := 'https://models.interlis.ch;https://geo.so.ch/models;testdata/models'
+  model_sources := 'https://models.interlis.ch;https://geo.so.ch/models;testdata/models'
 );
 ```
 
@@ -104,7 +104,7 @@ Zusammenfassung:
 
 ```sql
 SELECT *
-FROM ili_validate_summary('testdata/external/ch.so.afu.abbaustellen.xtf');
+SELECT validate_xtf_summary_json('testdata/external/ch.so.afu.abbaustellen.xtf');
 ```
 
 Zielspalten:
@@ -136,7 +136,7 @@ Ziel: Der Coding-Agent soll die Modellanalyse vor dem komplexen XTF-Import imple
 SELECT *
 FROM read_xtf_objects(
   'testdata/external/ch.so.afu.abbaustellen.xtf',
-  modeldir := 'https://models.interlis.ch;https://geo.so.ch/models;testdata/models'
+  model_sources := 'https://models.interlis.ch;https://geo.so.ch/models;testdata/models'
 );
 ```
 
@@ -163,7 +163,7 @@ SELECT *
 FROM read_xtf_class(
   'testdata/external/ch.so.afu.abbaustellen.xtf',
   class := 'SO_AFU_Abbaustellen_20230426.Abbaustellen.Abbaustelle',
-  modeldir := 'https://models.interlis.ch;https://geo.so.ch/models;testdata/models',
+  model_sources := 'https://models.interlis.ch;https://geo.so.ch/models;testdata/models',
   nested := 'json'
 );
 ```
@@ -188,7 +188,7 @@ SELECT *
 FROM read_xtf_association(
   'testdata/external/ch.so.afu.abbaustellen.relational.xtf',
   association := 'Model.Topic.AssociationName',
-  modeldir := 'https://models.interlis.ch;https://geo.so.ch/models;testdata/models'
+  model_sources := 'https://models.interlis.ch;https://geo.so.ch/models;testdata/models'
 );
 ```
 
@@ -209,7 +209,7 @@ Zielspalten für eine Association:
 CALL ili_import_xtf(
   input := 'testdata/external/2402.ch.so.arp.nutzungsplanung.kommunal.relational.xtf',
   schema := 'ili_np',
-  modeldir := 'https://models.interlis.ch;https://geo.so.ch/models;testdata/models',
+  model_sources := 'https://models.interlis.ch;https://geo.so.ch/models;testdata/models',
   mapping := 'relational'
 );
 
@@ -466,14 +466,14 @@ SELECT ili_native_version();
 #### Phase 2
 
 ```sql
-SELECT ili_validate_summary_json('file.xtf', modeldir := '...');
+SELECT validate_xtf_summary_json('file.xtf', '...');
 ```
 
 #### Phase 3
 
 ```sql
-SELECT * FROM ili_validate('file.xtf', modeldir := '...');
-SELECT * FROM ili_validate_summary('file.xtf', modeldir := '...');
+SELECT * FROM validate_xtf('file.xtf', model_sources := '...');
+SELECT validate_xtf_summary_json('file.xtf', '...');
 ```
 
 #### Phase 4
@@ -488,9 +488,9 @@ SELECT * FROM ili_enumerations('ModelName', model_sources := '...');
 #### Phase 5+
 
 ```sql
-SELECT * FROM read_xtf_objects('file.xtf', modeldir := '...');
-SELECT * FROM read_xtf_class('file.xtf', class := 'Model.Topic.Class', modeldir := '...');
-SELECT * FROM read_xtf_association('file.xtf', association := 'Model.Topic.Assoc', modeldir := '...');
+SELECT * FROM read_xtf_objects('file.xtf', model_sources := '...');
+SELECT * FROM read_xtf_class('file.xtf', class := 'Model.Topic.Class', model_sources := '...');
+SELECT * FROM read_xtf_association('file.xtf', association := 'Model.Topic.Assoc', model_sources := '...');
 ```
 
 ### 6.3 Fehlerverhalten
@@ -622,8 +622,8 @@ source scripts/env.sh
 LOAD '$DUCKDB_ILI_EXTENSION';
 SELECT ili_extension_version();
 SELECT ili_native_version();
-SELECT * FROM ili_validate_summary('testdata/synthetic/simple/valid.xtf', modeldir := 'testdata/synthetic/simple');
-SELECT * FROM ili_validate('testdata/synthetic/simple/invalid.xtf', modeldir := 'testdata/synthetic/simple');
+SELECT validate_xtf_summary_json('testdata/synthetic/simple/valid.xtf', 'testdata/synthetic/simple');
+SELECT * FROM validate_xtf('testdata/synthetic/simple/invalid.xtf', model_sources := 'testdata/synthetic/simple');
 ```
 
 ### 7.9 `scripts/download-testdata.sh`
@@ -797,7 +797,7 @@ Ziel: DuckDB kann die GraalVM-Library laden und eine Validierungszusammenfassung
 Umfang:
 
 - `ili_native_version()` in DuckDB implementieren.
-- `ili_validate_summary_json(path, modeldir := ...)` implementieren.
+- `validate_xtf_summary_json(path, model_sources)` implementieren; der zweite Parameter bleibt positional.
 - Native Library Loading über `DUCKDB_ILI_NATIVE_LIB`.
 - SQL-Smoke-Test.
 
@@ -805,7 +805,7 @@ SQL:
 
 ```sql
 SELECT ili_native_version();
-SELECT ili_validate_summary_json('testdata/synthetic/simple/valid.xtf', modeldir := 'testdata/synthetic/simple');
+SELECT validate_xtf_summary_json('testdata/synthetic/simple/valid.xtf', 'testdata/synthetic/simple');
 ```
 
 Definition of Done:
@@ -816,14 +816,14 @@ Definition of Done:
 - Fehlende Datei liefert eine klare DuckDB-Fehlermeldung.
 - `scripts/smoke-test.sh` läuft ohne manuelle Schritte.
 
-### Phase 4: `ili_validate()` als Table Function
+### Phase 4: `validate_xtf()` als Table Function
 
 Ziel: Validierungsfehler sind als DuckDB-Tabelle abfragbar.
 
 Umfang:
 
-- Table Function `ili_validate()` implementieren.
-- Bind-Parameter: `input`, named parameter `modeldir`, optional `config`, optional `max_messages`.
+- Table Function `validate_xtf()` implementieren.
+- Bind-Parameter: positional `path`, named parameter `model_sources`, optional `profile`, optional `max_messages`.
 - Ausgabe gemäss Abschnitt 3.2.
 - Erst intern JSON/NDJSON oder TSV verarbeiten; Streaming erst später.
 
@@ -831,7 +831,7 @@ SQL:
 
 ```sql
 SELECT severity, message, line, column
-FROM ili_validate('testdata/synthetic/simple/invalid.xtf', modeldir := 'testdata/synthetic/simple')
+FROM validate_xtf('testdata/synthetic/simple/invalid.xtf', model_sources := 'testdata/synthetic/simple')
 WHERE severity = 'ERROR';
 ```
 
@@ -857,7 +857,7 @@ Definition of Done:
 
 - Externe Testdaten können per Script geladen werden.
 - Validierung läuft manuell mit DuckDB.
-- Wenn Modell-Repositories nötig sind, ist der erwartete `modeldir` dokumentiert.
+- Wenn Modell-Repositories nötig sind, ist der erwartete `model_sources`-Wert dokumentiert.
 - Ergebnis ist reproduzierbar dokumentiert, aber nicht als harter Unit-Test erforderlich.
 
 ### Phase 6: Modellanalyse-Funktionen
@@ -898,7 +898,7 @@ SQL:
 
 ```sql
 SELECT xtf_class, count(*)
-FROM read_xtf_objects('testdata/synthetic/simple/valid.xtf', modeldir := 'testdata/synthetic/simple')
+FROM read_xtf_objects('testdata/synthetic/simple/valid.xtf', model_sources := 'testdata/synthetic/simple')
 GROUP BY xtf_class;
 ```
 
@@ -927,7 +927,7 @@ SELECT *
 FROM read_xtf_class(
   'testdata/synthetic/simple/valid.xtf',
   class := 'SO_AGI_Simple_20260605.Topic.Abbaustelle',
-  modeldir := 'testdata/synthetic/simple'
+  model_sources := 'testdata/synthetic/simple'
 );
 ```
 
@@ -956,7 +956,7 @@ SELECT id, adresse_json, kontakte_json
 FROM read_xtf_class(
   'testdata/synthetic/structures/valid.xtf',
   class := 'SO_AGI_Structures_20260605.Topic.Betrieb',
-  modeldir := 'testdata/synthetic/structures',
+  model_sources := 'testdata/synthetic/structures',
   nested := 'json'
 );
 ```
@@ -985,13 +985,13 @@ SQL:
 ```sql
 WITH
 p AS (
-  SELECT * FROM read_xtf_class('testdata/synthetic/associations/valid.xtf', class := 'SO_AGI_Associations_20260605.Topic.Person', modeldir := 'testdata/synthetic/associations')
+  SELECT * FROM read_xtf_class('testdata/synthetic/associations/valid.xtf', class := 'SO_AGI_Associations_20260605.Topic.Person', model_sources := 'testdata/synthetic/associations')
 ),
 g AS (
-  SELECT * FROM read_xtf_class('testdata/synthetic/associations/valid.xtf', class := 'SO_AGI_Associations_20260605.Topic.Grundstueck', modeldir := 'testdata/synthetic/associations')
+  SELECT * FROM read_xtf_class('testdata/synthetic/associations/valid.xtf', class := 'SO_AGI_Associations_20260605.Topic.Grundstueck', model_sources := 'testdata/synthetic/associations')
 ),
 b AS (
-  SELECT * FROM read_xtf_association('testdata/synthetic/associations/valid.xtf', association := 'SO_AGI_Associations_20260605.Topic.Besitz', modeldir := 'testdata/synthetic/associations')
+  SELECT * FROM read_xtf_association('testdata/synthetic/associations/valid.xtf', association := 'SO_AGI_Associations_20260605.Topic.Besitz', model_sources := 'testdata/synthetic/associations')
 )
 SELECT p.name, g.nummer, b.anteil
 FROM b
@@ -1041,7 +1041,7 @@ SQL:
 CALL ili_import_xtf(
   input := 'testdata/external/ch.so.arp.nutzungsplanung.kommunal.relational/2402....xtf',
   schema := 'np',
-  modeldir := 'https://models.interlis.ch;https://geo.so.ch/models;testdata/models',
+  model_sources := 'https://models.interlis.ch;https://geo.so.ch/models;testdata/models',
   mapping := 'relational'
 );
 ```
@@ -1239,10 +1239,10 @@ Diese Fragen soll der Coding-Agent nicht stillschweigend entscheiden, sondern in
 4. Modellrepository und Caching:
    - Wo werden heruntergeladene Modelle gecached?
    - Wie wird Offline-Reproduzierbarkeit sichergestellt?
-   - Wie werden mehrere `modeldir`-Einträge behandelt?
+   - Wie werden mehrere `model_sources`-Einträge behandelt?
 
 5. ZIP-Unterstützung:
-   - Soll `ili_validate()` direkt ZIP-Dateien akzeptieren?
+   - Soll `validate_xtf()` direkt ZIP-Dateien akzeptieren?
    - Oder müssen ZIPs vorher entpackt werden?
 
 6. Geometrieformat:
@@ -1299,8 +1299,8 @@ Diese Fragen soll der Coding-Agent nicht stillschweigend entscheiden, sondern in
 6. DuckDB-Extension so erweitern, dass `SELECT ili_native_version();` die GraalVM-Library aufruft.
 7. Synthetisches `simple`-Modell und zwei XTF-Dateien erstellen.
 8. Java-Validierung implementieren und testen.
-9. `ili_validate_summary_json()` in DuckDB implementieren.
-10. `ili_validate()` als Table Function implementieren.
+9. `validate_xtf_summary_json()` in DuckDB implementieren.
+10. `validate_xtf()` als Table Function implementieren.
 
 Erst danach sollen Modellanalyse und XTF-Lesen begonnen werden.
 

@@ -10,12 +10,19 @@ import java.util.Locale;
 
 public final class ModelRepositoryResolver {
 
+    public enum SourceKind {
+        REMOTE_URL,
+        LOCAL_DIRECTORY,
+        LOCAL_ILI_FILE,
+        INVALID
+    }
+
     private ModelRepositoryResolver() {
     }
 
-    public static List<String> resolve(String modelDir, String defaultModelDir) {
-        String effective = modelDir != null && !modelDir.isBlank()
-                ? modelDir
+    public static List<String> resolve(String modelSources, String defaultModelDir) {
+        String effective = modelSources != null && !modelSources.isBlank()
+                ? modelSources
                 : defaultModelDir;
 
         LinkedHashSet<String> repositories = new LinkedHashSet<>();
@@ -23,7 +30,7 @@ public final class ModelRepositoryResolver {
         for (String part : splitSources(effective)) {
             String trimmed = part.trim();
             if (!trimmed.isBlank()) {
-                repositories.add(trimmed);
+                repositories.add(normalizeSource(trimmed));
             }
         }
 
@@ -34,14 +41,14 @@ public final class ModelRepositoryResolver {
         return List.copyOf(repositories);
     }
 
-    public static String resolveToString(String modelDir, String defaultModelDir) {
-        return String.join(";", resolve(modelDir, defaultModelDir));
+    public static String resolveToString(String modelSources, String defaultModelDir) {
+        return String.join(";", resolve(modelSources, defaultModelDir));
     }
 
-    public static List<Path> localDirectories(String modelDir, String defaultModelDir) {
+    public static List<Path> localDirectories(String modelSources, String defaultModelDir) {
         List<Path> directories = new ArrayList<>();
 
-        for (String repository : resolve(modelDir, defaultModelDir)) {
+        for (String repository : resolve(modelSources, defaultModelDir)) {
             if (repository.startsWith("http://") || repository.startsWith("https://")) {
                 continue;
             }
@@ -66,10 +73,10 @@ public final class ModelRepositoryResolver {
      * Files are deliberately kept separate from local directories because the
      * compiler must not expand a directory when the caller selected one file.
      */
-    public static List<Path> localFiles(String modelDir, String defaultModelDir) {
+    public static List<Path> localFiles(String modelSources, String defaultModelDir) {
         List<Path> files = new ArrayList<>();
 
-        for (String source : resolve(modelDir, defaultModelDir)) {
+        for (String source : resolve(modelSources, defaultModelDir)) {
             if (isRemote(source)) continue;
             try {
                 Path path = Path.of(source);
@@ -91,10 +98,10 @@ public final class ModelRepositoryResolver {
      * .ili source its parent directory is also a repository, allowing imports
      * next to the selected file to be resolved.
      */
-    public static List<String> repositorySources(String modelDir, String defaultModelDir) {
+    public static List<String> repositorySources(String modelSources, String defaultModelDir) {
         LinkedHashSet<String> repositories = new LinkedHashSet<>();
 
-        for (String source : resolve(modelDir, defaultModelDir)) {
+        for (String source : resolve(modelSources, defaultModelDir)) {
             if (isRemote(source)) {
                 repositories.add(source);
                 continue;
@@ -117,8 +124,63 @@ public final class ModelRepositoryResolver {
         return List.copyOf(repositories);
     }
 
+    /**
+     * Checks local entries before a compiler or validator is invoked. Remote
+     * repositories are intentionally not probed here; the underlying
+     * repository client owns their availability and authentication errors.
+     */
+    public static void validateSources(String modelSources, String defaultModelDir) {
+        for (String source : resolve(modelSources, defaultModelDir)) {
+            SourceKind kind = classify(source);
+            if (kind == SourceKind.INVALID) {
+                throw new IllegalArgumentException("INTERLIS model source not found or unsupported: " + source);
+            }
+        }
+    }
+
+    public static SourceKind classify(String source) {
+        if (source == null || source.isBlank()) return SourceKind.INVALID;
+        if (isRemote(source.trim())) return SourceKind.REMOTE_URL;
+        try {
+            Path path = Path.of(source.trim());
+            if (Files.isDirectory(path)) return SourceKind.LOCAL_DIRECTORY;
+            if (Files.isRegularFile(path)
+                    && path.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".ili")) {
+                return SourceKind.LOCAL_ILI_FILE;
+            }
+            return SourceKind.INVALID;
+        } catch (InvalidPathException e) {
+            return SourceKind.INVALID;
+        }
+    }
+
     public static boolean isRemote(String source) {
         return source.startsWith("http://") || source.startsWith("https://");
+    }
+
+    private static String normalizeSource(String source) {
+        if (isRemote(source)) return source;
+        try {
+            return Path.of(source).toAbsolutePath().normalize().toString();
+        } catch (InvalidPathException ignored) {
+            return source;
+        }
+    }
+
+    /**
+     * Splits a user-facing list parameter. This is also used for the plural
+     * XTF model filter, so both comma and semicolon have exactly the same
+     * semantics everywhere in the SQL API.
+     */
+    public static List<String> splitList(String value) {
+        List<String> result = new ArrayList<>();
+        LinkedHashSet<String> unique = new LinkedHashSet<>();
+        for (String part : splitSources(value)) {
+            String trimmed = part.trim();
+            if (!trimmed.isBlank()) unique.add(trimmed);
+        }
+        result.addAll(unique);
+        return List.copyOf(result);
     }
 
     private static List<String> splitSources(String value) {

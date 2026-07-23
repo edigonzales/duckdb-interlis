@@ -23,7 +23,7 @@ SELECT
     abs(ST_Y(Lage_geom::GEOMETRY) - 1203000.0) < 0.001 AS y_ok
 FROM read_xtf_class('testdata/synthetic/geometries/valid.xtf',
     class := 'SO_AGI_Geometries_20260605.Topic.PunktObjekt',
-    modeldir := 'testdata/synthetic/geometries');
+    model_sources := 'testdata/synthetic/geometries');
 
 -- -----------------------------------------------------------------------
 -- Test 2: MULTIPOINT (MULTICOORD)
@@ -35,7 +35,7 @@ SELECT
     ST_NumGeometries(Lagen_geom::GEOMETRY) = 3 AS count_ok
 FROM read_xtf_class('testdata/synthetic/geometries/valid.xtf',
     class := 'SO_AGI_Geometries_20260605.Topic.MultiPunktObjekt',
-    modeldir := 'testdata/synthetic/geometries');
+    model_sources := 'testdata/synthetic/geometries');
 
 -- -----------------------------------------------------------------------
 -- Test 3: LINESTRING (POLYLINE)
@@ -47,7 +47,7 @@ SELECT
     ST_NPoints(Verlauf_geom::GEOMETRY) = 3 AS point_count_ok
 FROM read_xtf_class('testdata/synthetic/geometries/valid.xtf',
     class := 'SO_AGI_Geometries_20260605.Topic.LinienObjekt',
-    modeldir := 'testdata/synthetic/geometries');
+    model_sources := 'testdata/synthetic/geometries');
 
 -- -----------------------------------------------------------------------
 -- Test 4: MULTILINESTRING (MULTIPOLYLINE)
@@ -59,7 +59,7 @@ SELECT
     ST_NumGeometries(Verlaeufe_geom::GEOMETRY) = 2 AS count_ok
 FROM read_xtf_class('testdata/synthetic/geometries/valid.xtf',
     class := 'SO_AGI_Geometries_20260605.Topic.MultiLinienObjekt',
-    modeldir := 'testdata/synthetic/geometries');
+    model_sources := 'testdata/synthetic/geometries');
 
 -- -----------------------------------------------------------------------
 -- Test 5: POLYGON (SURFACE)
@@ -73,7 +73,7 @@ SELECT
     ST_NumGeometries(Flaeche_geom::GEOMETRY) = 1 AS single_geom
 FROM read_xtf_class('testdata/synthetic/geometries/valid.xtf',
     class := 'SO_AGI_Geometries_20260605.Topic.FlaechenObjekt',
-    modeldir := 'testdata/synthetic/geometries');
+    model_sources := 'testdata/synthetic/geometries');
 
 -- -----------------------------------------------------------------------
 -- Test 6: MULTIPOLYGON (MULTISURFACE)
@@ -85,7 +85,7 @@ SELECT
     ST_NumGeometries(Flaechen_geom::GEOMETRY) = 2 AS count_ok
 FROM read_xtf_class('testdata/synthetic/geometries/valid.xtf',
     class := 'SO_AGI_Geometries_20260605.Topic.MultiFlaechenObjekt',
-    modeldir := 'testdata/synthetic/geometries');
+    model_sources := 'testdata/synthetic/geometries');
 
 -- -----------------------------------------------------------------------
 -- Test 7: NULL geometry handling
@@ -97,7 +97,7 @@ SELECT
     Lage_geom IS NOT NULL AS not_null
 FROM read_xtf_class('testdata/synthetic/geometries/valid.xtf',
     class := 'SO_AGI_Geometries_20260605.Topic.PunktObjekt',
-    modeldir := 'testdata/synthetic/geometries');
+    model_sources := 'testdata/synthetic/geometries');
 
 -- -----------------------------------------------------------------------
 -- Test 8: Direct geometry without explicit cast
@@ -109,7 +109,7 @@ SELECT
     ST_GeometryType(Lage_geom::GEOMETRY) IS NOT NULL AS cast_ok
 FROM read_xtf_class('testdata/synthetic/geometries/valid.xtf',
     class := 'SO_AGI_Geometries_20260605.Topic.PunktObjekt',
-    modeldir := 'testdata/synthetic/geometries');
+    model_sources := 'testdata/synthetic/geometries');
 
 -- -----------------------------------------------------------------------
 -- Test 9: Generic reader geom_json now contains detailed geometry data
@@ -120,6 +120,6 @@ SELECT
     json_extract_string(geom_json, '$.Lage.wkt') LIKE 'POINT%' AS wkt_ok,
     json_extract(geom_json, '$.Lage.dimension') = 2 AS dim_ok
 FROM read_xtf_objects('testdata/synthetic/geometries/valid.xtf',
-    modeldir := 'testdata/synthetic/geometries')
+    model_sources := 'testdata/synthetic/geometries')
 WHERE xtf_class_fqn ILIKE '%PunktObjekt%'
 LIMIT 1;

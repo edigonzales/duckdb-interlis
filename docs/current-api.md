@@ -10,19 +10,19 @@
 |---|----------|------|---------|
 | 1 | `ili_extension_version()` | Scalar | VARCHAR |
 | 2 | `ili_native_version()` | Scalar | VARCHAR (JSON) |
-| 3 | `ili_validate_summary_json(path, modeldir)` | Scalar | VARCHAR (JSON) |
-| 4 | `ili_validate(path, modeldir =>, profile =>, max_messages =>)` | Table | 13 columns |
+| 3 | `validate_xtf_summary_json(path, model_sources)` | Scalar | VARCHAR (JSON) |
+| 4 | `validate_xtf(path, model_sources =>, profile =>, max_messages =>)` | Table | 13 columns |
 | 5 | `ili_models(model, model_sources =>)` | Table | 5 columns |
 | 6 | `ili_topics(model, model_sources =>)` | Table | 3 columns |
 | 7 | `ili_classes(model, model_sources =>, class =>)` | Table | 7 columns |
 | 8 | `ili_attributes(model, model_sources =>, class =>)` | Table | 9 columns |
 | 9 | `ili_enumerations(model, model_sources =>)` | Table | 5 columns |
 | 10 | `ili_geometry_attributes(model, model_sources =>, class =>)` | Table | 21 columns |
-| 11 | `read_xtf_objects(input, modeldir =>, models =>)` | Table | 11 columns |
-| 12 | `read_xtf_class(input, class =>, modeldir =>, nested =>)` | Table | Dynamic |
-| 13 | `read_xtf_structures(class =>, modeldir =>)` | Table | 12 columns |
-| 14 | `read_xtf_association(input, association =>, modeldir =>)` | Table | Dynamic |
-| 15 | `ili_generate_import_sql(input, schema =>, modeldir =>, mapping =>, mode =>)` | Table | 1 column |
+| 11 | `read_xtf_objects(path, model_sources =>, models =>)` | Table | 11 columns |
+| 12 | `read_xtf_class(path, class =>, model_sources =>, nested =>)` | Table | Dynamic |
+| 13 | `read_xtf_structures(class =>, model_sources =>)` | Table | 12 columns |
+| 14 | `read_xtf_association(path, association =>, model_sources =>)` | Table | Dynamic |
+| 15 | `ili_generate_import_sql(path, schema =>, model_sources =>, mapping =>, mode =>)` | Table | 1 column |
 
 ---
 
@@ -73,9 +73,9 @@
 
 ---
 
-### `ili_validate_summary_json(path, modeldir)`
+### `validate_xtf_summary_json(path, model_sources)`
 
-**Signature:** `ili_validate_summary_json(path VARCHAR, modeldir VARCHAR) → VARCHAR`
+**Signature:** `validate_xtf_summary_json(path VARCHAR, model_sources VARCHAR) → VARCHAR`
 
 **Description:** Validates an XTF file and returns a JSON summary with `valid` (boolean), `errorCount`, `warningCount`, `infoCount`, and optional `messages` array.
 
@@ -84,11 +84,11 @@
 | # | Name | Kind | Required | Description |
 |---|------|------|----------|-------------|
 | 1 | `path` | positional | Yes | Path to XTF file |
-| 2 | `modeldir` | positional | No | ILI model directory or semicolon-separated URLs |
+| 2 | `model_sources` | positional | No | Comma- or semicolon-separated `.ili` files, directories, or repository URLs; a direct file's parent resolves `IMPORTS` |
 
 **NULL behaviour:**
 - Returns NULL if `path` is NULL.
-- `modeldir` NULL is treated as empty string.
+- `model_sources` NULL is treated as empty string.
 
 **Error behaviour:**
 - If `path` is NULL → `duckdb_scalar_function_set_error("Path must not be NULL")`, returns NULL.
@@ -105,9 +105,9 @@
 
 ## Table Functions
 
-### `ili_validate(path, modeldir =>)`
+### `validate_xtf(path, model_sources =>)`
 
-**Signature:** `ili_validate(path VARCHAR, modeldir => VARCHAR, profile => VARCHAR, max_messages => INTEGER) → TABLE(...)`
+**Signature:** `validate_xtf(path VARCHAR, model_sources => VARCHAR, profile => VARCHAR, max_messages => INTEGER) → TABLE(...)`
 
 **Description:** Validates an XTF file and returns one row per validation message.
 
@@ -116,7 +116,7 @@
 | # | Name | Kind | Required | Description |
 |---|------|------|----------|-------------|
 | 1 | `path` | positional | Yes | Path to XTF file |
-| 2 | `modeldir` | named | No | ILI model directory or semicolon-separated URLs |
+| 2 | `model_sources` | named | No | Comma- or semicolon-separated `.ili` files, directories, or repository URLs; a direct file's parent resolves `IMPORTS` |
 | 3 | `profile` | named | No | Validation profile: `full` (default), `structural`, or `fast` |
 | 4 | `max_messages` | named | No | Maximum detail rows returned. Use -1 or omit for unlimited. Does NOT affect validity. |
 
@@ -142,7 +142,7 @@
 
 **Error behaviour:**
 - Native library init failure → `duckdb_init_set_error(g_error_buf)`, empty result.
-- Missing `path` → `duckdb_init_set_error("Missing input path")`, empty result.
+- Missing `path` → `duckdb_init_set_error("Missing path path")`, empty result.
 - Native call failure → DuckDB error with extracted NativeError message (Phase 2 fix).
 - File not found → returned as an ERROR-level validation message, not as a DuckDB error.
 
@@ -284,7 +284,7 @@ used. A `NULL` model selects all models available from local sources.
 
 **Signature:** `ili_geometry_attributes(model VARCHAR, model_sources => VARCHAR, class => VARCHAR) → TABLE(...)`
 
-**Description:** Lists geometry attributes found in INTERLIS models. Returns metadata including geometry kind, dimension, coordinate domain, CRS, cardinality, and encoding info. No XTF input needed — pure model introspection.
+**Description:** Lists geometry attributes found in INTERLIS models. Returns metadata including geometry kind, dimension, coordinate domain, CRS, cardinality, and encoding info. No XTF path needed — pure model introspection.
 
 **Parameters:**
 
@@ -331,9 +331,9 @@ used. A `NULL` model selects all models available from local sources.
 
 ---
 
-### `read_xtf_objects(input, modeldir =>, models =>)`
+### `read_xtf_objects(path, model_sources =>, models =>)`
 
-**Signature:** `read_xtf_objects(input VARCHAR, modeldir => VARCHAR, models => VARCHAR) → TABLE(...)`
+**Signature:** `read_xtf_objects(path VARCHAR, model_sources => VARCHAR, models => VARCHAR) → TABLE(...)`
 
 **Description:** Generic XTF object stream reader. Reads all objects from an XTF file without resolving class schemas. Attributes, references, and geometry returned as JSON.
 
@@ -341,9 +341,9 @@ used. A `NULL` model selects all models available from local sources.
 
 | # | Name | Kind | Required | Description |
 |---|------|------|----------|-------------|
-| 1 | `input` | positional | Yes | Path to XTF file |
-| 2 | `modeldir` | named | No | ILI model directory |
-| 3 | `models` | named | No | Filter by model name |
+| 1 | `path` | positional | Yes | Path to XTF file |
+| 2 | `model_sources` | named | No | Comma- or semicolon-separated `.ili` files, directories, or repository URLs |
+| 3 | `models` | named | No | Exact model-name filter; multiple names are separated by comma or semicolon |
 
 **Return columns:**
 
@@ -365,7 +365,7 @@ used. A `NULL` model selects all models available from local sources.
 
 **Error behaviour:**
 - Native library init failure → `duckdb_init_set_error(g_error_buf)`.
-- Missing `input` → `duckdb_init_set_error("Missing input path")`.
+- Missing `path` → `duckdb_init_set_error("Missing path path")`.
 - Native call failure → DuckDB error with extracted NativeError message (Phase 2 fix).
 - Java-side XTF read exceptions → throw RuntimeException, caught by NativeEntryPoints and converted to NativeError (Phase 2 fix). No more partial results.
 - Model compilation failure → throws RuntimeException, propagated as model error (Phase 2 fix).
@@ -377,9 +377,9 @@ used. A `NULL` model selects all models available from local sources.
 
 ---
 
-### `read_xtf_class(input, class =>, modeldir =>, nested =>)`
+### `read_xtf_class(path, class =>, model_sources =>, nested =>)`
 
-**Signature:** `read_xtf_class(input VARCHAR, class => VARCHAR, modeldir => VARCHAR, nested => VARCHAR) → TABLE(...)`
+**Signature:** `read_xtf_class(path VARCHAR, class => VARCHAR, model_sources => VARCHAR, nested => VARCHAR) → TABLE(...)`
 
 **Description:** Reads an XTF file and returns rows for a specific INTERLIS class. Columns are dynamically determined from the class schema. Scalar attributes are exposed as model-aware DuckDB types (`VARCHAR`, `BIGINT`, `DOUBLE`, `BOOLEAN`, `DATE`, `TIME`, `TIMESTAMP`). Geometry attributes use native `GEOMETRY` on the typed v2 path and `VARCHAR` WKT on the fallback path.
 
@@ -387,9 +387,9 @@ used. A `NULL` model selects all models available from local sources.
 
 | # | Name | Kind | Required | Description |
 |---|------|------|----------|-------------|
-| 1 | `input` | positional | Yes | Path to XTF file |
+| 1 | `path` | positional | Yes | Path to XTF file |
 | 2 | `class` | named | Yes | Fully qualified class name (Model.Topic.Class) |
-| 3 | `modeldir` | named | No | ILI model directory |
+| 3 | `model_sources` | named | No | Comma- or semicolon-separated `.ili` files, directories, or repository URLs; a direct file's parent resolves `IMPORTS` |
 | 4 | `nested` | named | No | Nesting mode: `'json'` (default) |
 
 **Return columns (dynamic, always include):**
@@ -407,7 +407,7 @@ Plus: one column per scalar attribute, `*_geom` for geometry attributes, `*_json
 
 **Error behaviour:**
 - Native library init failure → `duckdb_init_set_error(g_error_buf)`.
-- Missing `input` or `class` → `duckdb_init_set_error("Missing input or class")`.
+- Missing `path` or `class` → `duckdb_init_set_error("Missing path or class")`.
 - Native call failure → DuckDB error with extracted NativeError message (Phase 2 fix).
 - Java-side read exceptions → throw RuntimeException, no more partial results (Phase 2 fix).
 - Zero rows returned → loaded as empty result set (not an error).
@@ -420,9 +420,9 @@ Plus: one column per scalar attribute, `*_geom` for geometry attributes, `*_json
 
 ---
 
-### `read_xtf_structures(class =>, modeldir =>)`
+### `read_xtf_structures(class =>, model_sources =>)`
 
-**Signature:** `read_xtf_structures(class => VARCHAR, modeldir => VARCHAR) → TABLE(...)`
+**Signature:** `read_xtf_structures(class => VARCHAR, model_sources => VARCHAR) → TABLE(...)`
 
 **Description:** Introspects all recursively reachable INTERLIS STRUCTURE definitions used by a class. No positional parameters — both are named.
 
@@ -431,7 +431,7 @@ Plus: one column per scalar attribute, `*_geom` for geometry attributes, `*_json
 | # | Name | Kind | Required | Description |
 |---|------|------|----------|-------------|
 | 1 | `class` | named | Yes | Fully qualified class name |
-| 2 | `modeldir` | named | No | ILI model directory |
+| 2 | `model_sources` | named | No | Comma- or semicolon-separated `.ili` files, directories, or repository URLs; defaults to `ILI_DEFAULT_MODELDIR` or `https://models.interlis.ch` |
 
 **Return columns:**
 
@@ -457,13 +457,13 @@ Plus: one column per scalar attribute, `*_geom` for geometry attributes, `*_json
 - Missing `class` → `duckdb_init_set_error("Missing class")`.
 - Native call failure → DuckDB error with extracted NativeError message (Phase 2 fix).
 
-**Known limitations:** No XTF input is needed — the function is purely model-based and only uses the model directory.
+**Known limitations:** No XTF path is needed — the function is purely model-based and only uses the model directory.
 
 ---
 
-### `read_xtf_association(input, association =>, modeldir =>)`
+### `read_xtf_association(path, association =>, model_sources =>)`
 
-**Signature:** `read_xtf_association(input VARCHAR, association => VARCHAR, modeldir => VARCHAR) → TABLE(...)`
+**Signature:** `read_xtf_association(path VARCHAR, association => VARCHAR, model_sources => VARCHAR) → TABLE(...)`
 
 **Description:** Reads an INTERLIS association from an XTF file. Columns are dynamically determined from the association schema. Scalar attributes are exposed as model-aware DuckDB types (`VARCHAR`, `BIGINT`, `DOUBLE`, `BOOLEAN`, `DATE`, `TIME`, `TIMESTAMP`); role references remain `VARCHAR`.
 
@@ -471,9 +471,9 @@ Plus: one column per scalar attribute, `*_geom` for geometry attributes, `*_json
 
 | # | Name | Kind | Required | Description |
 |---|------|------|----------|-------------|
-| 1 | `input` | positional | Yes | Path to XTF file |
+| 1 | `path` | positional | Yes | Path to XTF file |
 | 2 | `association` | named | Yes | Fully qualified association name (Model.Topic.Assoc) |
-| 3 | `modeldir` | named | No | ILI model directory |
+| 3 | `model_sources` | named | No | Comma- or semicolon-separated `.ili` files, directories, or repository URLs; a direct file's parent resolves `IMPORTS` |
 
 **Return columns:** Dynamic, always includes `xtf_bid`, `xtf_tid`, `xtf_class`, `unsupported_json`.
 
@@ -487,9 +487,9 @@ Plus: one column per scalar attribute, `*_geom` for geometry attributes, `*_json
 
 ---
 
-### `ili_generate_import_sql(input, schema =>, modeldir =>, mapping =>, mode =>)`
+### `ili_generate_import_sql(path, schema =>, model_sources =>, mapping =>, mode =>)`
 
-**Signature:** `ili_generate_import_sql(input VARCHAR, schema => VARCHAR, modeldir => VARCHAR, mapping => VARCHAR, mode => VARCHAR) → TABLE(sql_statement VARCHAR)`
+**Signature:** `ili_generate_import_sql(path VARCHAR, schema => VARCHAR, model_sources => VARCHAR, mapping => VARCHAR, mode => VARCHAR) → TABLE(sql_statement VARCHAR)`
 
 **Description:** Generates typed SQL DDL (`CREATE TABLE`) and DML (`INSERT INTO`) statements for importing an XTF file into a DuckDB schema. Output is wrapped in `BEGIN TRANSACTION`/`COMMIT`. Table names use `topic__class` convention.
 
@@ -499,9 +499,9 @@ Plus: one column per scalar attribute, `*_geom` for geometry attributes, `*_json
 
 | # | Name | Kind | Required | Description |
 |---|------|------|----------|-------------|
-| 1 | `input` | positional | Yes | Path to XTF file |
+| 1 | `path` | positional | Yes | Path to XTF file |
 | 2 | `schema` | named | Yes | Target schema name |
-| 3 | `modeldir` | named | No | ILI model directory |
+| 3 | `model_sources` | named | No | Comma- or semicolon-separated `.ili` files, directories, or repository URLs; a direct file's parent resolves `IMPORTS` |
 | 4 | `mapping` | named | No | Mapping mode. Only `"relational"` is supported (default). Unsupported values return `INVALID_ARGUMENT`. |
 | 5 | `mode` | named | No | Import mode: `"create"` (default), `"replace"`, or `"append"`. |
 
@@ -515,7 +515,7 @@ Plus: one column per scalar attribute, `*_geom` for geometry attributes, `*_json
 
 **Error behaviour:**
 - Native library init failure → `duckdb_init_set_error(g_error_buf)`.
-- Missing `input` or `schema` → `duckdb_init_set_error("Missing input or schema")`.
+- Missing `path` or `schema` → `duckdb_init_set_error("Missing path or schema")`.
 - Native call failure → DuckDB error with extracted NativeError message.
 - Unsupported mapping value → `INVALID_ARGUMENT` with error message.
 - Table name collision → DuckDB error with details.
@@ -533,7 +533,7 @@ Plus: one column per scalar attribute, `*_geom` for geometry attributes, `*_json
 
 ### Request Construction (C Side)
 
-All requests are built with manual `snprintf` into fixed-size buffers (4096 or 8192 bytes). Long paths or model directories **may be silently truncated**. JSON special characters (`"`, `\`, newlines) in user input are **not escaped**.
+All requests are built with manual `snprintf` into fixed-size buffers (4096 or 8192 bytes). Long paths or model directories **may be silently truncated**. JSON special characters (`"`, `\`, newlines) in user path are **not escaped**.
 
 ### JSON Parsing (Java Side)
 

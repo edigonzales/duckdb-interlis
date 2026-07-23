@@ -8,8 +8,8 @@ All notable changes to the duckdb-interlis extension.
 - **`ili_geometry_attributes()` SQL table function** — lists geometry attribute metadata (21 columns: geometry kind, dimension, coordinate domain, CRS, cardinality, arcs support, etc.)
 - **Native GEOMETRY column support (v2 typed path)** — `read_xtf_class` returns native DuckDB `GEOMETRY` columns via `ILI_CAP_TYPED_CLASS_SCAN`; hex-WKB wire protocol; v1 VARCHAR WKT fallback when capability absent
 - **CRS mapping** — `ILI_GEOMETRY_CRS_MAP` and `ILI_GEOMETRY_CRS_FILE` env vars for explicit coordinate reference system configuration; used by `ili_generate_import_sql` (generates `GEOMETRY('EPSG:xxxx')` columns) and `ili_geometry_attributes` (populates CRS columns)
-- **Validation profiles** — `profile` parameter on `ili_validate`: `full` (default), `structural`, `fast`
-- **`max_messages` parameter** on `ili_validate` — limits detail rows without affecting validity status
+- **Validation profiles** — `profile` parameter on `validate_xtf`: `full` (default), `structural`, `fast`
+- **`max_messages` parameter** on `validate_xtf` — limits detail rows without affecting validity status
 - **`ili_generate_import_sql` modes** — `create` (default, CREATE IF NOT EXISTS), `replace` (DROP + CREATE), `append` (INSERT only)
 - **`topic__class` table naming** — avoids collisions when same class name appears in different topics
 

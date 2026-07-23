@@ -51,7 +51,7 @@ All native Java calls are serialized through a single mutex because the INTERLIS
 
 ### No Network Requests (by default)
 
-Model compilation and validation do not make network requests unless a model repository URL (starting with `http://` or `https://`) is specified in the `modeldir` parameter. Metadata functions use the equivalent `model_sources` parameter. The default `ILI_DEFAULT_MODELDIR` is `https://models.interlis.ch` — set it to a local directory to avoid network access entirely.
+Model compilation and validation do not make network requests unless a model repository URL (starting with `http://` or `https://`) is specified in the `model_sources` parameter. Metadata functions use the equivalent `model_sources` parameter. The default `ILI_DEFAULT_MODELDIR` is `https://models.interlis.ch` — set it to a local directory to avoid network access entirely.
 
 ## Reporting Security Issues
 

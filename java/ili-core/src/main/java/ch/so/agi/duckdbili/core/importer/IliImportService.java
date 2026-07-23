@@ -32,7 +32,7 @@ public class IliImportService {
         this.logicalTypeMapper = new InterlisLogicalTypeMapper();
     }
 
-    public String generateImportSql(String xtfPath, String modelDir, String schema, String mapping, String mode) {
+    public String generateImportSql(String xtfPath, String modelSources, String schema, String mapping, String mode) {
         long startNanos = System.nanoTime();
 
         long xtfFileSize = -1;
@@ -54,8 +54,8 @@ public class IliImportService {
                             + "'. Currently only 'relational' mapping is supported.");
         }
 
-        String effectiveModelDir = resolveModelDir(modelDir, xtfPath);
-        TransferDescription td = compileModel(effectiveModelDir, null);
+        String effectiveModelSources = resolveModelSources(modelSources, xtfPath);
+        TransferDescription td = compileModel(effectiveModelSources, null);
 
         Set<String> tableNames = new HashSet<>();
         StringBuilder sql = new StringBuilder();
@@ -84,7 +84,7 @@ public class IliImportService {
                         if (!effectiveMode.equals("append")) {
                             sql.append(generateDdl(schema, tableName, cols)).append('\n');
                         }
-                        sql.append(generateAssociationInsert(schema, xtfPath, effectiveModelDir, assocFqn, tableName, cols)).append('\n');
+                        sql.append(generateAssociationInsert(schema, xtfPath, effectiveModelSources, assocFqn, tableName, cols)).append('\n');
                     } else if (tel instanceof AbstractClassDef classDef && !(tel instanceof AssociationDef)) {
                         String classFqn = model.getName() + "." + topic.getName() + "." + classDef.getName();
                         String tableName = buildTableName(topic, classDef.getName());
@@ -97,7 +97,7 @@ public class IliImportService {
                         if (!effectiveMode.equals("append")) {
                             sql.append(generateDdl(schema, tableName, cols)).append('\n');
                         }
-                        sql.append(generateClassInsert(schema, xtfPath, effectiveModelDir, classFqn, tableName, cols)).append('\n');
+                        sql.append(generateClassInsert(schema, xtfPath, effectiveModelSources, classFqn, tableName, cols)).append('\n');
                     }
                 }
             }
@@ -227,7 +227,7 @@ public class IliImportService {
     // INSERT generation with typed CASTs
     // -----------------------------------------------------------------------
 
-    private String generateClassInsert(String schema, String xtfPath, String modelDir,
+    private String generateClassInsert(String schema, String xtfPath, String modelSources,
                                         String classFqn, String tableName, List<ColInfo> cols) {
         String colList = buildTargetColList(cols);
         String selList = buildSelectList(cols);
@@ -237,11 +237,11 @@ public class IliImportService {
              + " FROM read_xtf_class("
              + SqlIdentifiers.sqlString(xtfPath)
              + ", class := " + SqlIdentifiers.sqlString(classFqn)
-             + ", modeldir := " + SqlIdentifiers.sqlString(modelDir)
+             + ", model_sources := " + SqlIdentifiers.sqlString(modelSources)
              + ");";
     }
 
-    private String generateAssociationInsert(String schema, String xtfPath, String modelDir,
+    private String generateAssociationInsert(String schema, String xtfPath, String modelSources,
                                               String assocFqn, String tableName, List<ColInfo> cols) {
         String colList = buildTargetColList(cols);
         String selList = buildSelectList(cols);
@@ -251,7 +251,7 @@ public class IliImportService {
              + " FROM read_xtf_association("
              + SqlIdentifiers.sqlString(xtfPath)
              + ", association := " + SqlIdentifiers.sqlString(assocFqn)
-             + ", modeldir := " + SqlIdentifiers.sqlString(modelDir)
+             + ", model_sources := " + SqlIdentifiers.sqlString(modelSources)
              + ");";
     }
 
@@ -326,8 +326,9 @@ public class IliImportService {
     // Model compilation (mirrors XtfObjectReader.compileModel)
     // -----------------------------------------------------------------------
 
-    private TransferDescription compileModel(String modelDir, String modelNames) {
-        String md = ModelRepositoryResolver.resolveToString(modelDir, DEFAULT_MODELDIR);
+    private TransferDescription compileModel(String modelSources, String modelNames) {
+        ModelRepositoryResolver.validateSources(modelSources, DEFAULT_MODELDIR);
+        String md = ModelRepositoryResolver.resolveToString(modelSources, DEFAULT_MODELDIR);
         Set<String> names = parseModelNames(modelNames);
         String fingerprint = ModelCache.computeFingerprint(md);
         ModelCache.CacheKey key = new ModelCache.CacheKey(md, names, fingerprint);
@@ -335,50 +336,45 @@ public class IliImportService {
     }
 
     private static Set<String> parseModelNames(String modelNames) {
-        if (modelNames == null || modelNames.isBlank()) return Set.of();
-        Set<String> names = new TreeSet<>();
-        for (String entry : modelNames.split(";")) {
-            String trimmed = entry.trim();
-            if (!trimmed.isBlank()) names.add(trimmed);
-        }
-        return names;
+        return new TreeSet<>(ModelRepositoryResolver.splitList(modelNames));
     }
 
-    private TransferDescription doCompileModel(String normalizedModelDir, String modelNames) {
+    private TransferDescription doCompileModel(String normalizedModelSources, String modelNames) {
         try {
             IliManager manager = new IliManager();
 
-            List<String> repoList = ModelRepositoryResolver.resolve(normalizedModelDir, DEFAULT_MODELDIR);
+            List<String> repoList = ModelRepositoryResolver.repositorySources(
+                    normalizedModelSources, DEFAULT_MODELDIR);
             manager.setRepositories(repoList.toArray(new String[0]));
 
-            ArrayList<String> entries = new ArrayList<>();
+            LinkedHashSet<String> entries = new LinkedHashSet<>();
             if (modelNames != null && !modelNames.isBlank()) {
-                for (String entry : modelNames.split(";")) {
-                    String trimmed = entry.trim();
-                    if (!trimmed.isBlank()) entries.add(trimmed);
-                }
+                entries.addAll(ModelRepositoryResolver.splitList(modelNames));
             } else {
-                for (Path directory : ModelRepositoryResolver.localDirectories(normalizedModelDir, DEFAULT_MODELDIR)) {
+                for (Path directory : ModelRepositoryResolver.localDirectories(normalizedModelSources, DEFAULT_MODELDIR)) {
                     try (DirectoryStream<Path> ds = Files.newDirectoryStream(directory, "*.ili")) {
                         for (Path f : ds) entries.add(f.toAbsolutePath().toString());
                     }
                 }
             }
+            for (Path file : ModelRepositoryResolver.localFiles(normalizedModelSources, DEFAULT_MODELDIR)) {
+                entries.add(file.toString());
+            }
 
-            Configuration cfg = manager.getConfigWithFiles(entries, null, 0.0);
+            Configuration cfg = manager.getConfigWithFiles(new ArrayList<>(entries), null, 0.0);
             if (cfg == null) {
-                throw new RuntimeException("INTERLIS model compilation failed: no valid configuration for modelDir=" + normalizedModelDir);
+                throw new RuntimeException("INTERLIS model compilation failed: no valid configuration for modelSources=" + normalizedModelSources);
             }
 
             Ili2cSettings settings = new Ili2cSettings();
             Main.setDefaultIli2cPathMap(settings);
-            settings.setIlidirs(normalizedModelDir);
+            settings.setIlidirs(String.join(";", repoList));
 
             IliLogger.suppress();
             try {
                 TransferDescription td = Main.runCompiler(cfg, settings, null);
                 if (td == null) {
-                    throw new RuntimeException("INTERLIS model compilation returned null for modelDir=" + normalizedModelDir);
+                    throw new RuntimeException("INTERLIS model compilation returned null for modelSources=" + normalizedModelSources);
                 }
                 return td;
             } finally {
@@ -387,7 +383,7 @@ public class IliImportService {
         } catch (RuntimeException e) {
             throw e;
         } catch (Exception e) {
-            throw new RuntimeException("INTERLIS model compilation failed for modelDir=" + normalizedModelDir, e);
+            throw new RuntimeException("INTERLIS model compilation failed for modelSources=" + normalizedModelSources, e);
         }
     }
 
@@ -414,8 +410,10 @@ public class IliImportService {
         return false;
     }
 
-    private static String resolveModelDir(String modelDir, String xtfPath) {
-        if (modelDir != null && !modelDir.isBlank()) return modelDir;
+    private static String resolveModelSources(String modelSources, String xtfPath) {
+        if (modelSources != null && !modelSources.isBlank()) {
+            return ModelRepositoryResolver.resolveToString(modelSources, DEFAULT_MODELDIR);
+        }
         String xtfDir = "";
         try { xtfDir = new File(xtfPath).getAbsoluteFile().getParent(); } catch (Exception ignored) {}
         return ModelRepositoryResolver.resolveToString(

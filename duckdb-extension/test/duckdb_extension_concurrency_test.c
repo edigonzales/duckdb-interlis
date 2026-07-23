@@ -70,14 +70,14 @@ static const char *queries[] = {
     "SELECT * FROM ili_topics(NULL, model_sources := '" TESTDATA_DIR "')",
     "SELECT * FROM ili_classes(NULL, model_sources := '" TESTDATA_DIR "')",
     "SELECT * FROM read_xtf_objects('" TESTDATA_XTF "', "
-        "modeldir := '" TESTDATA_DIR "')",
+        "model_sources := '" TESTDATA_DIR "')",
     "SELECT * FROM read_xtf_class('" TESTDATA_XTF "', "
         "class := 'SO_AGI_Simple_20260605.Topic.Gemeinde', "
-        "modeldir := '" TESTDATA_DIR "')",
-    "SELECT * FROM ili_validate('" TESTDATA_XTF "', "
-        "modeldir := '" TESTDATA_DIR "', profile := 'full')",
+        "model_sources := '" TESTDATA_DIR "')",
+    "SELECT * FROM validate_xtf('" TESTDATA_XTF "', "
+        "model_sources := '" TESTDATA_DIR "', profile := 'full')",
     "SELECT * FROM ili_generate_import_sql('" TESTDATA_XTF "', "
-        "schema := 'conc_test', modeldir := '" TESTDATA_DIR "')",
+        "schema := 'conc_test', model_sources := '" TESTDATA_DIR "')",
     "SELECT ili_extension_version()",
     "SELECT ili_native_version()",
 };

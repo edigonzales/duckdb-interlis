@@ -244,6 +244,30 @@ int ili_native_validate_tsv(graal_isolatethread_t*, char* request_json, char** o
 - **Error payload:** `{"status":"INTERNAL_ERROR","operation":"validate_tsv","message":"...","exception":"..."}` (status 100)
 - **Issues:** `CONSTRAINT` + `AREA` disabled. CSV log parsed with `split(",")`.
 
+### SQL mapping
+
+The public DuckDB functions are named `validate_xtf_summary_json` and
+`validate_xtf`. They call `ili_native_validate` and `ili_native_validate_tsv`,
+respectively. The SQL names may evolve independently; the native symbols,
+capability bits, and ABI version remain unchanged.
+
+For the complete SQL-to-ABI mapping, the public XTF names are only a
+presentation layer. SQL `path` is copied to the unchanged ABI field `input`,
+and SQL `model_sources` is copied to the unchanged ABI field `modeldir`:
+
+| SQL function | ABI operation | SQL → ABI fields |
+|---|---|---|
+| `validate_xtf_summary_json` | `ili_native_validate` | `path` → `input`, positional `model_sources` → `modeldir` |
+| `validate_xtf` | `ili_native_validate_tsv` | `path` → `input`, `model_sources` → `modeldir` |
+| `read_xtf_objects` | `ili_native_read_xtf` | `path` → `input`, `model_sources` → `modeldir`, `models` → `models` |
+| `read_xtf_class` | `ili_native_read_xtf_class` or v2 | `path` → `input`, `class` → `class`, `model_sources` → `modeldir`, `nested` → `nested` |
+| `read_xtf_structures` | `ili_native_read_xtf_structures` | `class` → `class`, `model_sources` → `modeldir` |
+| `read_xtf_association` | `ili_native_read_xtf_association` or v2 | `path` → `input`, `association` → `association`, `model_sources` → `modeldir` |
+| `ili_generate_import_sql` | `ili_native_generate_import_sql` | `path` → `input`, `schema` → `schema`, `model_sources` → `modeldir`, `mapping` → `mapping`, `mode` → `mode` |
+
+The native request layout, ABI version, capability bits, and all native
+symbols remain unchanged by this SQL naming change.
+
 ### 5.5 `ili_native_model_info`
 
 ```c

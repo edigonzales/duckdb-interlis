@@ -6,26 +6,26 @@ SELECT '=== ili_generate_import_sql: generate typed SQL (simple model) ===' AS e
 SELECT sql_statement
 FROM ili_generate_import_sql('testdata/synthetic/simple/valid.xtf',
     schema := 'ili_example',
-    modeldir := 'testdata/synthetic/simple');
+    model_sources := 'testdata/synthetic/simple');
 
 SELECT '=== ili_generate_import_sql: generate typed SQL (associations model) ===' AS example;
 SELECT sql_statement
 FROM ili_generate_import_sql('testdata/synthetic/associations/valid.xtf',
     schema := 'ili_example_assoc',
-    modeldir := 'testdata/synthetic/associations');
+    model_sources := 'testdata/synthetic/associations');
 
 SELECT '=== ili_generate_import_sql: mit explizitem mapping-Parameter (relational) ===' AS example;
 SELECT sql_statement
 FROM ili_generate_import_sql('testdata/synthetic/simple/valid.xtf',
     schema := 'ili_example',
-    modeldir := 'testdata/synthetic/simple',
+    model_sources := 'testdata/synthetic/simple',
     mapping := 'relational');
 
 SELECT '=== ili_generate_import_sql: mode replace (DROP + CREATE + INSERT) ===' AS example;
 SELECT sql_statement
 FROM ili_generate_import_sql('testdata/synthetic/simple/valid.xtf',
     schema := 'ili_example',
-    modeldir := 'testdata/synthetic/simple',
+    model_sources := 'testdata/synthetic/simple',
     mode := 'replace');
 
 SELECT '=== Manual typed import: simple model ===' AS example;
@@ -45,13 +45,13 @@ INSERT INTO ili_example.topic__gemeinde (xtf_bid, xtf_tid, xtf_class, name, bfs_
     SELECT xtf_bid, xtf_tid, xtf_class, name, CAST(bfs_nr AS BIGINT), unsupported_json
     FROM read_xtf_class('testdata/synthetic/simple/valid.xtf',
         class := 'SO_AGI_Simple_20260605.Topic.Gemeinde',
-        modeldir := 'testdata/synthetic/simple');
+        model_sources := 'testdata/synthetic/simple');
 
 INSERT INTO ili_example.topic__abbaustelle (xtf_bid, xtf_tid, xtf_class, name, status, unsupported_json)
     SELECT xtf_bid, xtf_tid, xtf_class, name, status, unsupported_json
     FROM read_xtf_class('testdata/synthetic/simple/valid.xtf',
         class := 'SO_AGI_Simple_20260605.Topic.Abbaustelle',
-        modeldir := 'testdata/synthetic/simple');
+        model_sources := 'testdata/synthetic/simple');
 
 SELECT '=== Verify: counts ===' AS example;
 SELECT count(*) AS gemeinde_count FROM ili_example.topic__gemeinde;
@@ -83,19 +83,19 @@ INSERT INTO ili_example_assoc.topic__person (xtf_bid, xtf_tid, xtf_class, name, 
     SELECT xtf_bid, xtf_tid, xtf_class, name, unsupported_json
     FROM read_xtf_class('testdata/synthetic/associations/valid.xtf',
         class := 'SO_AGI_Associations_20260605.Topic.Person',
-        modeldir := 'testdata/synthetic/associations');
+        model_sources := 'testdata/synthetic/associations');
 
 INSERT INTO ili_example_assoc.topic__grundstueck (xtf_bid, xtf_tid, xtf_class, nummer, flaeche, unsupported_json)
     SELECT xtf_bid, xtf_tid, xtf_class, nummer, CAST(flaeche AS BIGINT), unsupported_json
     FROM read_xtf_class('testdata/synthetic/associations/valid.xtf',
         class := 'SO_AGI_Associations_20260605.Topic.Grundstueck',
-        modeldir := 'testdata/synthetic/associations');
+        model_sources := 'testdata/synthetic/associations');
 
 INSERT INTO ili_example_assoc.topic__besitz (xtf_bid, xtf_tid, xtf_class, besitzer_ref, grundstueck_ref, anteil, unsupported_json)
     SELECT xtf_bid, xtf_tid, xtf_class, besitzer_ref, grundstueck_ref, CAST(anteil AS BIGINT), unsupported_json
     FROM read_xtf_association('testdata/synthetic/associations/valid.xtf',
         association := 'SO_AGI_Associations_20260605.Topic.Besitz',
-        modeldir := 'testdata/synthetic/associations');
+        model_sources := 'testdata/synthetic/associations');
 
 SELECT '=== Verify: typed JOIN with arithmetic ===' AS example;
 SELECT p.name, g.nummer, g.flaeche, b.anteil,

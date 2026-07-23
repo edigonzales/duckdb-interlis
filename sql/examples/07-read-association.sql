@@ -5,36 +5,36 @@
 SELECT '=== Classes: Person ===' AS example;
 SELECT * FROM read_xtf_class('testdata/synthetic/associations/valid.xtf',
     class := 'SO_AGI_Associations_20260605.Topic.Person',
-    modeldir := 'testdata/synthetic/associations');
+    model_sources := 'testdata/synthetic/associations');
 
 SELECT '=== Classes: Grundstueck ===' AS example;
 SELECT * FROM read_xtf_class('testdata/synthetic/associations/valid.xtf',
     class := 'SO_AGI_Associations_20260605.Topic.Grundstueck',
-    modeldir := 'testdata/synthetic/associations');
+    model_sources := 'testdata/synthetic/associations');
 
 SELECT '=== Association: Besitz (raw) ===' AS example;
 SELECT xtf_tid, besitzer_ref, grundstueck_ref, Anteil
 FROM read_xtf_association(
     'testdata/synthetic/associations/valid.xtf',
     association := 'SO_AGI_Associations_20260605.Topic.Besitz',
-    modeldir := 'testdata/synthetic/associations');
+    model_sources := 'testdata/synthetic/associations');
 
 SELECT '=== JOIN: Person + Grundstueck + Besitz ===' AS example;
 WITH
   person AS (
     SELECT * FROM read_xtf_class('testdata/synthetic/associations/valid.xtf',
         class := 'SO_AGI_Associations_20260605.Topic.Person',
-        modeldir := 'testdata/synthetic/associations')
+        model_sources := 'testdata/synthetic/associations')
   ),
   grundstueck AS (
     SELECT * FROM read_xtf_class('testdata/synthetic/associations/valid.xtf',
         class := 'SO_AGI_Associations_20260605.Topic.Grundstueck',
-        modeldir := 'testdata/synthetic/associations')
+        model_sources := 'testdata/synthetic/associations')
   ),
   besitz AS (
     SELECT * FROM read_xtf_association('testdata/synthetic/associations/valid.xtf',
         association := 'SO_AGI_Associations_20260605.Topic.Besitz',
-        modeldir := 'testdata/synthetic/associations')
+        model_sources := 'testdata/synthetic/associations')
   )
 SELECT person.name AS person_name,
        grundstueck.nummer AS grundstueck_nummer,
@@ -48,5 +48,5 @@ SELECT '=== Association schema inspection ===' AS example;
 DESCRIBE SELECT * FROM read_xtf_association(
     'testdata/synthetic/associations/valid.xtf',
     association := 'SO_AGI_Associations_20260605.Topic.Besitz',
-    modeldir := 'testdata/synthetic/associations'
+    model_sources := 'testdata/synthetic/associations'
 );

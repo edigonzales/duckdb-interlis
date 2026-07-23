@@ -184,7 +184,7 @@ See **[sql/examples/README.md](sql/examples/README.md)** for an index of all exa
 Set `DUCKDB_ILI_DEBUG=1` for diagnostic output on stderr:
 
 ```bash
-DUCKDB_ILI_DEBUG=1 duckdb -unsigned -c "SELECT count(*) FROM ili_validate('file.xtf');"
+DUCKDB_ILI_DEBUG=1 duckdb -unsigned -c "SELECT count(*) FROM validate_xtf('file.xtf');"
 ```
 
 See [docs/performance.md](docs/performance.md) and [docs/troubleshooting.md](docs/troubleshooting.md) for details.

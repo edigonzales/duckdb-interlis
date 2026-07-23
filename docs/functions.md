@@ -66,12 +66,12 @@ SELECT
 
 ---
 
-### `ili_validate_summary_json()`
+### `validate_xtf_summary_json()`
 
 **Signature:**
 
 ```sql
-ili_validate_summary_json(path VARCHAR, modeldir VARCHAR) → VARCHAR
+validate_xtf_summary_json(path VARCHAR, model_sources VARCHAR) → VARCHAR
 ```
 
 **Description:** Validates an XTF file and returns a JSON summary with `valid` (boolean), `errorCount`, `warningCount`, `infoCount`, and `messages` (array).
@@ -81,7 +81,7 @@ ili_validate_summary_json(path VARCHAR, modeldir VARCHAR) → VARCHAR
 | # | Name | Kind | Type | Erforderlich | Beschreibung |
 |---|---|---|---|---|---|
 | 1 | `path` | positional | VARCHAR | Ja | Pfad zur XTF-Datei |
-| 2 | `modeldir` | positional | VARCHAR | Nein | Verzeichnis mit ILI-Modelldateien oder semikolon-getrennte URLs zu Modell-Repositories. Default: Verzeichnis der XTF-Datei + `https://models.interlis.ch`, überschreibbar via `ILI_DEFAULT_MODELDIR` |
+| 2 | `model_sources` | positional | VARCHAR | Nein | Komma- oder semikolongetrennte `.ili`-Dateien, Verzeichnisse und Repository-URLs. Bei direkter Datei wird ihr Elternverzeichnis für `IMPORTS` verwendet. Default: XTF-Verzeichnis plus `ILI_DEFAULT_MODELDIR` bzw. `https://models.interlis.ch` |
 
 **Examples:**
 
@@ -90,7 +90,7 @@ ili_validate_summary_json(path VARCHAR, modeldir VARCHAR) → VARCHAR
 SELECT json_extract(result, '$.valid') AS valid,
        json_extract(result, '$.errorCount') AS errors
 FROM (
-    SELECT ili_validate_summary_json(
+    SELECT validate_xtf_summary_json(
         'testdata/synthetic/simple/valid.xtf',
         'testdata/synthetic/simple'
     ) AS result
@@ -102,7 +102,7 @@ FROM (
 SELECT json_extract(result, '$.valid') AS valid,
        json_extract(result, '$.errorCount') AS errors
 FROM (
-    SELECT ili_validate_summary_json(
+    SELECT validate_xtf_summary_json(
         'testdata/synthetic/simple/invalid.xtf',
         'testdata/synthetic/simple'
     ) AS result
@@ -115,7 +115,7 @@ SELECT json_extract(result, '$.valid') AS valid,
        json_extract(result, '$.errorCount') AS errors,
        json_extract(result, '$.warningCount') AS warnings
 FROM (
-    SELECT ili_validate_summary_json(
+    SELECT validate_xtf_summary_json(
         'testdata/external/ch.so.afu.abbaustellen/ch.so.afu.abbaustellen.xtf',
         'https://models.interlis.ch;https://geo.so.ch/models'
     ) AS result
@@ -130,12 +130,12 @@ Return result sets usable in `FROM` clauses.
 
 ---
 
-### `ili_validate()`
+### `validate_xtf()`
 
 **Signature:**
 
 ```sql
-ili_validate(path VARCHAR, [modeldir => VARCHAR], [profile => VARCHAR], [max_messages => INTEGER]) → TABLE(...)
+validate_xtf(path VARCHAR, [model_sources => VARCHAR], [profile => VARCHAR], [max_messages => INTEGER]) → TABLE(...)
 ```
 
 **Description:** Validates an XTF file and returns one row per validation message. The total error/warning/info counts always reflect the complete validation result regardless of `max_messages`.
@@ -145,7 +145,7 @@ ili_validate(path VARCHAR, [modeldir => VARCHAR], [profile => VARCHAR], [max_mes
 | # | Name | Kind | Type | Required | Description |
 |---|---|---|---|---|---|
 | 1 | `path` | positional | VARCHAR | Yes | Path to the XTF file |
-| 2 | `modeldir` | named | VARCHAR | No | Directory with ILI model files or semicolon-separated URLs. Default: directory of the XTF file + `https://models.interlis.ch`, overridable via `ILI_DEFAULT_MODELDIR` |
+| 2 | `model_sources` | named | VARCHAR | No | Comma- or semicolon-separated `.ili` files, directories, and repository URLs. A direct file's parent directory is used for `IMPORTS`. Default: XTF directory plus `ILI_DEFAULT_MODELDIR` or `https://models.interlis.ch` |
 | 3 | `profile` | named | VARCHAR | No | Validation profile: `full` (default), `structural`, or `fast`. Controls which checks are performed. |
 | 4 | `max_messages` | named | INTEGER | No | Maximum number of detail message rows returned. Does NOT affect validity or the total error/warning/info counts. Use `-1` or omit for unlimited. |
 
@@ -176,16 +176,16 @@ ili_validate(path VARCHAR, [modeldir => VARCHAR], [profile => VARCHAR], [max_mes
 ```sql
 -- 1. List all ERROR messages from an invalid XTF
 SELECT severity, code, message, line, xtf_tid
-FROM ili_validate('testdata/synthetic/simple/invalid.xtf',
-    modeldir := 'testdata/synthetic/simple')
+FROM validate_xtf('testdata/synthetic/simple/invalid.xtf',
+    model_sources := 'testdata/synthetic/simple')
 WHERE severity = 'ERROR';
 ```
 
 ```sql
 -- 2. Count messages per class_name
 SELECT class_name, count(*) AS cnt
-FROM ili_validate('testdata/synthetic/simple/invalid.xtf',
-    modeldir := 'testdata/synthetic/simple')
+FROM validate_xtf('testdata/synthetic/simple/invalid.xtf',
+    model_sources := 'testdata/synthetic/simple')
 WHERE class_name IS NOT NULL AND class_name <> ''
 GROUP BY class_name
 ORDER BY cnt DESC;
@@ -194,8 +194,8 @@ ORDER BY cnt DESC;
 ```sql
 -- 3. Filter by severity and attribute_name
 SELECT severity, message, attribute_name, line
-FROM ili_validate('testdata/synthetic/simple/invalid.xtf',
-    modeldir := 'testdata/synthetic/simple')
+FROM validate_xtf('testdata/synthetic/simple/invalid.xtf',
+    model_sources := 'testdata/synthetic/simple')
 WHERE severity IN ('ERROR', 'WARNING')
   AND attribute_name IS NOT NULL
 ORDER BY severity, line;
@@ -470,7 +470,7 @@ FROM ili_enumerations('SO_AGI_Simple_20260605',
 ili_geometry_attributes(model VARCHAR, model_sources => VARCHAR, class => VARCHAR) → TABLE(...)
 ```
 
-**Description:** Lists geometry attributes found in INTERLIS models. Returns metadata for each geometry attribute including type, dimension, coordinate domain, CRS, cardinality, and encoding info. This is a pure introspection function — no XTF input needed.
+**Description:** Lists geometry attributes found in INTERLIS models. Returns metadata for each geometry attribute including type, dimension, coordinate domain, CRS, cardinality, and encoding info. This is a pure introspection function — no XTF path needed.
 
 **Parameters:**
 
@@ -537,7 +537,7 @@ WHERE dimension = 3;
 **Signature:**
 
 ```sql
-read_xtf_objects(input VARCHAR, modeldir => VARCHAR, models => VARCHAR) → TABLE(...)
+read_xtf_objects(path VARCHAR, model_sources => VARCHAR, models => VARCHAR) → TABLE(...)
 ```
 
 **Description:** Generic XTF object stream reader. Reads all objects from an XTF file without resolving class schemas. Each row is one XTF event with attributes, references, and geometry as JSON.
@@ -546,9 +546,9 @@ read_xtf_objects(input VARCHAR, modeldir => VARCHAR, models => VARCHAR) → TABL
 
 | # | Name | Kind | Type | Erforderlich | Beschreibung |
 |---|---|---|---|---|---|
-| 1 | `input` | positional | VARCHAR | Ja | Pfad zur XTF-Datei |
-| 2 | `modeldir` | named | VARCHAR | Nein | Verzeichnis mit ILI-Modelldateien oder semikolon-getrennte URLs. Default: Verzeichnis der XTF-Datei + `https://models.interlis.ch`, überschreibbar via `ILI_DEFAULT_MODELDIR` |
-| 3 | `models` | named | VARCHAR | Nein | Optional: nach Modellnamen filtern |
+| 1 | `path` | positional | VARCHAR | Ja | Pfad zur XTF-Datei |
+| 2 | `model_sources` | named | VARCHAR | Nein | Komma- oder semikolongetrennte `.ili`-Dateien, Verzeichnisse und Repository-URLs. Bei direkter Datei wird ihr Elternverzeichnis für `IMPORTS` verwendet. Default: XTF-Verzeichnis plus `ILI_DEFAULT_MODELDIR` bzw. `https://models.interlis.ch` |
+| 3 | `models` | named | VARCHAR | Nein | Optionaler Filter mit exakt verglichenen Modellnamen; mehrere Namen werden durch Komma oder Semikolon getrennt |
 
 **Return columns:**
 
@@ -572,14 +572,14 @@ read_xtf_objects(input VARCHAR, modeldir => VARCHAR, models => VARCHAR) → TABL
 -- 1. List all objects with their classes
 SELECT xtf_bid, xtf_topic, xtf_class, xtf_tid, operation
 FROM read_xtf_objects('testdata/synthetic/simple/valid.xtf',
-    modeldir := 'testdata/synthetic/simple');
+    model_sources := 'testdata/synthetic/simple');
 ```
 
 ```sql
 -- 2. Count objects by class
 SELECT xtf_class, count(*) AS cnt
 FROM read_xtf_objects('testdata/synthetic/simple/valid.xtf',
-    modeldir := 'testdata/synthetic/simple')
+    model_sources := 'testdata/synthetic/simple')
 GROUP BY xtf_class
 ORDER BY cnt DESC;
 ```
@@ -589,14 +589,14 @@ ORDER BY cnt DESC;
 SELECT xtf_tid, xtf_class,
     json_extract_string(attributes_json, '$.Name') AS name
 FROM read_xtf_objects('testdata/synthetic/simple/valid.xtf',
-    modeldir := 'testdata/synthetic/simple');
+    model_sources := 'testdata/synthetic/simple');
 ```
 
 ```sql
 -- 4. Mit optionalem models-Filter
 SELECT xtf_class, xtf_tid, operation
 FROM read_xtf_objects('testdata/synthetic/simple/valid.xtf',
-    modeldir := 'testdata/synthetic/simple',
+    model_sources := 'testdata/synthetic/simple',
     models := 'SO_AGI_Simple_20260605');
 ```
 
@@ -607,7 +607,7 @@ FROM read_xtf_objects('testdata/synthetic/simple/valid.xtf',
 **Signature:**
 
 ```sql
-read_xtf_class(input VARCHAR, class => VARCHAR, modeldir => VARCHAR, nested => VARCHAR) → TABLE(...)
+read_xtf_class(path VARCHAR, class => VARCHAR, model_sources => VARCHAR, nested => VARCHAR) → TABLE(...)
 ```
 
  **Description:** Reads an XTF file and returns rows for a specific INTERLIS class. Columns are dynamically determined from the class schema. Scalar attributes are exposed as model-aware DuckDB types (`VARCHAR`, `BIGINT`, `DOUBLE`, `BOOLEAN`, `DATE`, `TIME`, `TIMESTAMP`). STRUCTURE attributes appear as `*_json` columns. BAG OF STRUCTURE attributes appear as `*_json` columns (JSON array). Geometry attributes appear as `*_geom` columns: native `GEOMETRY` type (v2 typed path) with hex-WKB internally, or `VARCHAR` WKT (v1 fallback). Use `::GEOMETRY` cast only with the v1 fallback path. Missing optional values are returned as SQL `NULL`.
@@ -616,9 +616,9 @@ read_xtf_class(input VARCHAR, class => VARCHAR, modeldir => VARCHAR, nested => V
 
 | # | Name | Kind | Type | Erforderlich | Beschreibung |
 |---|---|---|---|---|---|
-| 1 | `input` | positional | VARCHAR | Ja | Pfad zur XTF-Datei |
+| 1 | `path` | positional | VARCHAR | Ja | Pfad zur XTF-Datei |
 | 2 | `class` | named | VARCHAR | Ja | Voll qualifizierter Klassenname, z.B. `Model.Topic.Class` |
-| 3 | `modeldir` | named | VARCHAR | Nein | Verzeichnis mit ILI-Modelldateien oder semikolon-getrennte URLs. Default: Verzeichnis der XTF-Datei + `https://models.interlis.ch`, überschreibbar via `ILI_DEFAULT_MODELDIR` |
+| 3 | `model_sources` | named | VARCHAR | Nein | Komma- oder semikolongetrennte `.ili`-Dateien, Verzeichnisse und Repository-URLs. Bei direkter Datei wird ihr Elternverzeichnis für `IMPORTS` verwendet. Default: XTF-Verzeichnis plus `ILI_DEFAULT_MODELDIR` bzw. `https://models.interlis.ch` |
 | 4 | `nested` | named | VARCHAR | Nein (Default: `"json"`) | Nesting-Modus: `'json'` (Default, Struktur-Spalten mit `_json`-Suffix) oder `'duckdb'` (ohne Suffix) |
 
 **Return columns:** Dynamic, plus always:
@@ -634,7 +634,7 @@ read_xtf_class(input VARCHAR, class => VARCHAR, modeldir => VARCHAR, nested => V
 SELECT xtf_tid, Name, bfs_nr
 FROM read_xtf_class('testdata/synthetic/simple/valid.xtf',
     class := 'SO_AGI_Simple_20260605.Topic.Gemeinde',
-    modeldir := 'testdata/synthetic/simple');
+    model_sources := 'testdata/synthetic/simple');
 ```
 
 ```sql
@@ -642,7 +642,7 @@ FROM read_xtf_class('testdata/synthetic/simple/valid.xtf',
 SELECT xtf_tid, Aktiv, Anzahl, Genauigkeit, Stichtag, Uhrzeit, Zeitstempel
 FROM read_xtf_class('testdata/synthetic/typedscalars/valid.xtf',
     class := 'SO_AGI_TypedScalars_20260611.Topic.Messung',
-    modeldir := 'testdata/synthetic/typedscalars');
+    model_sources := 'testdata/synthetic/typedscalars');
 ```
 
 ```sql
@@ -654,7 +654,7 @@ SELECT Name,
     json_array_length(Kontakte_json) AS Anzahl_Kontakte
 FROM read_xtf_class('testdata/synthetic/structures/valid.xtf',
     class := 'SO_AGI_Structures_20260605.Topic.Betrieb',
-    modeldir := 'testdata/synthetic/structures');
+    model_sources := 'testdata/synthetic/structures');
 ```
 
 ```sql
@@ -667,7 +667,7 @@ FROM (
     SELECT Name, unnest(json_transform(Kontakte_json, '["VARCHAR"]')) AS unnested
     FROM read_xtf_class('testdata/synthetic/structures/valid.xtf',
         class := 'SO_AGI_Structures_20260605.Topic.Betrieb',
-        modeldir := 'testdata/synthetic/structures')
+        model_sources := 'testdata/synthetic/structures')
 );
 ```
 
@@ -679,7 +679,7 @@ SELECT xtf_tid, Name, Lage_geom,
        ST_GeometryType(Lage_geom) AS geometry_type
 FROM read_xtf_class('testdata/synthetic/geometries/valid.xtf',
     class := 'SO_AGI_Geometries_20260605.Topic.PunktObjekt',
-    modeldir := 'testdata/synthetic/geometries');
+    model_sources := 'testdata/synthetic/geometries');
 ```
 
 ```sql
@@ -687,7 +687,7 @@ FROM read_xtf_class('testdata/synthetic/geometries/valid.xtf',
 SELECT Name, Adresse_json
 FROM read_xtf_class('testdata/synthetic/structures/valid.xtf',
     class := 'SO_AGI_Structures_20260605.Topic.Betrieb',
-    modeldir := 'testdata/synthetic/structures',
+    model_sources := 'testdata/synthetic/structures',
     nested := 'json');
 ```
 
@@ -698,7 +698,7 @@ FROM read_xtf_class('testdata/synthetic/structures/valid.xtf',
 **Signature:**
 
 ```sql
-read_xtf_structures(class => VARCHAR, modeldir => VARCHAR) → TABLE(...)
+read_xtf_structures(class => VARCHAR, model_sources => VARCHAR) → TABLE(...)
 ```
 
 **Description:** Introspects all recursively reachable INTERLIS STRUCTURE definitions used by a class. This function has **no positional parameters** — both parameters are named.
@@ -708,7 +708,7 @@ read_xtf_structures(class => VARCHAR, modeldir => VARCHAR) → TABLE(...)
 | # | Name | Kind | Type | Erforderlich | Beschreibung |
 |---|---|---|---|---|---|
 | 1 | `class` | named | VARCHAR | Ja | Voll qualifizierter Klassenname |
-| 2 | `modeldir` | named | VARCHAR | Nein | Verzeichnis mit ILI-Modelldateien. Default: `https://models.interlis.ch`, überschreibbar via `ILI_DEFAULT_MODELDIR` |
+| 2 | `model_sources` | named | VARCHAR | Nein | Komma- oder semikolongetrennte `.ili`-Dateien, Verzeichnisse und Repository-URLs. Default: `ILI_DEFAULT_MODELDIR` bzw. `https://models.interlis.ch` |
 
 **Return columns:**
 
@@ -734,7 +734,7 @@ read_xtf_structures(class => VARCHAR, modeldir => VARCHAR) → TABLE(...)
 SELECT structure_name, attribute_name, interlis_type, logical_type, kind, card_min, card_max
 FROM read_xtf_structures(
     class := 'SO_AGI_Structures_20260605.Topic.Betrieb',
-    modeldir := 'testdata/synthetic/structures'
+    model_sources := 'testdata/synthetic/structures'
 );
 ```
 
@@ -743,7 +743,7 @@ FROM read_xtf_structures(
 SELECT attribute_name, logical_type, kind, enum_values_json
 FROM read_xtf_structures(
     class := 'SO_AGI_Structures_20260605.Topic.Betrieb',
-    modeldir := 'testdata/synthetic/structures'
+    model_sources := 'testdata/synthetic/structures'
 )
 WHERE structure_name = 'Adresse';
 ```
@@ -755,7 +755,7 @@ WHERE structure_name = 'Adresse';
 **Signature:**
 
 ```sql
-read_xtf_association(input VARCHAR, association => VARCHAR, modeldir => VARCHAR) → TABLE(...)
+read_xtf_association(path VARCHAR, association => VARCHAR, model_sources => VARCHAR) → TABLE(...)
 ```
 
 **Description:** Reads an INTERLIS association from an XTF file. Columns are dynamically determined from the association schema. Role references appear as `*_ref` columns. Scalar attributes are exposed as model-aware DuckDB types (`VARCHAR`, `BIGINT`, `DOUBLE`, `BOOLEAN`, `DATE`, `TIME`, `TIMESTAMP`). Missing optional values are returned as SQL `NULL`.
@@ -764,9 +764,9 @@ read_xtf_association(input VARCHAR, association => VARCHAR, modeldir => VARCHAR)
 
 | # | Name | Kind | Type | Erforderlich | Beschreibung |
 |---|---|---|---|---|---|
-| 1 | `input` | positional | VARCHAR | Ja | Pfad zur XTF-Datei |
+| 1 | `path` | positional | VARCHAR | Ja | Pfad zur XTF-Datei |
 | 2 | `association` | named | VARCHAR | Ja | Voll qualifizierter Assoziationsname |
-| 3 | `modeldir` | named | VARCHAR | Nein | Verzeichnis mit ILI-Modelldateien. Default: Verzeichnis der XTF-Datei + `https://models.interlis.ch`, überschreibbar via `ILI_DEFAULT_MODELDIR` |
+| 3 | `model_sources` | named | VARCHAR | Nein | Komma- oder semikolongetrennte `.ili`-Dateien, Verzeichnisse und Repository-URLs. Bei direkter Datei wird ihr Elternverzeichnis für `IMPORTS` verwendet. Default: XTF-Verzeichnis plus `ILI_DEFAULT_MODELDIR` bzw. `https://models.interlis.ch` |
 
 **Return columns:** Dynamic, plus always:
 - `xtf_bid` | VARCHAR
@@ -782,7 +782,7 @@ SELECT xtf_tid, besitzer_ref, grundstueck_ref, Anteil
 FROM read_xtf_association(
     'testdata/synthetic/associations/valid.xtf',
     association := 'SO_AGI_Associations_20260605.Topic.Besitz',
-    modeldir := 'testdata/synthetic/associations'
+    model_sources := 'testdata/synthetic/associations'
 );
 ```
 
@@ -792,17 +792,17 @@ WITH
   person AS (
     SELECT * FROM read_xtf_class('testdata/synthetic/associations/valid.xtf',
         class := 'SO_AGI_Associations_20260605.Topic.Person',
-        modeldir := 'testdata/synthetic/associations')
+        model_sources := 'testdata/synthetic/associations')
   ),
   grundstueck AS (
     SELECT * FROM read_xtf_class('testdata/synthetic/associations/valid.xtf',
         class := 'SO_AGI_Associations_20260605.Topic.Grundstueck',
-        modeldir := 'testdata/synthetic/associations')
+        model_sources := 'testdata/synthetic/associations')
   ),
   besitz AS (
     SELECT * FROM read_xtf_association('testdata/synthetic/associations/valid.xtf',
         association := 'SO_AGI_Associations_20260605.Topic.Besitz',
-        modeldir := 'testdata/synthetic/associations')
+        model_sources := 'testdata/synthetic/associations')
   )
 SELECT person.name, grundstueck.nummer, besitz.anteil
 FROM besitz
@@ -815,7 +815,7 @@ JOIN grundstueck ON besitz.grundstueck_ref = grundstueck.xtf_tid;
 DESCRIBE SELECT * FROM read_xtf_association(
     'testdata/synthetic/associations/valid.xtf',
     association := 'SO_AGI_Associations_20260605.Topic.Besitz',
-    modeldir := 'testdata/synthetic/associations'
+    model_sources := 'testdata/synthetic/associations'
 );
 ```
 
@@ -826,7 +826,7 @@ DESCRIBE SELECT * FROM read_xtf_association(
 **Signature:**
 
 ```sql
-ili_generate_import_sql(input VARCHAR, schema => VARCHAR, modeldir => VARCHAR, mapping => VARCHAR, mode => VARCHAR) → TABLE(sql_statement VARCHAR)
+ili_generate_import_sql(path VARCHAR, schema => VARCHAR, model_sources => VARCHAR, mapping => VARCHAR, mode => VARCHAR) → TABLE(sql_statement VARCHAR)
 ```
 
 **Description:** Generates typed SQL DDL (`CREATE TABLE`) and DML (`INSERT INTO`) statements for importing an XTF file into a DuckDB schema. The output is wrapped in `BEGIN TRANSACTION` / `COMMIT`. Type mapping: integers without decimals → `BIGINT`, numerics with decimals → `DOUBLE`, text → `VARCHAR`, geometry → `GEOMETRY` (or `GEOMETRY('EPSG:xxxx')` with CRS mapping via `ILI_GEOMETRY_CRS_MAP`/`ILI_GEOMETRY_CRS_FILE`), booleans → `BOOLEAN`, dates → `DATE`, timestamps → `TIMESTAMP`, dates+times → `TIMESTAMP`, times → `TIME`.
@@ -837,9 +837,9 @@ ili_generate_import_sql(input VARCHAR, schema => VARCHAR, modeldir => VARCHAR, m
 
 | # | Name | Kind | Type | Erforderlich | Beschreibung |
 |---|---|---|---|---|---|
-| 1 | `input` | positional | VARCHAR | Ja | Pfad zur XTF-Datei |
+| 1 | `path` | positional | VARCHAR | Ja | Pfad zur XTF-Datei |
 | 2 | `schema` | named | VARCHAR | Ja | Name des Ziel-Schemas in DuckDB |
-| 3 | `modeldir` | named | VARCHAR | Nein | Verzeichnis mit ILI-Modelldateien. Default: Verzeichnis der XTF-Datei + `https://models.interlis.ch` |
+| 3 | `model_sources` | named | VARCHAR | Nein | Komma- oder semikolongetrennte `.ili`-Dateien, Verzeichnisse und Repository-URLs. Bei direkter Datei wird ihr Elternverzeichnis für `IMPORTS` verwendet. Default: XTF-Verzeichnis plus `ILI_DEFAULT_MODELDIR` bzw. `https://models.interlis.ch` |
 | 4 | `mapping` | named | VARCHAR | Nein (Default: `"relational"`) | Mapping-Modus. Nur `"relational"` wird derzeit unterstützt. |
 | 5 | `mode` | named | VARCHAR | Nein (Default: `"create"`) | Import-Modus: `"create"` (CREATE TABLE IF NOT EXISTS), `"replace"` (DROP + CREATE), `"append"` (nur INSERT) |
 
@@ -856,7 +856,7 @@ ili_generate_import_sql(input VARCHAR, schema => VARCHAR, modeldir => VARCHAR, m
 SELECT sql_statement
 FROM ili_generate_import_sql('testdata/synthetic/simple/valid.xtf',
     schema := 'my_schema',
-    modeldir := 'testdata/synthetic/simple');
+    model_sources := 'testdata/synthetic/simple');
 ```
 
 ```sql
@@ -864,7 +864,7 @@ FROM ili_generate_import_sql('testdata/synthetic/simple/valid.xtf',
 SELECT sql_statement
 FROM ili_generate_import_sql('testdata/synthetic/simple/valid.xtf',
     schema := 'my_schema',
-    modeldir := 'testdata/synthetic/simple',
+    model_sources := 'testdata/synthetic/simple',
     mode := 'replace');
 ```
 
@@ -873,6 +873,6 @@ FROM ili_generate_import_sql('testdata/synthetic/simple/valid.xtf',
 SELECT sql_statement
 FROM ili_generate_import_sql('testdata/synthetic/simple/valid.xtf',
     schema := 'my_schema',
-    modeldir := 'testdata/synthetic/simple',
+    model_sources := 'testdata/synthetic/simple',
     mode := 'append');
 ```

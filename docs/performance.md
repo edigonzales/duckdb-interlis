@@ -71,7 +71,7 @@ DUCKDB_ILI_DEBUG=1 duckdb -unsigned
 ```
 
 ```sql
-SELECT count(*) FROM ili_validate('/data/file.xtf');
+SELECT count(*) FROM validate_xtf('/data/file.xtf');
 ```
 
 Debug output includes:

@@ -310,13 +310,13 @@ int main(void) {
         verify_query(conn, sql, "ili_models_repeated", 1);
     }
 
-    fprintf(stderr, "\n--- Repeated: ili_validate (100x) ---\n");
+    fprintf(stderr, "\n--- Repeated: validate_xtf (100x) ---\n");
     for (int rep = 0; rep < 100; rep++) {
         char sql[1024];
         snprintf(sql, sizeof(sql),
-            "SELECT * FROM ili_validate('" TESTDATA_XTF "', "
-            "modeldir := '" TESTDATA_DIR "', profile := 'full')");
-        verify_query(conn, sql, "ili_validate_repeated", 1);
+            "SELECT * FROM validate_xtf('" TESTDATA_XTF "', "
+            "model_sources := '" TESTDATA_DIR "', profile := 'full')");
+        verify_query(conn, sql, "validate_xtf_repeated", 1);
     }
 
     fprintf(stderr, "\n--- Repeated: read_xtf_class (100x) ---\n");
@@ -325,7 +325,7 @@ int main(void) {
         snprintf(sql, sizeof(sql),
             "SELECT * FROM read_xtf_class('" TESTDATA_XTF "', "
             "class := 'SO_AGI_Simple_20260605.Topic.Gemeinde', "
-            "modeldir := '" TESTDATA_DIR "')");
+            "model_sources := '" TESTDATA_DIR "')");
         verify_query(conn, sql, "read_xtf_class_repeated", 1);
     }
 
@@ -355,17 +355,17 @@ int main(void) {
         p_destroy_result(&r);
     }
 
-    /* ili_validate: check column count, names, and values */
+    /* validate_xtf: check column count, names, and values */
     {
         char sql[1024];
         snprintf(sql, sizeof(sql),
-            "SELECT * FROM ili_validate('" TESTDATA_XTF "', "
-            "modeldir := '" TESTDATA_DIR "', profile := 'full')");
+            "SELECT * FROM validate_xtf('" TESTDATA_XTF "', "
+            "model_sources := '" TESTDATA_DIR "', profile := 'full')");
         duckdb_result r;
         p_query(conn, sql, &r);
         idx_t ncols = p_column_count(&r);
         idx_t nrows = p_row_count(&r);
-        fprintf(stderr, "  ili_validate: %lld columns, %lld rows\n",
+        fprintf(stderr, "  validate_xtf: %lld columns, %lld rows\n",
                 (long long)ncols, (long long)nrows);
 
         if (ncols >= 13) {
@@ -399,7 +399,7 @@ int main(void) {
         snprintf(sql, sizeof(sql),
             "SELECT * FROM read_xtf_class('" TESTDATA_XTF "', "
             "class := 'SO_AGI_Simple_20260605.Topic.Gemeinde', "
-            "modeldir := '" TESTDATA_DIR "')");
+            "model_sources := '" TESTDATA_DIR "')");
         duckdb_result r;
         p_query(conn, sql, &r);
 
@@ -440,7 +440,7 @@ int main(void) {
         snprintf(sql, sizeof(sql),
             "SELECT * FROM read_xtf_class('" TESTDATA_XTF "', "
             "class := 'SO_AGI_Simple_20260605.Topic.Abbaustelle', "
-            "modeldir := '" TESTDATA_DIR "')");
+            "model_sources := '" TESTDATA_DIR "')");
         duckdb_result r;
         p_query(conn, sql, &r);
 
@@ -510,7 +510,7 @@ int main(void) {
         char sql[1024];
         snprintf(sql, sizeof(sql),
             "SELECT * FROM ili_generate_import_sql('" TESTDATA_XTF "', "
-            "schema := 'smoke_test', modeldir := '" TESTDATA_DIR "')");
+            "schema := 'smoke_test', model_sources := '" TESTDATA_DIR "')");
         duckdb_result r;
         p_query(conn, sql, &r);
         idx_t nrows = p_row_count(&r);
@@ -534,7 +534,7 @@ int main(void) {
         char sql[1024];
         snprintf(sql, sizeof(sql),
             "SELECT * FROM read_xtf_objects('" TESTDATA_XTF "', "
-            "modeldir := '" TESTDATA_DIR "')");
+            "model_sources := '" TESTDATA_DIR "')");
         duckdb_result r;
         p_query(conn, sql, &r);
         verify_column_name(&r, 0, "xtf_tid", "objects_col0");
@@ -558,6 +558,19 @@ int main(void) {
 
     fprintf(stderr, "\n=== Error path tests ===\n");
 
+    /* SQL signature regression: every table function exposes model_sources;
+       the scalar summary intentionally remains positional (col1). */
+    verify_query(conn,
+        "SELECT function_name FROM duckdb_functions() "
+        "WHERE function_name IN ('validate_xtf', 'validate_xtf_summary_json', "
+        "'ili_models', 'ili_topics', 'ili_classes', 'ili_attributes', "
+        "'ili_enumerations', 'ili_geometry_attributes', 'read_xtf_objects', "
+        "'read_xtf_class', 'read_xtf_structures', 'read_xtf_association', "
+        "'ili_generate_import_sql') "
+        "AND (function_name = 'validate_xtf_summary_json' "
+        "OR list_contains(parameters, 'model_sources'))",
+        "signature_model_sources", 13);
+
     /* missing XTF file */
     verify_query_error(conn,
         "SELECT * FROM read_xtf_class('nonexistent_missing.xtf', "
@@ -570,21 +583,43 @@ int main(void) {
         snprintf(sql, sizeof(sql),
             "SELECT * FROM read_xtf_class('" TESTDATA_XTF "', "
             "class := 'Unknown.Topic.Class', "
-            "modeldir := '" TESTDATA_DIR "')");
+            "model_sources := '" TESTDATA_DIR "')");
         verify_query_error(conn, sql, "err_unknown_class");
     }
 
     /* missing XTF for validate */
     verify_query_error(conn,
-        "SELECT * FROM ili_validate('nonexistent_missing.xtf')",
+        "SELECT * FROM validate_xtf('nonexistent_missing.xtf')",
         "err_validate_missing");
+
+    /* old SQL names were removed as a breaking change */
+    verify_query_error(conn,
+        "SELECT * FROM ili_validate('nonexistent_missing.xtf')",
+        "err_old_ili_validate_name");
+    verify_query_error(conn,
+        "SELECT ili_validate_summary_json('nonexistent_missing.xtf', NULL)",
+        "err_old_ili_validate_summary_name");
+
+    /* modeldir was removed from the SQL API as a breaking change. */
+    verify_query_error(conn,
+        "SELECT * FROM validate_xtf('nonexistent_missing.xtf', "
+        "modeldir := '" TESTDATA_DIR "')",
+        "err_old_validate_modeldir_parameter");
+    verify_query_error(conn,
+        "SELECT * FROM read_xtf_objects('nonexistent_missing.xtf', "
+        "modeldir := '" TESTDATA_DIR "')",
+        "err_old_read_modeldir_parameter");
+    verify_query_error(conn,
+        "SELECT * FROM ili_generate_import_sql('nonexistent_missing.xtf', "
+        "schema := 'old_api', modeldir := '" TESTDATA_DIR "')",
+        "err_old_import_modeldir_parameter");
 
     /* unknown validation profile */
     {
         char sql[1024];
         snprintf(sql, sizeof(sql),
-            "SELECT * FROM ili_validate('" TESTDATA_XTF "', "
-            "modeldir := '" TESTDATA_DIR "', profile := 'unknown_profile')");
+            "SELECT * FROM validate_xtf('" TESTDATA_XTF "', "
+            "model_sources := '" TESTDATA_DIR "', profile := 'unknown_profile')");
         verify_query_error(conn, sql, "err_unknown_profile");
     }
 

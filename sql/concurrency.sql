@@ -7,7 +7,7 @@ SELECT ili_native_version() AS version FROM range(50);
 
 SELECT '=== CONCURRENCY-2: Parallel validation (same file) ===' AS test;
 
-SELECT severity, count(*) AS cnt FROM ili_validate('testdata/synthetic/simple/invalid.xtf') GROUP BY severity;
+SELECT severity, count(*) AS cnt FROM validate_xtf('testdata/synthetic/simple/invalid.xtf') GROUP BY severity;
 
 SELECT '=== CONCURRENCY-3: Parallel model introspection ===' AS test;
 
@@ -27,16 +27,16 @@ SELECT 'enumerations', count(*) FROM ili_enumerations(NULL, model_sources := 'te
 
 SELECT '=== CONCURRENCY-5: Parallel XTF reads ===' AS test;
 
-SELECT xtf_class, count(*) AS cnt FROM read_xtf_objects('testdata/synthetic/simple/valid.xtf', modeldir := 'testdata/synthetic/simple') GROUP BY xtf_class;
+SELECT xtf_class, count(*) AS cnt FROM read_xtf_objects('testdata/synthetic/simple/valid.xtf', model_sources := 'testdata/synthetic/simple') GROUP BY xtf_class;
 
 SELECT '=== CONCURRENCY-6: Parallel class reads ===' AS test;
 
 SELECT xtf_class, xtf_tid, "Name" FROM read_xtf_class('testdata/synthetic/simple/valid.xtf',
     class := 'SO_AGI_Simple_20260605.Topic.Gemeinde',
-    modeldir := 'testdata/synthetic/simple')
+    model_sources := 'testdata/synthetic/simple')
 UNION ALL
 SELECT xtf_class, xtf_tid, "Name" FROM read_xtf_class('testdata/synthetic/simple/valid.xtf',
     class := 'SO_AGI_Simple_20260605.Topic.Abbaustelle',
-    modeldir := 'testdata/synthetic/simple');
+    model_sources := 'testdata/synthetic/simple');
 
 SELECT '=== CONCURRENCY: All tests passed ===' AS test;

@@ -100,6 +100,19 @@ class XtfObjectReaderTest {
         }
     }
 
+    @Test
+    void directIliFileSource_isAcceptedAndMixedListsAreDeduplicated() {
+        String source = " " + TESTDIR.resolve("SO_AGI_Structures_20260605.ili")
+                + "," + TESTDIR + ";" + TESTDIR + " ";
+        String result = reader.readClass(
+                XTF_PATH,
+                CLASS_NAME,
+                source);
+
+        assertTrue(result.contains("Adresse_json"));
+        assertTrue(result.contains("Firma AG"));
+    }
+
     // -------------------------------------------------------------------
     // Association tests
     // -------------------------------------------------------------------

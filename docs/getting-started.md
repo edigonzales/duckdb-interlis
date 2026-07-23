@@ -90,14 +90,14 @@ If both return results, you're ready to go.
 SELECT json_extract(result, '$.valid') AS valid,
        json_extract(result, '$.errorCount') AS errors
 FROM (
-    SELECT ili_validate_summary_json('my_data.xtf', '/path/to/models') AS result
+    SELECT validate_xtf_summary_json('my_data.xtf', '/path/to/models') AS result
 );
 ```
 
 ```sql
 -- Detailed messages (e.g. only errors):
 SELECT severity, message, line, xtf_tid, class_name
-FROM ili_validate('my_data.xtf', modeldir := '/path/to/models')
+FROM validate_xtf('my_data.xtf', model_sources := '/path/to/models')
 WHERE severity = 'ERROR';
 ```
 
@@ -130,7 +130,7 @@ FROM ili_geometry_attributes(NULL, model_sources := '/path/to/models');
 SELECT xtf_tid, Name, bfs_nr
 FROM read_xtf_class('my_data.xtf',
     class := 'MyModel.Topic.Gemeinde',
-    modeldir := '/path/to/models');
+    model_sources := '/path/to/models');
 ```
 
 Geometry attributes appear as `_geom` columns (`GEOMETRY` type). Use DuckDB's `spatial` extension for spatial analysis:
@@ -141,7 +141,7 @@ LOAD spatial;
 SELECT Name, ST_Area(Flaeche_geom) AS area_m2
 FROM read_xtf_class('my_data.xtf',
     class := 'MyModel.Topic.FlaechenObjekt',
-    modeldir := '/path/to/models');
+    model_sources := '/path/to/models');
 ```
 
 ### 4. Import into a Schema
@@ -151,7 +151,7 @@ FROM read_xtf_class('my_data.xtf',
 SELECT sql_statement
 FROM ili_generate_import_sql('my_data.xtf',
     schema := 'my_schema',
-    modeldir := '/path/to/models');
+    model_sources := '/path/to/models');
 ```
 
 Three import modes available:
@@ -161,11 +161,11 @@ Three import modes available:
 
 ## Using Remote Model Repositories
 
-Instead of a local directory, you can point `modeldir` to INTERLIS model repositories:
+Instead of a local directory, you can point `model_sources` to INTERLIS model repositories:
 
 ```sql
-SELECT * FROM ili_validate('data.xtf',
-    modeldir := 'https://models.interlis.ch;https://geo.so.ch/models');
+SELECT * FROM validate_xtf('data.xtf',
+    model_sources := 'https://models.interlis.ch;https://geo.so.ch/models');
 ```
 
 Set a default via environment variable to avoid repeating:
@@ -174,7 +174,7 @@ Set a default via environment variable to avoid repeating:
 export ILI_DEFAULT_MODELDIR='https://models.interlis.ch;https://geo.so.ch/models'
 ```
 
-Then omit `modeldir` in queries — it defaults automatically.
+Then omit `model_sources` in queries — it defaults automatically.
 
 For model metadata, use the model name first and pass one or more model sources
 with `model_sources`. Sources may be directories, direct `.ili` files, or
@@ -201,7 +201,7 @@ FROM ili_classes(
 |---|---|
 | Extension won't load | Start DuckDB with `-unsigned`, or `SET allow_unsigned_extensions = true` |
 | "Failed to initialize native library" | Check network access if using remote model repos; extension may need to download on first use |
-| Model compilation fails | Verify `modeldir` path exists and contains `.ili` files; remote repos must be reachable |
+| Model compilation fails | Verify `model_sources` path exists and contains `.ili` files; remote repos must be reachable |
 | Empty results / no rows | Check that class names are fully qualified (`Model.Topic.Class`); try `ili_classes()` to list available names |
 
 More in **[troubleshooting.md](troubleshooting.md)**.

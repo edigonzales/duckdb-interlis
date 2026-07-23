@@ -7,7 +7,7 @@
 | Operation | Materialization |
 |---|---|
 | XTF reading (`read_xtf_class`, `read_xtf_association`, `read_xtf_objects`) | Full object graph materialized |
-| Validation (`ili_validate`) | Full validation result (all messages + counters) |
+| Validation (`validate_xtf`) | Full validation result (all messages + counters) |
 | Model metadata (`ili_models`, `ili_topics`, `ili_classes`) | Full TransferDescription result |
 | Import SQL generation (`ili_generate_import_sql`) | Full DDL/DML as a single string |
 | Java calls | Globally serialized via `g_java_lock` |
@@ -42,7 +42,7 @@ Not yet mapped:
 Remote model repositories (URLs starting with `http://` or `https://`) require network access. Model compilation will fail if the repository is unreachable. Use local model directories for offline operation:
 
 ```sql
-SELECT * FROM ili_validate('/data/file.xtf', modeldir := '/local/models/');
+SELECT * FROM validate_xtf('/data/file.xtf', model_sources := '/local/models/');
 ```
 
 ## Integer Precision

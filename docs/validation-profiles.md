@@ -1,6 +1,6 @@
 # Validation Profiles
 
-The `ili_validate` table function accepts a `profile` parameter that controls which validation checks are performed. Three profiles are available.
+The `validate_xtf` table function accepts a `profile` parameter that controls which validation checks are performed. Three profiles are available.
 
 ## Profiles
 
@@ -47,23 +47,23 @@ Use this for a quick structural scan. This is the fastest profile but catches th
 
 ```sql
 -- Full validation (default)
-SELECT * FROM ili_validate('/data/myfile.xtf');
+SELECT * FROM validate_xtf('/data/myfile.xtf');
 
 -- Explicit full validation
-SELECT * FROM ili_validate('/data/myfile.xtf', profile := 'FULL');
+SELECT * FROM validate_xtf('/data/myfile.xtf', profile := 'FULL');
 
 -- Structural validation (no AREA checks)
-SELECT * FROM ili_validate('/data/myfile.xtf', profile := 'STRUCTURAL');
+SELECT * FROM validate_xtf('/data/myfile.xtf', profile := 'STRUCTURAL');
 
 -- Fast structural scan
-SELECT * FROM ili_validate('/data/myfile.xtf', profile := 'FAST');
+SELECT * FROM validate_xtf('/data/myfile.xtf', profile := 'FAST');
 ```
 
 Combine with `max_messages` to limit output:
 
 ```sql
 -- First 50 messages only, fast profile
-SELECT * FROM ili_validate('/data/myfile.xtf',
+SELECT * FROM validate_xtf('/data/myfile.xtf',
     profile := 'FAST',
     max_messages := 50);
 ```

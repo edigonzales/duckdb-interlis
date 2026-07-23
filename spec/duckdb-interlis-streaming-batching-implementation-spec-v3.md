@@ -157,7 +157,7 @@ Nach Abschluss gelten folgende Eigenschaften:
 5. `ili_request.struct_size` prüfen.
 6. dynamische Schemafehler als Bind-Fehler melden.
 7. NULL-Semantik und TSV-Unescaping korrigieren.
-8. Import-Identifier und `modeldir` korrigieren.
+8. Import-Identifier und `model_sources` korrigieren.
 9. echte Extension-Sanitizer- und Concurrency-Tests.
 
 ## Meilenstein B – Java-Cursor-Infrastruktur
@@ -579,8 +579,8 @@ Anforderungen:
 1. alle Spaltennamen mit `quoteIdent()` quoten,
 2. Tabellen-, Schema- und Spaltenidentifier zentral behandeln,
 3. Kollisionen nach Normalisierung erkennen,
-4. effektiven `modeldir` durch alle Statements weiterreichen,
-5. `null`-`modeldir` darf keine NPE auslösen,
+4. effektive `model_sources` durch alle Statements weiterreichen,
+5. `NULL`-`model_sources` darf keine NPE auslösen,
 6. Tests mit Schlüsselwörtern und Namenskollisionen.
 
 Optional neue Klasse:
@@ -611,7 +611,7 @@ SELECT * FROM ili_classes(...);
 SELECT * FROM read_xtf_objects(...);
 SELECT * FROM read_xtf_class(...);
 SELECT * FROM read_xtf_association(...);
-SELECT * FROM ili_validate(...);
+SELECT * FROM validate_xtf(...);
 SELECT * FROM ili_generate_import_sql(...);
 ```
 

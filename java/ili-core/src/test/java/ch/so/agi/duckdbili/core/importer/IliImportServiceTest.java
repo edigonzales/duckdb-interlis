@@ -31,6 +31,17 @@ class IliImportServiceTest {
     }
 
     @Test
+    void generateImportSql_acceptsDirectIliSource() {
+        String source = TESTDIR.resolve("SO_AGI_Simple_20260605.ili").toString();
+        String sql = service.generateImportSql(
+                XTF_PATH, source, "test", "relational", null);
+
+        assertTrue(sql.contains("CREATE TABLE IF NOT EXISTS \"test\"."));
+        assertTrue(sql.contains("model_sources :="),
+                "generated SQL must use the unified SQL parameter name");
+    }
+
+    @Test
     void generateImportSql_createsTableForGemeinde() {
         String sql = service.generateImportSql(XTF_PATH, MODELDIR, "test", "relational", null);
         assertTrue(sql.contains("CREATE TABLE IF NOT EXISTS \"test\".\"topic__gemeinde\""));

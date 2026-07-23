@@ -6,25 +6,25 @@ SELECT '=== Simple class: Gemeinde ===' AS example;
 SELECT xtf_tid, Name, bfs_nr
 FROM read_xtf_class('testdata/synthetic/simple/valid.xtf',
     class := 'SO_AGI_Simple_20260605.Topic.Gemeinde',
-    modeldir := 'testdata/synthetic/simple');
+    model_sources := 'testdata/synthetic/simple');
 
 SELECT '=== Simple class: Abbaustelle (with enum) ===' AS example;
 SELECT xtf_tid, Name, Status
 FROM read_xtf_class('testdata/synthetic/simple/valid.xtf',
     class := 'SO_AGI_Simple_20260605.Topic.Abbaustelle',
-    modeldir := 'testdata/synthetic/simple');
+    model_sources := 'testdata/synthetic/simple');
 
 SELECT '=== Typed scalars: Messung ===' AS example;
 SELECT xtf_tid, Aktiv, Anzahl, Genauigkeit, Stichtag, Uhrzeit, Zeitstempel
 FROM read_xtf_class('testdata/synthetic/typedscalars/valid.xtf',
     class := 'SO_AGI_TypedScalars_20260611.Topic.Messung',
-    modeldir := 'testdata/synthetic/typedscalars');
+    model_sources := 'testdata/synthetic/typedscalars');
 
 SELECT '=== Structures: Betrieb (raw JSON columns) ===' AS example;
 SELECT Name, Adresse_json, Kontakte_json
 FROM read_xtf_class('testdata/synthetic/structures/valid.xtf',
     class := 'SO_AGI_Structures_20260605.Topic.Betrieb',
-    modeldir := 'testdata/synthetic/structures');
+    model_sources := 'testdata/synthetic/structures');
 
 SELECT '=== Structures: JSON extraction from structure ===' AS example;
 SELECT Name,
@@ -34,7 +34,7 @@ SELECT Name,
     json_extract_string(Adresse_json, '$.Ort') AS Ort
 FROM read_xtf_class('testdata/synthetic/structures/valid.xtf',
     class := 'SO_AGI_Structures_20260605.Topic.Betrieb',
-    modeldir := 'testdata/synthetic/structures');
+    model_sources := 'testdata/synthetic/structures');
 
 SELECT '=== Structures: unnest BAG OF STRUCTURE ===' AS example;
 SELECT Name, KontaktTyp, Telefon, Email
@@ -48,7 +48,7 @@ FROM (
             unnest(json_transform(Kontakte_json, '["VARCHAR"]')) AS unnested
         FROM read_xtf_class('testdata/synthetic/structures/valid.xtf',
             class := 'SO_AGI_Structures_20260605.Topic.Betrieb',
-            modeldir := 'testdata/synthetic/structures')
+            model_sources := 'testdata/synthetic/structures')
     )
 );
 
@@ -58,13 +58,13 @@ SELECT Name,
     Kontakte_json = '[]' AS kontakte_empty
 FROM read_xtf_class('testdata/synthetic/structures/valid.xtf',
     class := 'SO_AGI_Structures_20260605.Topic.Betrieb',
-    modeldir := 'testdata/synthetic/structures');
+    model_sources := 'testdata/synthetic/structures');
 
 SELECT '=== Structures: nested-Parameter explizit (Default: json) ===' AS example;
 SELECT Name, Adresse_json
 FROM read_xtf_class('testdata/synthetic/structures/valid.xtf',
     class := 'SO_AGI_Structures_20260605.Topic.Betrieb',
-    modeldir := 'testdata/synthetic/structures',
+    model_sources := 'testdata/synthetic/structures',
     nested := 'json');
 
 SELECT '=== Geometry: class with COORD ===' AS example;
@@ -77,7 +77,7 @@ SELECT xtf_tid, Name,
        ST_AsText(Lage_geom) AS wkt
 FROM read_xtf_class('testdata/synthetic/geometries/valid.xtf',
     class := 'SO_AGI_Geometries_20260605.Topic.PunktObjekt',
-    modeldir := 'testdata/synthetic/geometries');
+    model_sources := 'testdata/synthetic/geometries');
 
 SELECT '=== Geometry: class with SURFACE ===' AS example;
 SELECT xtf_tid, Name,
@@ -86,4 +86,4 @@ SELECT xtf_tid, Name,
        ST_IsValid(Flaeche_geom) AS is_valid
 FROM read_xtf_class('testdata/synthetic/geometries/valid.xtf',
     class := 'SO_AGI_Geometries_20260605.Topic.FlaechenObjekt',
-    modeldir := 'testdata/synthetic/geometries');
+    model_sources := 'testdata/synthetic/geometries');

@@ -1175,20 +1175,20 @@ static void ili_native_version_fn_cb(duckdb_function_info info, duckdb_data_chun
 }
 
 // ---------------------------------------------------------------------------
-// SQL function: ili_validate_summary_json(path, modeldir)
+// SQL function: validate_xtf_summary_json(path, model_sources)
 // ---------------------------------------------------------------------------
-static void ili_validate_summary_json_fn(duckdb_function_info info, duckdb_data_chunk input, duckdb_vector output) {
+static void validate_xtf_summary_json_fn(duckdb_function_info info, duckdb_data_chunk input, duckdb_vector output) {
     idx_t size = duckdb_data_chunk_get_size(input);
     duckdb_vector_ensure_validity_writable(output);
     uint64_t *validity = duckdb_vector_get_validity(output);
 
     duckdb_vector path_vec = duckdb_data_chunk_get_vector(input, 0);
-    duckdb_vector modeldir_vec = duckdb_data_chunk_get_vector(input, 1);
+    duckdb_vector model_sources_vec = duckdb_data_chunk_get_vector(input, 1);
 
     uint64_t *path_validity = duckdb_vector_get_validity(path_vec);
-    uint64_t *modeldir_validity = duckdb_vector_get_validity(modeldir_vec);
+    uint64_t *model_sources_validity = duckdb_vector_get_validity(model_sources_vec);
     duckdb_string_t *path_data = (duckdb_string_t *)duckdb_vector_get_data(path_vec);
-    duckdb_string_t *modeldir_data = (duckdb_string_t *)duckdb_vector_get_data(modeldir_vec);
+    duckdb_string_t *model_sources_data = (duckdb_string_t *)duckdb_vector_get_data(model_sources_vec);
 
     for (idx_t row = 0; row < size; row++) {
         if (!duckdb_validity_row_is_valid(path_validity, row)) {
@@ -1215,14 +1215,14 @@ static void ili_validate_summary_json_fn(duckdb_function_info info, duckdb_data_
         memcpy(path_z, duckdb_string_t_data(&path_str), path_len);
         path_z[path_len] = '\0';
 
-        char *modeldir_z = NULL;
-        if (duckdb_validity_row_is_valid(modeldir_validity, row)) {
-            duckdb_string_t modeldir_str = modeldir_data[row];
-            idx_t modeldir_len = duckdb_string_t_length(modeldir_str);
-            modeldir_z = malloc(modeldir_len + 1);
-            if (modeldir_z) {
-                memcpy(modeldir_z, duckdb_string_t_data(&modeldir_str), modeldir_len);
-                modeldir_z[modeldir_len] = '\0';
+        char *model_sources_z = NULL;
+        if (duckdb_validity_row_is_valid(model_sources_validity, row)) {
+            duckdb_string_t model_sources_str = model_sources_data[row];
+            idx_t model_sources_len = duckdb_string_t_length(model_sources_str);
+            model_sources_z = malloc(model_sources_len + 1);
+            if (model_sources_z) {
+                memcpy(model_sources_z, duckdb_string_t_data(&model_sources_str), model_sources_len);
+                model_sources_z[model_sources_len] = '\0';
             }
         }
 
@@ -1230,14 +1230,14 @@ static void ili_validate_summary_json_fn(duckdb_function_info info, duckdb_data_
         memset(&req, 0, sizeof(req));
         req.struct_size = sizeof(req);
         req.input = path_z;
-        req.modeldir = modeldir_z;
+        req.modeldir = model_sources_z;
         req.max_messages = -1;
         req.profile = NULL;
 
         int status = -1;
         char *result = ili_call_struct_str(g_native_validate, &req, &status);
         free(path_z);
-        free(modeldir_z);
+        free(model_sources_z);
         bool ok = (status == 0 && result != NULL);
         if (ok) {
             duckdb_validity_set_row_valid(validity, row);
@@ -1282,14 +1282,14 @@ static void register_functions(duckdb_connection connection) {
         duckdb_destroy_scalar_function(&fn);
     }
 
-    // ili_validate_summary_json(path VARCHAR, modeldir VARCHAR) -> VARCHAR
+    // validate_xtf_summary_json(path VARCHAR, model_sources VARCHAR) -> VARCHAR
     {
         duckdb_scalar_function fn = duckdb_create_scalar_function();
-        duckdb_scalar_function_set_name(fn, "ili_validate_summary_json");
+        duckdb_scalar_function_set_name(fn, "validate_xtf_summary_json");
 
         duckdb_logical_type varchar_type = duckdb_create_logical_type(DUCKDB_TYPE_VARCHAR);
         duckdb_scalar_function_add_parameter(fn, varchar_type);       // path
-        duckdb_scalar_function_add_parameter(fn, varchar_type);       // modeldir
+        duckdb_scalar_function_add_parameter(fn, varchar_type);       // model_sources
 
         duckdb_logical_type rt = duckdb_create_logical_type(DUCKDB_TYPE_VARCHAR);
         duckdb_scalar_function_set_return_type(fn, rt);
@@ -1297,7 +1297,7 @@ static void register_functions(duckdb_connection connection) {
         duckdb_destroy_logical_type(&varchar_type);
         duckdb_destroy_logical_type(&rt);
 
-        duckdb_scalar_function_set_function(fn, ili_validate_summary_json_fn);
+        duckdb_scalar_function_set_function(fn, validate_xtf_summary_json_fn);
         duckdb_register_scalar_function(connection, fn);
         duckdb_destroy_scalar_function(&fn);
     }
@@ -1318,7 +1318,7 @@ static void register_functions(duckdb_connection connection) {
 }
 
 // ---------------------------------------------------------------------------
-// Table function: ili_validate
+// Table function: validate_xtf
 // ---------------------------------------------------------------------------
 
 #define ILI_VALIDATE_COLS 13
@@ -1328,7 +1328,7 @@ typedef struct {
     char *modeldir;
     char *profile;
     int max_messages;
-} ili_validate_bind_data;
+} validate_xtf_bind_data;
 
 typedef struct {
     char *severity;
@@ -1346,19 +1346,19 @@ typedef struct {
     char *class_name;
     char *attribute_name;
     char *raw;
-} ili_validate_row;
+} validate_xtf_row;
 
 typedef struct {
-    ili_validate_row *rows;
+    validate_xtf_row *rows;
     idx_t row_count;
     idx_t current_row;
     int error_count;
     int warning_count;
     int info_count;
-} ili_validate_init_data;
+} validate_xtf_init_data;
 
 static void bind_data_destroy(void *data) {
-    ili_validate_bind_data *bd = (ili_validate_bind_data *)data;
+    validate_xtf_bind_data *bd = (validate_xtf_bind_data *)data;
     if (bd) {
         free(bd->input);
         free(bd->modeldir);
@@ -1368,7 +1368,7 @@ static void bind_data_destroy(void *data) {
 }
 
 static void init_data_destroy(void *data) {
-    ili_validate_init_data *id = (ili_validate_init_data *)data;
+    validate_xtf_init_data *id = (validate_xtf_init_data *)data;
     if (id) {
         for (idx_t i = 0; i < id->row_count; i++) {
             free(id->rows[i].severity);
@@ -1427,7 +1427,7 @@ static void assign_nullable_string(duckdb_vector vector, idx_t row, const char *
     duckdb_vector_assign_string_element(vector, row, value);
 }
 
-static void ili_validate_bind(duckdb_bind_info info) {
+static void validate_xtf_bind(duckdb_bind_info info) {
     duckdb_logical_type varchar_type = duckdb_create_logical_type(DUCKDB_TYPE_VARCHAR);
     duckdb_logical_type int_type = duckdb_create_logical_type(DUCKDB_TYPE_INTEGER);
 
@@ -1446,36 +1446,36 @@ static void ili_validate_bind(duckdb_bind_info info) {
     duckdb_bind_add_result_column(info, "raw", varchar_type);
 
     // Extract parameter values (helpers manage DuckDB lifecycle)
-    char *input_str = ili_bind_copy_parameter_varchar_or_error(info, 0, "input");
-    char *modeldir_str = ili_bind_copy_named_varchar_or_error(info, "modeldir");
+    char *input_str = ili_bind_copy_parameter_varchar_or_error(info, 0, "path");
+    char *model_sources_str = ili_bind_copy_named_varchar_or_error(info, "model_sources");
     char *profile_str = ili_bind_copy_named_varchar_or_error(info, "profile");
     int max_messages = -1;
     ili_bind_get_named_int32(info, "max_messages", &max_messages);
 
     // Store in bind data (helpers already returned C-owned copies)
-    ili_validate_bind_data *bd = ili_calloc_or_error_bind(info, 1, sizeof(*bd), "ili_validate_bind_data");
+    validate_xtf_bind_data *bd = ili_calloc_or_error_bind(info, 1, sizeof(*bd), "validate_xtf_bind_data");
     if (!bd) {
         free(input_str);
-        free(modeldir_str);
+        free(model_sources_str);
         free(profile_str);
         return;
     }
     bd->input = input_str;
-    bd->modeldir = modeldir_str;
+    bd->modeldir = model_sources_str;
     bd->profile = profile_str;
     bd->max_messages = max_messages;
     duckdb_bind_set_bind_data(info, bd, bind_data_destroy);
 }
 
-static void ili_validate_init(duckdb_init_info info) {
+static void validate_xtf_init(duckdb_init_info info) {
     if (!ensure_native_ready()) {
         duckdb_init_set_error(info, get_init_error());
         return;
     }
 
-    ili_validate_bind_data *bd = (ili_validate_bind_data *)duckdb_init_get_bind_data(info);
+    validate_xtf_bind_data *bd = (validate_xtf_bind_data *)duckdb_init_get_bind_data(info);
     if (!bd || !bd->input) {
-        duckdb_init_set_error(info, "Missing input path");
+        duckdb_init_set_error(info, "Missing path");
         return;
     }
 
@@ -1499,7 +1499,7 @@ static void ili_validate_init(duckdb_init_info info) {
     ILI_DEBUG_LOG("Validation result payload: %zu bytes", payload_size);
 
     // Parse TSV result
-    ili_validate_init_data *id = ili_calloc_or_error_init(info, 1, sizeof(*id), "ili_validate_init_data");
+    validate_xtf_init_data *id = ili_calloc_or_error_init(info, 1, sizeof(*id), "validate_xtf_init_data");
     if (!id) { free(result); return; }
 
     // Parse header line: errorCount\twarningCount\tinfoCount\n
@@ -1519,11 +1519,11 @@ static void ili_validate_init(duckdb_init_info info) {
     }
 
     // Allocate and parse rows
-    id->rows = ili_calloc_or_error_init(info, id->row_count, sizeof(ili_validate_row), "validator rows");
+    id->rows = ili_calloc_or_error_init(info, id->row_count, sizeof(validate_xtf_row), "validator rows");
     if (!id->rows) { free(result); free(id); return; }
 
     for (idx_t i = 0; i < id->row_count; i++) {
-        ili_validate_row *row = &id->rows[i];
+        validate_xtf_row *row = &id->rows[i];
         row->severity = parse_tsv_field(&p);        // 0
         row->code = parse_tsv_field(&p);             // 1
         row->message = parse_tsv_field(&p);          // 2
@@ -1565,8 +1565,8 @@ static void ili_validate_init(duckdb_init_info info) {
     duckdb_init_set_init_data(info, id, init_data_destroy);
 }
 
-static void ili_validate_function(duckdb_function_info tfinfo, duckdb_data_chunk output) {
-    ili_validate_init_data *id = (ili_validate_init_data *)duckdb_function_get_init_data(tfinfo);
+static void validate_xtf_function(duckdb_function_info tfinfo, duckdb_data_chunk output) {
+    validate_xtf_init_data *id = (validate_xtf_init_data *)duckdb_function_get_init_data(tfinfo);
     if (!id || id->row_count == 0 || id->current_row >= id->row_count) {
         duckdb_data_chunk_set_size(output, 0);
         return;
@@ -1597,7 +1597,7 @@ static void ili_validate_function(duckdb_function_info tfinfo, duckdb_data_chunk
     duckdb_vector raw_vec = duckdb_data_chunk_get_vector(output, 12);
 
     for (idx_t i = 0; i < count; i++) {
-        ili_validate_row *row = &id->rows[id->current_row + i];
+        validate_xtf_row *row = &id->rows[id->current_row + i];
 
         assign_nullable_string(severity_vec, i, row->severity);
         assign_nullable_string(code_vec, i, row->code);
@@ -1637,18 +1637,18 @@ static void ili_validate_function(duckdb_function_info tfinfo, duckdb_data_chunk
 
 static void register_table_functions(duckdb_connection connection) {
     duckdb_table_function fn = duckdb_create_table_function();
-    duckdb_table_function_set_name(fn, "ili_validate");
+    duckdb_table_function_set_name(fn, "validate_xtf");
 
     duckdb_logical_type varchar_type = duckdb_create_logical_type(DUCKDB_TYPE_VARCHAR);
     duckdb_logical_type int_type = duckdb_create_logical_type(DUCKDB_TYPE_INTEGER);
     duckdb_table_function_add_parameter(fn, varchar_type);
-    duckdb_table_function_add_named_parameter(fn, "modeldir", varchar_type);
+    duckdb_table_function_add_named_parameter(fn, "model_sources", varchar_type);
     duckdb_table_function_add_named_parameter(fn, "profile", varchar_type);
     duckdb_table_function_add_named_parameter(fn, "max_messages", int_type);
 
-    duckdb_table_function_set_bind(fn, ili_validate_bind);
-    duckdb_table_function_set_init(fn, ili_validate_init);
-    duckdb_table_function_set_function(fn, ili_validate_function);
+    duckdb_table_function_set_bind(fn, validate_xtf_bind);
+    duckdb_table_function_set_init(fn, validate_xtf_init);
+    duckdb_table_function_set_function(fn, validate_xtf_function);
 
     duckdb_register_table_function(connection, fn);
     duckdb_destroy_table_function(&fn);
@@ -1880,8 +1880,8 @@ static void xtf_objects_bind(duckdb_bind_info info) {
         duckdb_bind_add_result_column(info, cols[i], vt);
     duckdb_destroy_logical_type(&vt);
 
-    char *input = ili_bind_copy_parameter_varchar_or_error(info, 0, "input");
-    char *modeldir = ili_bind_copy_named_varchar_or_error(info, "modeldir");
+    char *input = ili_bind_copy_parameter_varchar_or_error(info, 0, "path");
+    char *modeldir = ili_bind_copy_named_varchar_or_error(info, "model_sources");
     char *models = ili_bind_copy_named_varchar_or_error(info, "models");
 
     mi_bind_data *bd = ili_calloc_or_error_bind(info, 1, sizeof(*bd), "mi_bind_data");
@@ -1904,7 +1904,7 @@ static void xtf_objects_init(duckdb_init_info info) {
     }
     mi_bind_data *bd = (mi_bind_data *)duckdb_init_get_bind_data(info);
     if (!bd || !bd->model) {
-        duckdb_init_set_error(info, "Missing input path");
+        duckdb_init_set_error(info, "Missing path");
         return;
     }
 
@@ -1970,9 +1970,9 @@ static void xtf_class_bind_destroy(void *d) {
 }
 
 static void xtf_class_bind(duckdb_bind_info info) {
-    char *input = ili_bind_copy_parameter_varchar_or_error(info, 0, "input");
+    char *input = ili_bind_copy_parameter_varchar_or_error(info, 0, "path");
     char *cls = ili_bind_copy_named_varchar_or_error(info, "class");
-    char *modeldir = ili_bind_copy_named_varchar_or_error(info, "modeldir");
+    char *modeldir = ili_bind_copy_named_varchar_or_error(info, "model_sources");
     char *nested = ili_bind_copy_named_varchar_or_error(info, "nested");
 
     xtf_class_bind_data *bd = ili_calloc_or_error_bind(info, 1, sizeof(*bd), "xtf_class_bind_data");
@@ -2052,7 +2052,7 @@ static void xtf_class_init(duckdb_init_info info) {
     }
     xtf_class_bind_data *bd = (xtf_class_bind_data *)duckdb_init_get_bind_data(info);
     if (!bd || !bd->input || !bd->class_name) {
-        duckdb_init_set_error(info, "Missing input or class");
+        duckdb_init_set_error(info, "Missing path or class");
         return;
     }
 
@@ -2127,7 +2127,7 @@ static void xtf_structures_bind_destroy(void *d) {
 
 static void xtf_structures_bind(duckdb_bind_info info) {
     char *cls = ili_bind_copy_named_varchar_or_error(info, "class");
-    char *modeldir = ili_bind_copy_named_varchar_or_error(info, "modeldir");
+    char *modeldir = ili_bind_copy_named_varchar_or_error(info, "model_sources");
 
     static const char *fixed_cols[] = {
         "root_class_fqn", "structure_fqn", "structure_name", "attribute_fqn",
@@ -2311,9 +2311,9 @@ static void xtf_assoc_bind_destroy(void *d) {
 }
 
 static void xtf_assoc_bind(duckdb_bind_info info) {
-    char *input = ili_bind_copy_parameter_varchar_or_error(info, 0, "input");
+    char *input = ili_bind_copy_parameter_varchar_or_error(info, 0, "path");
     char *assoc = ili_bind_copy_named_varchar_or_error(info, "association");
-    char *modeldir = ili_bind_copy_named_varchar_or_error(info, "modeldir");
+    char *modeldir = ili_bind_copy_named_varchar_or_error(info, "model_sources");
 
     xtf_assoc_bind_data *bd = ili_calloc_or_error_bind(info, 1, sizeof(*bd), "xtf_assoc_bind_data");
     if (!bd) {
@@ -2389,7 +2389,7 @@ static void xtf_assoc_init(duckdb_init_info info) {
     }
     xtf_assoc_bind_data *bd = (xtf_assoc_bind_data *)duckdb_init_get_bind_data(info);
     if (!bd || !bd->input || !bd->association_name) {
-        duckdb_init_set_error(info, "Missing input or association");
+        duckdb_init_set_error(info, "Missing path or association");
         return;
     }
 
@@ -2459,9 +2459,9 @@ static void gen_sql_bind(duckdb_bind_info info) {
     duckdb_bind_add_result_column(info, "sql_statement", vt);
     duckdb_destroy_logical_type(&vt);
 
-    char *input = ili_bind_copy_parameter_varchar_or_error(info, 0, "input");
+    char *input = ili_bind_copy_parameter_varchar_or_error(info, 0, "path");
     char *schema_name = ili_bind_copy_named_varchar_or_error(info, "schema");
-    char *modeldir = ili_bind_copy_named_varchar_or_error(info, "modeldir");
+    char *modeldir = ili_bind_copy_named_varchar_or_error(info, "model_sources");
     char *mapping = ili_bind_copy_named_varchar_or_error(info, "mapping");
     char *mode = ili_bind_copy_named_varchar_or_error(info, "mode");
 
@@ -2487,7 +2487,7 @@ static void gen_sql_init_func(duckdb_init_info info) {
     }
     mi_bind_data *bd = (mi_bind_data *)duckdb_init_get_bind_data(info);
     if (!bd || !bd->model || !bd->class) {
-        duckdb_init_set_error(info, "Missing input or schema");
+        duckdb_init_set_error(info, "Missing path or schema");
         return;
     }
 
@@ -2589,7 +2589,7 @@ DUCKDB_EXTENSION_ENTRYPOINT(duckdb_connection connection, duckdb_extension_info 
         duckdb_table_function_set_name(fn, "read_xtf_objects");
         duckdb_logical_type vt = duckdb_create_logical_type(DUCKDB_TYPE_VARCHAR);
         duckdb_table_function_add_parameter(fn, vt);
-        duckdb_table_function_add_named_parameter(fn, "modeldir", vt);
+        duckdb_table_function_add_named_parameter(fn, "model_sources", vt);
         duckdb_table_function_add_named_parameter(fn, "models", vt);
         duckdb_table_function_set_bind(fn, xtf_objects_bind);
         duckdb_table_function_set_init(fn, xtf_objects_init);
@@ -2606,7 +2606,7 @@ DUCKDB_EXTENSION_ENTRYPOINT(duckdb_connection connection, duckdb_extension_info 
         duckdb_logical_type vt = duckdb_create_logical_type(DUCKDB_TYPE_VARCHAR);
         duckdb_table_function_add_parameter(fn, vt);
         duckdb_table_function_add_named_parameter(fn, "class", vt);
-        duckdb_table_function_add_named_parameter(fn, "modeldir", vt);
+        duckdb_table_function_add_named_parameter(fn, "model_sources", vt);
         duckdb_table_function_add_named_parameter(fn, "nested", vt);
         if (g_has_typed_class_scan) {
             duckdb_table_function_set_bind(fn, xtf_class_typed_bind);
@@ -2630,7 +2630,7 @@ DUCKDB_EXTENSION_ENTRYPOINT(duckdb_connection connection, duckdb_extension_info 
         duckdb_table_function_set_name(fn, "read_xtf_structures");
         duckdb_logical_type vt = duckdb_create_logical_type(DUCKDB_TYPE_VARCHAR);
         duckdb_table_function_add_named_parameter(fn, "class", vt);
-        duckdb_table_function_add_named_parameter(fn, "modeldir", vt);
+        duckdb_table_function_add_named_parameter(fn, "model_sources", vt);
         duckdb_table_function_set_bind(fn, xtf_structures_bind);
         duckdb_table_function_set_init(fn, xtf_structures_init);
         duckdb_table_function_set_function(fn, xtf_structures_function);
@@ -2646,7 +2646,7 @@ DUCKDB_EXTENSION_ENTRYPOINT(duckdb_connection connection, duckdb_extension_info 
         duckdb_logical_type vt = duckdb_create_logical_type(DUCKDB_TYPE_VARCHAR);
         duckdb_table_function_add_parameter(fn, vt);
         duckdb_table_function_add_named_parameter(fn, "association", vt);
-        duckdb_table_function_add_named_parameter(fn, "modeldir", vt);
+        duckdb_table_function_add_named_parameter(fn, "model_sources", vt);
         if (g_has_typed_assoc_scan) {
             duckdb_table_function_set_bind(fn, xtf_assoc_typed_bind);
             duckdb_table_function_set_init(fn, xtf_assoc_typed_init);
@@ -2670,7 +2670,7 @@ DUCKDB_EXTENSION_ENTRYPOINT(duckdb_connection connection, duckdb_extension_info 
         duckdb_logical_type vt = duckdb_create_logical_type(DUCKDB_TYPE_VARCHAR);
         duckdb_table_function_add_parameter(fn, vt);
         duckdb_table_function_add_named_parameter(fn, "schema", vt);
-        duckdb_table_function_add_named_parameter(fn, "modeldir", vt);
+        duckdb_table_function_add_named_parameter(fn, "model_sources", vt);
         duckdb_table_function_add_named_parameter(fn, "mapping", vt);
         duckdb_table_function_add_named_parameter(fn, "mode", vt);
         duckdb_table_function_set_bind(fn, gen_sql_bind);

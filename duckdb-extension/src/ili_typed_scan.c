@@ -159,11 +159,11 @@ static void populate_read_request(ili_request *req, const xtf_typed_bind_data *b
 }
 
 static void xtf_typed_bind_common(duckdb_bind_info info, xtf_typed_entity_kind kind) {
-    char *input = ili_bind_copy_parameter_varchar_or_error(info, 0, "input");
+    char *input = ili_bind_copy_parameter_varchar_or_error(info, 0, "path");
     char *entity = kind == XTF_TYPED_ENTITY_ASSOCIATION
         ? ili_bind_copy_named_varchar_or_error(info, "association")
         : ili_bind_copy_named_varchar_or_error(info, "class");
-    char *modeldir = ili_bind_copy_named_varchar_or_error(info, "modeldir");
+    char *modeldir = ili_bind_copy_named_varchar_or_error(info, "model_sources");
     char *nested = kind == XTF_TYPED_ENTITY_CLASS
         ? ili_bind_copy_named_varchar_or_error(info, "nested")
         : NULL;
@@ -241,7 +241,7 @@ static void xtf_typed_init_common(duckdb_init_info info, xtf_typed_entity_kind k
     xtf_typed_bind_data *bd = (xtf_typed_bind_data *)duckdb_init_get_bind_data(info);
     if (!bd || !bd->input || !bd->entity_name) {
         char err_buf[160];
-        snprintf(err_buf, sizeof(err_buf), "Missing input or %s", entity_label(kind));
+        snprintf(err_buf, sizeof(err_buf), "Missing path or %s", entity_label(kind));
         duckdb_init_set_error(info, err_buf);
         return;
     }

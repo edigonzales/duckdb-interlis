@@ -486,7 +486,9 @@ public class XtfObjectReader {
                                     String className, String nested, boolean useHexWkb) {
         long startNanos = System.nanoTime();
 
-        // Build effective modeldir: user-specified > XTF directory > default
+        // Build effective sources: user-specified > XTF directory > default.
+        // A direct .ili source is retained by the resolver and its parent is
+        // added as an import repository during compilation.
         String xtfDir = "";
         try { xtfDir = new File(xtfPath).getAbsoluteFile().getParent(); } catch (Exception ignored) {}
         String md = (modelDir != null && !modelDir.isBlank()) ? modelDir
@@ -667,8 +669,9 @@ public class XtfObjectReader {
         return result;
     }
 
-    private TransferDescription compileModel(String modelDir, String modelNames) {
-        String md = ModelRepositoryResolver.resolveToString(modelDir, DEFAULT_MODELDIR);
+    private TransferDescription compileModel(String modelSources, String modelNames) {
+        ModelRepositoryResolver.validateSources(modelSources, DEFAULT_MODELDIR);
+        String md = ModelRepositoryResolver.resolveToString(modelSources, DEFAULT_MODELDIR);
         Set<String> names = parseModelNames(modelNames);
         String fingerprint = ModelCache.computeFingerprint(md);
         ModelCache.CacheKey key = new ModelCache.CacheKey(md, names, fingerprint);
@@ -676,52 +679,54 @@ public class XtfObjectReader {
     }
 
     private static Set<String> parseModelNames(String modelNames) {
-        if (modelNames == null || modelNames.isBlank()) return Set.of();
-        Set<String> names = new TreeSet<>();
-        for (String entry : modelNames.split(";")) {
-            String trimmed = entry.trim();
-            if (!trimmed.isBlank()) names.add(trimmed);
-        }
-        return names;
+        return new TreeSet<>(ModelRepositoryResolver.splitList(modelNames));
     }
 
-    private TransferDescription doCompileModel(String normalizedModelDir, String modelNames) {
+    private TransferDescription doCompileModel(String normalizedModelSources, String modelNames) {
         try {
             IliManager manager = new IliManager();
 
-            List<String> repoList = ModelRepositoryResolver.resolve(normalizedModelDir, DEFAULT_MODELDIR);
+            List<String> repoList = ModelRepositoryResolver.repositorySources(
+                    normalizedModelSources, DEFAULT_MODELDIR);
             manager.setRepositories(repoList.toArray(new String[0]));
 
-            ArrayList<String> entries = new ArrayList<>();
-            if (modelNames != null && !modelNames.isBlank()) {
-                for (String entry : modelNames.split(";")) {
-                    String trimmed = entry.trim();
-                    if (!trimmed.isBlank()) {
-                        entries.add(trimmed);
-                    }
-                }
+            List<Path> directFiles = ModelRepositoryResolver.localFiles(
+                    normalizedModelSources, DEFAULT_MODELDIR);
+            LinkedHashSet<String> entries = new LinkedHashSet<>();
+            // A model-name lookup is useful for repository-only sources. If a
+            // direct file was supplied, compile that explicit input instead;
+            // adding the model name as a second entry would make IliManager
+            // perform an unnecessary remote lookup.
+            if (directFiles.isEmpty() && modelNames != null && !modelNames.isBlank()) {
+                entries.addAll(ModelRepositoryResolver.splitList(modelNames));
             } else {
-                for (Path directory : ModelRepositoryResolver.localDirectories(normalizedModelDir, DEFAULT_MODELDIR)) {
+                for (Path directory : ModelRepositoryResolver.localDirectories(normalizedModelSources, DEFAULT_MODELDIR)) {
                     try (DirectoryStream<Path> ds = Files.newDirectoryStream(directory, "*.ili")) {
                         for (Path f : ds) entries.add(f.toAbsolutePath().toString());
                     }
                 }
             }
+            // Direct .ili sources are explicit compiler inputs. This is
+            // intentionally done in addition to model-name entries: a model
+            // name may depend on a file selected outside a repository.
+            for (Path file : directFiles) {
+                entries.add(file.toString());
+            }
 
-            Configuration cfg = manager.getConfigWithFiles(entries, null, 0.0);
+            Configuration cfg = manager.getConfigWithFiles(new ArrayList<>(entries), null, 0.0);
             if (cfg == null) {
-                throw new RuntimeException("INTERLIS model compilation failed: no valid configuration for modelDir=" + normalizedModelDir);
+                throw new RuntimeException("INTERLIS model compilation failed: no valid configuration for modelSources=" + normalizedModelSources);
             }
 
             Ili2cSettings settings = new Ili2cSettings();
             Main.setDefaultIli2cPathMap(settings);
-            settings.setIlidirs(normalizedModelDir);
+            settings.setIlidirs(String.join(";", repoList));
 
             IliLogger.suppress();
             try {
                 TransferDescription td = Main.runCompiler(cfg, settings, null);
                 if (td == null) {
-                    throw new RuntimeException("INTERLIS model compilation returned null for modelDir=" + normalizedModelDir);
+                    throw new RuntimeException("INTERLIS model compilation returned null for modelSources=" + normalizedModelSources);
                 }
                 return td;
             } finally {
@@ -730,7 +735,7 @@ public class XtfObjectReader {
         } catch (RuntimeException e) {
             throw e;
         } catch (Exception e) {
-            throw new RuntimeException("INTERLIS model compilation failed for modelDir=" + normalizedModelDir, e);
+            throw new RuntimeException("INTERLIS model compilation failed for modelSources=" + normalizedModelSources, e);
         }
     }
 

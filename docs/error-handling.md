@@ -61,10 +61,10 @@ Technischer Validatorfehler:
 
 ### Table Functions
 
-When a table function (e.g., `ili_validate`, `read_xtf_class`) encounters an error, DuckDB reports it immediately:
+When a table function (e.g., `validate_xtf`, `read_xtf_class`) encounters an error, DuckDB reports it immediately:
 
 ```sql
-SELECT * FROM ili_validate('/nonexistent.xtf');
+SELECT * FROM validate_xtf('/nonexistent.xtf');
 -- Error: near "SELECT": IO_ERROR: File not found: /nonexistent.xtf
 ```
 
@@ -98,7 +98,7 @@ Error: MODEL_ERROR: INTERLIS model compilation failed: ...
 ```
 
 The specified INTERLIS model cannot be found or compiled. Check:
-- The `modeldir` parameter points to a valid repository or directory
+- The `model_sources` parameter points to a valid repository or directory
 - The model `.ili` files exist in the specified location
 - Model dependencies are resolvable
 

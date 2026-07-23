@@ -65,6 +65,17 @@ class IliValidatorServiceTest {
     }
 
     @Test
+    void validFileAcceptsDirectIliSource() {
+        Path xtfFile = TESTDATA.resolve("valid.xtf");
+        Path iliFile = TESTDATA.resolve("SO_AGI_Simple_20260605.ili");
+
+        ValidationResult result = service.validate(xtfFile, iliFile.toString());
+
+        assertTrue(result.isValid(), "Direct .ili source should validate the XTF file");
+        assertEquals(0, result.getErrorCount());
+    }
+
+    @Test
     void invalidFileProducesErrors() {
         Path xtfFile = TESTDATA.resolve("invalid.xtf");
         String modelDir = TESTDATA.toAbsolutePath().toString();

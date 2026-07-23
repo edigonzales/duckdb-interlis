@@ -8,7 +8,7 @@
 SELECT * FROM ili_generate_import_sql(
     'testdata/synthetic/simple/valid.xtf',
     schema := 'ili_smoke',
-    modeldir := 'testdata/synthetic/simple'
+    model_sources := 'testdata/synthetic/simple'
 );
 
 -- ================================================================================
@@ -30,13 +30,13 @@ INSERT INTO ili_smoke.topic__gemeinde (xtf_bid, xtf_tid, xtf_class, name, bfs_nr
     SELECT xtf_bid, xtf_tid, xtf_class, name, CAST(bfs_nr AS BIGINT), unsupported_json
     FROM read_xtf_class('testdata/synthetic/simple/valid.xtf',
         class := 'SO_AGI_Simple_20260605.Topic.Gemeinde',
-        modeldir := 'testdata/synthetic/simple');
+        model_sources := 'testdata/synthetic/simple');
 
 INSERT INTO ili_smoke.topic__abbaustelle (xtf_bid, xtf_tid, xtf_class, name, status, unsupported_json)
     SELECT xtf_bid, xtf_tid, xtf_class, name, status, unsupported_json
     FROM read_xtf_class('testdata/synthetic/simple/valid.xtf',
         class := 'SO_AGI_Simple_20260605.Topic.Abbaustelle',
-        modeldir := 'testdata/synthetic/simple');
+        model_sources := 'testdata/synthetic/simple');
 
 -- Verify counts
 SELECT count(*) AS gemeinde_count FROM ili_smoke.topic__gemeinde;
@@ -72,19 +72,19 @@ INSERT INTO ili_smoke_assoc.topic__person (xtf_bid, xtf_tid, xtf_class, name, un
     SELECT xtf_bid, xtf_tid, xtf_class, name, unsupported_json
     FROM read_xtf_class('testdata/synthetic/associations/valid.xtf',
         class := 'SO_AGI_Associations_20260605.Topic.Person',
-        modeldir := 'testdata/synthetic/associations');
+        model_sources := 'testdata/synthetic/associations');
 
 INSERT INTO ili_smoke_assoc.topic__grundstueck (xtf_bid, xtf_tid, xtf_class, nummer, flaeche, unsupported_json)
     SELECT xtf_bid, xtf_tid, xtf_class, nummer, CAST(flaeche AS BIGINT), unsupported_json
     FROM read_xtf_class('testdata/synthetic/associations/valid.xtf',
         class := 'SO_AGI_Associations_20260605.Topic.Grundstueck',
-        modeldir := 'testdata/synthetic/associations');
+        model_sources := 'testdata/synthetic/associations');
 
 INSERT INTO ili_smoke_assoc.topic__besitz (xtf_bid, xtf_tid, xtf_class, besitzer_ref, grundstueck_ref, anteil, unsupported_json)
     SELECT xtf_bid, xtf_tid, xtf_class, besitzer_ref, grundstueck_ref, CAST(anteil AS BIGINT), unsupported_json
     FROM read_xtf_association('testdata/synthetic/associations/valid.xtf',
         association := 'SO_AGI_Associations_20260605.Topic.Besitz',
-        modeldir := 'testdata/synthetic/associations');
+        model_sources := 'testdata/synthetic/associations');
 
 -- Verify join with typed arithmetic
 SELECT p.name, g.nummer, g.flaeche, b.anteil, g.flaeche * b.anteil / 100 AS flaeche_anteilig

@@ -13,7 +13,7 @@ SELECT *
 FROM read_xtf_class(
     'testdata/synthetic/structures/valid.xtf',
     class := 'SO_AGI_Structures_20260605.Topic.Betrieb',
-    modeldir := 'testdata/synthetic/structures'
+    model_sources := 'testdata/synthetic/structures'
 );
 
 SELECT '=== Struktur-Werte (JSON-Extraktion) ===' AS test;
@@ -34,7 +34,7 @@ SELECT
 FROM read_xtf_class(
     'testdata/synthetic/structures/valid.xtf',
     class := 'SO_AGI_Structures_20260605.Topic.Betrieb',
-    modeldir := 'testdata/synthetic/structures'
+    model_sources := 'testdata/synthetic/structures'
 );
 
 SELECT '=== BAG-Elemente einzeln ===' AS test;
@@ -48,7 +48,7 @@ FROM (
     FROM read_xtf_class(
         'testdata/synthetic/structures/valid.xtf',
         class := 'SO_AGI_Structures_20260605.Topic.Betrieb',
-        modeldir := 'testdata/synthetic/structures'
+        model_sources := 'testdata/synthetic/structures'
     )
 );
 
@@ -60,7 +60,7 @@ SELECT
 FROM read_xtf_class(
     'testdata/synthetic/structures/valid.xtf',
     class := 'SO_AGI_Structures_20260605.Topic.Betrieb',
-    modeldir := 'testdata/synthetic/structures'
+    model_sources := 'testdata/synthetic/structures'
 );
 
 SELECT '=== unsupported_json (should be NULL) ===' AS test;
@@ -70,7 +70,7 @@ SELECT
 FROM read_xtf_class(
     'testdata/synthetic/structures/valid.xtf',
     class := 'SO_AGI_Structures_20260605.Topic.Betrieb',
-    modeldir := 'testdata/synthetic/structures'
+    model_sources := 'testdata/synthetic/structures'
 );
 
 SELECT '=== nested := json parameter ===' AS test;
@@ -78,6 +78,6 @@ SELECT Name, Adresse_json, Kontakte_json
 FROM read_xtf_class(
     'testdata/synthetic/structures/valid.xtf',
     class := 'SO_AGI_Structures_20260605.Topic.Betrieb',
-    modeldir := 'testdata/synthetic/structures',
+    model_sources := 'testdata/synthetic/structures',
     nested := 'json'
 );

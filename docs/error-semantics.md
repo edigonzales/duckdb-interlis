@@ -80,8 +80,8 @@ Every table function `*_init` and scalar function that checks `result == NULL`:
 | Location | Line | Lost Payload |
 |----------|------|-------------|
 | `ili_native_version_fn_cb` | 383 | `"ili_native_version failed"` |
-| `ili_validate_summary_json_fn` | 449 | `"Validation call failed"` |
-| `ili_validate_init` | 664 | `"Validation call failed"` |
+| `validate_xtf_summary_json_fn` | 449 | `"Validation call failed"` |
+| `validate_xtf_init` | 664 | `"Validation call failed"` |
 | `mi_init` | 857 | `"Model info call failed"` |
 | `xtf_objects_init` | 999 | `"XTF read call failed"` |
 | `xtf_class_init` | 1120 | `"XTF class read failed"` |
@@ -203,8 +203,8 @@ Empty TSV strings are no longer returned for compilation failures. DuckDB errors
 |---------------|--------------------------|----------------------|
 | `ili_extension_version` | Never | N/A (cannot fail) |
 | `ili_native_version` | Yes (on null) | Generic, original lost |
-| `ili_validate_summary_json` | Yes (on null) | Generic, original lost |
-| `ili_validate` (table) | Yes (on null) | Generic, original lost |
+| `validate_xtf_summary_json` | Yes (on null) | Generic, original lost |
+| `validate_xtf` (table) | Yes (on null) | Generic, original lost |
 | Model info (`mi_init`) | Yes (on null) | Generic, original lost |
 | XTF readers (`*_init`) | Yes (on null) | Generic, original lost |
 | Import (`import_init_func`) | Yes (on null) | Generic, original lost |
@@ -216,7 +216,7 @@ In **all** cases, when a native call fails:
 
 ### Row-Level Errors
 
-`duckdb_validity_set_row_invalid()` is used in scalar functions (`ili_native_version_fn_cb`, `ili_validate_summary_json_fn`) to mark individual rows as NULL when a native call fails. This sets a per-row error, but the error message is generic.
+`duckdb_validity_set_row_invalid()` is used in scalar functions (`ili_native_version_fn_cb`, `validate_xtf_summary_json_fn`) to mark individual rows as NULL when a native call fails. This sets a per-row error, but the error message is generic.
 
 ---
 

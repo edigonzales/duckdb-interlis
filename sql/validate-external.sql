@@ -12,7 +12,7 @@ SELECT json_extract(result, '$.valid') AS valid,
        json_extract(result, '$.errorCount') AS errors,
        json_extract(result, '$.warningCount') AS warnings
 FROM (
-    SELECT ili_validate_summary_json(
+    SELECT validate_xtf_summary_json(
         'testdata/external/ch.so.afu.abbaustellen/ch.so.afu.abbaustellen.xtf',
         'https://models.interlis.ch;https://geo.so.ch/models'
     ) AS result
@@ -20,18 +20,18 @@ FROM (
 
 SELECT '=== Abbaustellen: Errors ===' AS info;
 SELECT severity, message, line, xtf_tid
-FROM ili_validate(
+FROM validate_xtf(
     'testdata/external/ch.so.afu.abbaustellen/ch.so.afu.abbaustellen.xtf',
-    modeldir := 'https://models.interlis.ch;https://geo.so.ch/models'
+    model_sources := 'https://models.interlis.ch;https://geo.so.ch/models'
 )
 WHERE severity = 'ERROR'
 LIMIT 10;
 
 SELECT '=== Abbaustellen: Object count per class ===' AS info;
 SELECT class_name, count(*) AS cnt
-FROM ili_validate(
+FROM validate_xtf(
     'testdata/external/ch.so.afu.abbaustellen/ch.so.afu.abbaustellen.xtf',
-    modeldir := 'https://models.interlis.ch;https://geo.so.ch/models'
+    model_sources := 'https://models.interlis.ch;https://geo.so.ch/models'
 )
 WHERE class_name IS NOT NULL AND class_name <> ''
 GROUP BY class_name

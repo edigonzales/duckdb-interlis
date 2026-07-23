@@ -2,6 +2,7 @@ package ch.so.agi.duckdbili.core.validation;
 
 import ch.ehi.basics.settings.Settings;
 import ch.so.agi.duckdbili.core.logging.IliLogger;
+import ch.so.agi.duckdbili.core.model.ModelRepositoryResolver;
 import org.interlis2.validator.Validator;
 
 import java.io.BufferedReader;
@@ -19,15 +20,15 @@ public class IliValidatorService {
             ? System.getenv("ILI_DEFAULT_MODELDIR")
             : "https://models.interlis.ch";
 
-    public ValidationResult validate(Path xtfFile, String modelDir) {
-        return validate(xtfFile, modelDir, -1, ValidationProfile.FULL);
+    public ValidationResult validate(Path xtfFile, String modelSources) {
+        return validate(xtfFile, modelSources, -1, ValidationProfile.FULL);
     }
 
-    public ValidationResult validate(Path xtfFile, String modelDir, int maxMessages) {
-        return validate(xtfFile, modelDir, maxMessages, ValidationProfile.FULL);
+    public ValidationResult validate(Path xtfFile, String modelSources, int maxMessages) {
+        return validate(xtfFile, modelSources, maxMessages, ValidationProfile.FULL);
     }
 
-    public ValidationResult validate(Path xtfFile, String modelDir, int maxMessages, ValidationProfile profile) {
+    public ValidationResult validate(Path xtfFile, String modelSources, int maxMessages, ValidationProfile profile) {
         long startNanos = System.nanoTime();
 
         if (!Files.isRegularFile(xtfFile)) {
@@ -41,7 +42,7 @@ public class IliValidatorService {
             System.err.println("[ili-debug] Validating: " + xtfFile + " (size=" + xtfFileSize + " bytes, profile=" + profile + ")");
         }
 
-        String effectiveModelDir = resolveModelDir(modelDir, xtfFile);
+        String effectiveModelSources = resolveModelSources(modelSources, xtfFile);
 
         Path tempDir = null;
         Path csvLog = null;
@@ -54,7 +55,7 @@ public class IliValidatorService {
 
         try {
             Settings settings = new Settings();
-            settings.setValue(Validator.SETTING_ILIDIRS, effectiveModelDir);
+            settings.setValue(Validator.SETTING_ILIDIRS, effectiveModelSources);
             settings.setValue(Validator.SETTING_CSVLOG, csvLog.toAbsolutePath().toString());
             settings.setValue(Validator.SETTING_FORCE_TYPE_VALIDATION, Validator.TRUE);
             settings.setValue(Validator.SETTING_ALL_OBJECTS_ACCESSIBLE,
@@ -282,11 +283,24 @@ public class IliValidatorService {
         return fields;
     }
 
-    private static String resolveModelDir(String modelDir, Path xtfFile) {
-        if (modelDir != null && !modelDir.isBlank()) return modelDir;
-        String xtfDir = "";
-        try { xtfDir = xtfFile.getParent().toString(); } catch (Exception ignored) {}
-        if (!xtfDir.isBlank()) return xtfDir + ";" + DEFAULT_MODELDIR;
-        return DEFAULT_MODELDIR;
+    private static String resolveModelSources(String modelSources, Path xtfFile) {
+        String sources = modelSources;
+        if (sources == null || sources.isBlank()) {
+            String xtfDir = "";
+            try {
+                Path absolute = xtfFile.toAbsolutePath().normalize();
+                Path parent = absolute.getParent();
+                if (parent != null) xtfDir = parent.toString();
+            } catch (Exception ignored) {}
+            sources = !xtfDir.isBlank() ? xtfDir + ";" + DEFAULT_MODELDIR : DEFAULT_MODELDIR;
+        }
+
+        ModelRepositoryResolver.validateSources(sources, DEFAULT_MODELDIR);
+
+        // ilivalidator consumes repository locations. For an explicit .ili
+        // source the resolver contributes its parent, which both makes
+        // IMPORTS available and keeps the SQL source-list semantics identical
+        // to the XTF readers and importer.
+        return String.join(";", ModelRepositoryResolver.repositorySources(sources, DEFAULT_MODELDIR));
     }
 }

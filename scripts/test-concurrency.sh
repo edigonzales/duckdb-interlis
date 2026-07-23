@@ -59,21 +59,21 @@ echo ""
 
 echo "--- Test 3: 10 parallel validation queries ---"
 for i in $(seq 1 10); do
-    run_query "val$i" "SELECT count(*) FROM ili_validate('$TESTDATA/valid.xtf', modeldir := '$TESTDATA');" &
+    run_query "val$i" "SELECT count(*) FROM validate_xtf('$TESTDATA/valid.xtf', model_sources := '$TESTDATA');" &
 done
 wait
 echo ""
 
 echo "--- Test 4: 10 parallel XTF read queries ---"
 for i in $(seq 1 10); do
-    run_query "xtf$i" "SELECT count(*) FROM read_xtf_objects('$TESTDATA/valid.xtf', modeldir := '$TESTDATA');" &
+    run_query "xtf$i" "SELECT count(*) FROM read_xtf_objects('$TESTDATA/valid.xtf', model_sources := '$TESTDATA');" &
 done
 wait
 echo ""
 
 echo "--- Test 5: 5 parallel import SQL queries ---"
 for i in $(seq 1 5); do
-    run_query "imp$i" "SELECT count(*) FROM ili_generate_import_sql('$TESTDATA/valid.xtf', schema := 'conc_test_$i', modeldir := '$TESTDATA');" &
+    run_query "imp$i" "SELECT count(*) FROM ili_generate_import_sql('$TESTDATA/valid.xtf', schema := 'conc_test_$i', model_sources := '$TESTDATA');" &
 done
 wait
 echo ""

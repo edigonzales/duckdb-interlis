@@ -38,7 +38,12 @@ public class IliModelService {
     private TransferDescription doCompileIli(String effectiveSources, String modelName) {
         try {
             IliManager manager = new IliManager();
-            validateSources(effectiveSources);
+            try {
+                ModelRepositoryResolver.validateSources(effectiveSources, DEFAULT_MODELDIR);
+            } catch (IllegalArgumentException e) {
+                throw new RuntimeException("INTERLIS model compilation failed for: " + effectiveSources
+                        + " — " + e.getMessage(), e);
+            }
 
             List<String> repositories = ModelRepositoryResolver.repositorySources(effectiveSources, DEFAULT_MODELDIR);
             manager.setRepositories(repositories.toArray(String[]::new));
@@ -97,23 +102,6 @@ public class IliModelService {
     private TransferDescription doCompileIli(String modelSources) {
         String effectiveSources = ModelRepositoryResolver.resolveToString(modelSources, DEFAULT_MODELDIR);
         return doCompileIli(effectiveSources, null);
-    }
-
-    private static void validateSources(String effectiveSources) {
-        for (String source : ModelRepositoryResolver.resolve(effectiveSources, DEFAULT_MODELDIR)) {
-            if (ModelRepositoryResolver.isRemote(source)) continue;
-            try {
-                Path path = Path.of(source);
-                if (Files.isDirectory(path)) continue;
-                if (Files.isRegularFile(path)
-                        && path.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".ili")) continue;
-                throw new RuntimeException("INTERLIS model compilation failed for: " + effectiveSources
-                        + " — model source is not an existing directory or .ili file: " + source);
-            } catch (InvalidPathException e) {
-                throw new RuntimeException("INTERLIS model compilation failed for: " + effectiveSources
-                        + " — invalid model source: " + source, e);
-            }
-        }
     }
 
     private static String normalizeFilter(String value) {

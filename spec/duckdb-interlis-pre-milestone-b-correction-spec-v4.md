@@ -990,7 +990,7 @@ SELECT
     column IS NULL,
     xtf_tid IS NULL,
     xtf_bid IS NULL
-FROM ili_validate(...);
+FROM validate_xtf(...);
 ```
 
 Mindestens ein Testrecord ohne diese Werte muss NULL liefern.
@@ -1037,7 +1037,7 @@ Mindestens:
 
 ```text
 ili_native_version_fn_cb
-ili_validate_summary_json_fn
+validate_xtf_summary_json_fn
 ```
 
 Weitere ähnliche Muster im gesamten C-Code suchen.
@@ -2069,7 +2069,7 @@ Mindestens:
 - `read_xtf_objects`,
 - `read_xtf_class`,
 - `read_xtf_association`,
-- `ili_validate`,
+- `validate_xtf`,
 - `ili_generate_import_sql`.
 
 Für teurere Funktionen dürfen 100 Wiederholungen genügen.
@@ -2134,14 +2134,14 @@ FROM read_xtf_class(
 
 ```sql
 SELECT *
-FROM ili_validate(
+FROM validate_xtf(
     'missing.xtf'
 );
 ```
 
 ```sql
 SELECT *
-FROM ili_validate(
+FROM validate_xtf(
     'file.xtf',
     profile := 'unknown'
 );
@@ -2349,7 +2349,7 @@ Nicht Bestandteil dieses Korrekturpakets, sofern dafür Libraryänderungen nöti
 Korrigieren:
 
 - tatsächliche JSON-Feldnamen von `ili_native_version()`,
-- vollständige Signatur von `ili_validate()`,
+- vollständige Signatur von `validate_xtf()`,
 - Parameter `profile`,
 - Parameter `max_messages`,
 - NULL-Semantik,

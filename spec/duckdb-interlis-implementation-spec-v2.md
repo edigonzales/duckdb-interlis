@@ -665,7 +665,7 @@ Anforderungen:
 
 ## 12.1 Grober Mangel: unklare Validierungssemantik
 
-Die Funktion heisst `ili_validate`, während Constraint- und AREA-Prüfung deaktiviert sind.
+Die Funktion heisst `validate_xtf`, während Constraint- und AREA-Prüfung deaktiviert sind.
 
 Das ist fachlich missverständlich.
 

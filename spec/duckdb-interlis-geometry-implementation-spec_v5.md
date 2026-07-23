@@ -1252,8 +1252,8 @@ attributeName
 
 ```sql
 ili_geometry_attributes(
-    modeldir VARCHAR,
-    model => VARCHAR,
+    model VARCHAR,
+    model_sources => VARCHAR,
     class => VARCHAR
 ) → TABLE(...)
 ```
@@ -1521,7 +1521,7 @@ SELECT
 FROM read_xtf_class(
     '...',
     class := 'Model.Topic.PunktObjekt',
-    modeldir := '...'
+    model_sources := '...'
 );
 ```
 
@@ -1556,9 +1556,9 @@ Optional:
 
 ```sql
 read_xtf_class(
-    input VARCHAR,
+    path VARCHAR,
     class => VARCHAR,
-    modeldir => VARCHAR,
+    model_sources => VARCHAR,
     nested => VARCHAR,
     geometry_format => VARCHAR
 )
