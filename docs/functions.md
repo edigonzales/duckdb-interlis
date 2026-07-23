@@ -1,6 +1,6 @@
 # DuckDB-Interlis Functions
 
-Complete reference for all 14 SQL functions provided by the `interlis` extension (3 scalar, 11 table).
+Complete reference for all 15 SQL functions provided by the `interlis` extension (3 scalar, 12 table).
 
 ---
 
@@ -208,7 +208,7 @@ ORDER BY severity, line;
 **Signature:**
 
 ```sql
-ili_models(modeldir VARCHAR, model => VARCHAR) → TABLE(...)
+ili_models(modeldir VARCHAR, model => VARCHAR, class => VARCHAR) → TABLE(...)
 ```
 
 **Description:** Lists INTERLIS models found in a model directory.
@@ -260,7 +260,7 @@ FROM ili_models('testdata/synthetic/simple',
 **Signature:**
 
 ```sql
-ili_topics(modeldir VARCHAR, model => VARCHAR) → TABLE(...)
+ili_topics(modeldir VARCHAR, model => VARCHAR, class => VARCHAR) → TABLE(...)
 ```
 
 **Description:** Lists topics within INTERLIS models.
@@ -308,7 +308,7 @@ FROM ili_topics('testdata/synthetic/structures');
 **Signature:**
 
 ```sql
-ili_classes(modeldir VARCHAR, model => VARCHAR) → TABLE(...)
+ili_classes(modeldir VARCHAR, model => VARCHAR, class => VARCHAR) → TABLE(...)
 ```
 
 **Description:** Lists classes within INTERLIS models/topics.
@@ -484,12 +484,12 @@ ili_geometry_attributes(modeldir VARCHAR, model => VARCHAR, class => VARCHAR) �
 | `attribute_name` | VARCHAR | Attributname |
 | `attribute_fqn` | VARCHAR | Voll qualifizierter Attributname |
 | `geometry_kind` | VARCHAR | Geometrietyp: `POINT`, `MULTIPOINT`, `LINESTRING`, `MULTILINESTRING`, `POLYGON`, `MULTIPOLYGON`, `AREA`, `MULTIAREA` |
-| `dimension` | INTEGER | Koordinatendimension: 2 (XY) oder 3 (XYZ) |
+| `dimension` | VARCHAR | Koordinatendimension: 2 (XY) oder 3 (XYZ) |
 | `coordinate_domain` | VARCHAR | INTERLIS-Koordinatendomäne (Kurzname) |
 | `coordinate_domain_fqn` | VARCHAR | Voll qualifizierter Name der Koordinatendomäne |
 | `crs_auth_name` | VARCHAR | CRS-Authority (z.B. `EPSG`), oder NULL |
 | `crs_code` | VARCHAR | CRS-Code (z.B. `2056`), oder NULL |
-| `srid` | INTEGER | SRID, oder NULL |
+| `srid` | VARCHAR | SRID, oder NULL |
 | `is_mandatory` | VARCHAR | `true` wenn Pflichtattribut, sonst `false` |
 | `card_min` | VARCHAR | Minimale Kardinalität |
 | `card_max` | VARCHAR | Maximale Kardinalität |
@@ -550,8 +550,10 @@ read_xtf_objects(input VARCHAR, modeldir => VARCHAR, models => VARCHAR) → TABL
 | `xtf_bid` | VARCHAR |
 | `xtf_topic` | VARCHAR |
 | `xtf_class` | VARCHAR |
+| `xtf_class_fqn` | VARCHAR |
 | `xtf_tid` | VARCHAR |
 | `operation` | VARCHAR |
+| `xtf_model` | VARCHAR |
 | `attributes_json` | VARCHAR |
 | `refs_json` | VARCHAR |
 | `geom_json` | VARCHAR |
