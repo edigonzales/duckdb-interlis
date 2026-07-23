@@ -208,18 +208,17 @@ ORDER BY severity, line;
 **Signature:**
 
 ```sql
-ili_models(modeldir VARCHAR, model => VARCHAR, class => VARCHAR) → TABLE(...)
+ili_models(model VARCHAR, model_sources => VARCHAR) → TABLE(...)
 ```
 
-**Description:** Lists INTERLIS models found in a model directory.
+**Description:** Returns metadata for one INTERLIS model. Use `NULL` as the model name to list all models found in the supplied local sources.
 
 **Parameters:**
 
 | # | Name | Kind | Type | Erforderlich | Beschreibung |
 |---|---|---|---|---|---|
-| 1 | `modeldir` | positional | VARCHAR | Nein | Verzeichnis mit ILI-Dateien. Default: `https://models.interlis.ch`, überschreibbar via `ILI_DEFAULT_MODELDIR` |
-| 2 | `model` | named | VARCHAR | Nein | Optional: nach Modellnamen filtern |
-| 3 | `class` | named | VARCHAR | Nein | Optional: nach Klassennamen filtern |
+| 1 | `model` | positional | VARCHAR | Ja | Exakter INTERLIS-Modellname; `NULL` listet alle lokalen Modelle |
+| 2 | `model_sources` | named | VARCHAR | Nein | Komma- oder semikolongetrennte Liste aus `.ili`-Dateien, Verzeichnissen und Repository-URLs. Default: `ILI_DEFAULT_MODELDIR` bzw. `https://models.interlis.ch` |
 
 **Return columns:**
 
@@ -236,21 +235,21 @@ ili_models(modeldir VARCHAR, model => VARCHAR, class => VARCHAR) → TABLE(...)
 ```sql
 -- 1. Alle Modelle ohne Filter
 SELECT name, version, language, ili_version
-FROM ili_models('testdata/synthetic/simple');
+FROM ili_models(NULL, model_sources := 'testdata/synthetic/simple');
 ```
 
 ```sql
 -- 2. Nach Modellnamen filtern
 SELECT name, version, ili_version
-FROM ili_models('testdata/synthetic/simple',
-    model := 'SO_AGI_Simple_20260605');
+FROM ili_models('SO_AGI_Simple_20260605',
+    model_sources := 'testdata/synthetic/simple');
 ```
 
 ```sql
--- 3. Nach Klasse filtern
+-- 3. Explizites Modell mit eigenem Quellenpfad
 SELECT name, version, language
-FROM ili_models('testdata/synthetic/simple',
-    class := 'Gemeinde');
+FROM ili_models('SO_AGI_Simple_20260605',
+    model_sources := 'testdata/synthetic/simple');
 ```
 
 ---
@@ -260,18 +259,17 @@ FROM ili_models('testdata/synthetic/simple',
 **Signature:**
 
 ```sql
-ili_topics(modeldir VARCHAR, model => VARCHAR, class => VARCHAR) → TABLE(...)
+ili_topics(model VARCHAR, model_sources => VARCHAR) → TABLE(...)
 ```
 
-**Description:** Lists topics within INTERLIS models.
+**Description:** Lists topics within the selected INTERLIS model.
 
 **Parameters:**
 
 | # | Name | Kind | Type | Erforderlich | Beschreibung |
 |---|---|---|---|---|---|
-| 1 | `modeldir` | positional | VARCHAR | Nein | Verzeichnis mit ILI-Dateien. Default: `https://models.interlis.ch`, überschreibbar via `ILI_DEFAULT_MODELDIR` |
-| 2 | `model` | named | VARCHAR | Nein | Optional: nach Modellnamen filtern |
-| 3 | `class` | named | VARCHAR | Nein | Optional: nach Klassennamen filtern |
+| 1 | `model` | positional | VARCHAR | Ja | Exakter INTERLIS-Modellname; `NULL` listet Topics aller lokalen Modelle |
+| 2 | `model_sources` | named | VARCHAR | Nein | Komma- oder semikolongetrennte Liste aus `.ili`-Dateien, Verzeichnissen und Repository-URLs |
 
 **Return columns:**
 | Column | Type |
@@ -285,20 +283,20 @@ ili_topics(modeldir VARCHAR, model => VARCHAR, class => VARCHAR) → TABLE(...)
 ```sql
 -- 1. Alle Topics ohne Filter
 SELECT model_name, topic_name, kind
-FROM ili_topics('testdata/synthetic/simple');
+FROM ili_topics(NULL, model_sources := 'testdata/synthetic/simple');
 ```
 
 ```sql
 -- 2. Nach Modellnamen filtern
 SELECT model_name, topic_name
-FROM ili_topics('testdata/synthetic/simple',
-    model := 'SO_AGI_Simple_20260605');
+FROM ili_topics('SO_AGI_Simple_20260605',
+    model_sources := 'testdata/synthetic/simple');
 ```
 
 ```sql
 -- 3. Topics aus einem anderen Modell
 SELECT model_name, topic_name, kind
-FROM ili_topics('testdata/synthetic/structures');
+FROM ili_topics(NULL, model_sources := 'testdata/synthetic/structures');
 ```
 
 ---
@@ -308,18 +306,18 @@ FROM ili_topics('testdata/synthetic/structures');
 **Signature:**
 
 ```sql
-ili_classes(modeldir VARCHAR, model => VARCHAR, class => VARCHAR) → TABLE(...)
+ili_classes(model VARCHAR, model_sources => VARCHAR, class => VARCHAR) → TABLE(...)
 ```
 
-**Description:** Lists classes within INTERLIS models/topics.
+**Description:** Lists classes within the selected INTERLIS model and topics.
 
 **Parameters:**
 
 | # | Name | Kind | Type | Erforderlich | Beschreibung |
 |---|---|---|---|---|---|
-| 1 | `modeldir` | positional | VARCHAR | Nein | Verzeichnis mit ILI-Dateien. Default: `https://models.interlis.ch`, überschreibbar via `ILI_DEFAULT_MODELDIR` |
-| 2 | `model` | named | VARCHAR | Nein | Optional: nach Modellnamen filtern |
-| 3 | `class` | named | VARCHAR | Nein | Optional: nach Klassennamen filtern |
+| 1 | `model` | positional | VARCHAR | Ja | Exakter INTERLIS-Modellname; `NULL` listet Klassen aller lokalen Modelle |
+| 2 | `model_sources` | named | VARCHAR | Nein | Komma- oder semikolongetrennte Liste aus `.ili`-Dateien, Verzeichnissen und Repository-URLs |
+| 3 | `class` | named | VARCHAR | Nein | Optionaler Kurzname, `Topic.Class` oder vollständiger Klassenname |
 
 **Return columns:**
 | Column | Type |
@@ -337,20 +335,29 @@ ili_classes(modeldir VARCHAR, model => VARCHAR, class => VARCHAR) → TABLE(...)
 ```sql
 -- 1. Alle Klassen ohne Filter
 SELECT model_name, topic_name, class_name, kind, is_abstract
-FROM ili_classes('testdata/synthetic/simple');
+FROM ili_classes(NULL, model_sources := 'testdata/synthetic/simple');
 ```
 
 ```sql
 -- 2. Nach Modellnamen filtern
 SELECT topic_name, class_name, is_abstract, is_extended
-FROM ili_classes('testdata/synthetic/simple',
-    model := 'SO_AGI_Simple_20260605');
+FROM ili_classes('SO_AGI_Simple_20260605',
+    model_sources := 'testdata/synthetic/simple');
 ```
 
 ```sql
 -- 3. Klassen aus einem anderen Modell
 SELECT model_name, topic_name, class_name, kind
-FROM ili_classes('testdata/synthetic/structures');
+FROM ili_classes(NULL, model_sources := 'testdata/synthetic/structures');
+```
+
+```sql
+-- 4. Einzelne .ili-Datei mit zusätzlichen Import-Quellen
+SELECT model_name, topic_name, class_name, kind
+FROM ili_classes(
+    'SO_ARP_SEin_Konfiguration_20250115',
+    model_sources := '/path/to/SO_ARP_SEin_Konfiguration_20250115.ili,/path/to/models/AGI;https://models.interlis.ch'
+);
 ```
 
 ---
@@ -360,18 +367,18 @@ FROM ili_classes('testdata/synthetic/structures');
 **Signature:**
 
 ```sql
-ili_attributes(modeldir VARCHAR, model => VARCHAR, class => VARCHAR) → TABLE(...)
+ili_attributes(model VARCHAR, model_sources => VARCHAR, class => VARCHAR) → TABLE(...)
 ```
 
-**Description:** Lists attributes of classes in INTERLIS models.
+**Description:** Lists attributes of classes in the selected INTERLIS model.
 
 **Parameters:**
 
 | # | Name | Kind | Type | Erforderlich | Beschreibung |
 |---|---|---|---|---|---|
-| 1 | `modeldir` | positional | VARCHAR | Nein | Verzeichnis mit ILI-Dateien. Default: `https://models.interlis.ch`, überschreibbar via `ILI_DEFAULT_MODELDIR` |
-| 2 | `model` | named | VARCHAR | Nein | Optional: nach Modellnamen filtern |
-| 3 | `class` | named | VARCHAR | Nein | Optional: nach Klassennamen filtern |
+| 1 | `model` | positional | VARCHAR | Ja | Exakter INTERLIS-Modellname; `NULL` listet Attribute aller lokalen Modelle |
+| 2 | `model_sources` | named | VARCHAR | Nein | Komma- oder semikolongetrennte Liste aus `.ili`-Dateien, Verzeichnissen und Repository-URLs |
+| 3 | `class` | named | VARCHAR | Nein | Optionaler Kurzname, `Topic.Class` oder vollständiger Klassenname |
 
 **Return columns:**
 | Column | Type |
@@ -391,21 +398,22 @@ ili_attributes(modeldir VARCHAR, model => VARCHAR, class => VARCHAR) → TABLE(.
 ```sql
 -- 1. Attribute einer bestimmten Klasse
 SELECT attr_name, type_name, kind, is_mandatory, card_min, card_max
-FROM ili_attributes('testdata/synthetic/simple',
+FROM ili_attributes('SO_AGI_Simple_20260605',
+    model_sources := 'testdata/synthetic/simple',
     class := 'Gemeinde');
 ```
 
 ```sql
 -- 2. Attribute nach Modell filtern
 SELECT class_name, attr_name, type_name, is_mandatory
-FROM ili_attributes('testdata/synthetic/simple',
-    model := 'SO_AGI_Simple_20260605');
+FROM ili_attributes('SO_AGI_Simple_20260605',
+    model_sources := 'testdata/synthetic/simple');
 ```
 
 ```sql
 -- 3. Nur Pflichtattribute (Mandatory)
 SELECT class_name, attr_name, type_name
-FROM ili_attributes('testdata/synthetic/simple')
+FROM ili_attributes(NULL, model_sources := 'testdata/synthetic/simple')
 WHERE is_mandatory = 'true';
 ```
 
@@ -416,18 +424,17 @@ WHERE is_mandatory = 'true';
 **Signature:**
 
 ```sql
-ili_enumerations(modeldir VARCHAR, model => VARCHAR, class => VARCHAR) → TABLE(...)
+ili_enumerations(model VARCHAR, model_sources => VARCHAR) → TABLE(...)
 ```
 
-**Description:** Lists enumeration (enum) values defined in INTERLIS models.
+**Description:** Lists enumeration values defined in the selected INTERLIS model.
 
 **Parameters:**
 
 | # | Name | Kind | Type | Erforderlich | Beschreibung |
 |---|---|---|---|---|---|
-| 1 | `modeldir` | positional | VARCHAR | Nein | Verzeichnis mit ILI-Dateien. Default: `https://models.interlis.ch`, überschreibbar via `ILI_DEFAULT_MODELDIR` |
-| 2 | `model` | named | VARCHAR | Nein | Optional: nach Modellnamen filtern |
-| 3 | `class` | named | VARCHAR | Nein | Optional: nach Klassennamen filtern |
+| 1 | `model` | positional | VARCHAR | Ja | Exakter INTERLIS-Modellname; `NULL` listet Enum-Werte aller lokalen Modelle |
+| 2 | `model_sources` | named | VARCHAR | Nein | Komma- oder semikolongetrennte Liste aus `.ili`-Dateien, Verzeichnissen und Repository-URLs |
 
 **Return columns:**
 | Column | Type |
@@ -443,14 +450,14 @@ ili_enumerations(modeldir VARCHAR, model => VARCHAR, class => VARCHAR) → TABLE
 ```sql
 -- 1. Alle Enum-Werte
 SELECT model_name, enum_name, element
-FROM ili_enumerations('testdata/synthetic/simple');
+FROM ili_enumerations(NULL, model_sources := 'testdata/synthetic/simple');
 ```
 
 ```sql
 -- 2. Enum-Werte eines Modells
 SELECT enum_name, element
-FROM ili_enumerations('testdata/synthetic/simple',
-    model := 'SO_AGI_Simple_20260605');
+FROM ili_enumerations('SO_AGI_Simple_20260605',
+    model_sources := 'testdata/synthetic/simple');
 ```
 
 ---
@@ -460,7 +467,7 @@ FROM ili_enumerations('testdata/synthetic/simple',
 **Signature:**
 
 ```sql
-ili_geometry_attributes(modeldir VARCHAR, model => VARCHAR, class => VARCHAR) → TABLE(...)
+ili_geometry_attributes(model VARCHAR, model_sources => VARCHAR, class => VARCHAR) → TABLE(...)
 ```
 
 **Description:** Lists geometry attributes found in INTERLIS models. Returns metadata for each geometry attribute including type, dimension, coordinate domain, CRS, cardinality, and encoding info. This is a pure introspection function — no XTF input needed.
@@ -469,9 +476,9 @@ ili_geometry_attributes(modeldir VARCHAR, model => VARCHAR, class => VARCHAR) �
 
 | # | Name | Kind | Type | Erforderlich | Beschreibung |
 |---|---|---|---|---|---|
-| 1 | `modeldir` | positional | VARCHAR | Nein | Verzeichnis mit ILI-Dateien. Default: `https://models.interlis.ch`, überschreibbar via `ILI_DEFAULT_MODELDIR` |
-| 2 | `model` | named | VARCHAR | Nein | Optional: nach Modellnamen filtern |
-| 3 | `class` | named | VARCHAR | Nein | Optional: nach Klassennamen filtern |
+| 1 | `model` | positional | VARCHAR | Ja | Exakter INTERLIS-Modellname; `NULL` untersucht alle lokalen Modelle |
+| 2 | `model_sources` | named | VARCHAR | Nein | Komma- oder semikolongetrennte Liste aus `.ili`-Dateien, Verzeichnissen und Repository-URLs |
+| 3 | `class` | named | VARCHAR | Nein | Optionaler Kurzname, `Topic.Class` oder vollständiger Klassenname |
 
 **Return columns:**
 
@@ -504,22 +511,22 @@ ili_geometry_attributes(modeldir VARCHAR, model => VARCHAR, class => VARCHAR) �
 ```sql
 -- 1. List all geometry attributes in a model
 SELECT class_name, attribute_name, geometry_kind, dimension
-FROM ili_geometry_attributes('testdata/synthetic/geometries');
+FROM ili_geometry_attributes(NULL, model_sources := 'testdata/synthetic/geometries');
 ```
 
 ```sql
 -- 2. Filter by model and class
 SELECT attribute_name, geometry_kind, dimension,
        is_mandatory, card_min, card_max
-FROM ili_geometry_attributes('testdata/synthetic/geometries',
-    model := 'SO_AGI_Geometries_20260605',
+FROM ili_geometry_attributes('SO_AGI_Geometries_20260605',
+    model_sources := 'testdata/synthetic/geometries',
     class := 'PunktObjekt');
 ```
 
 ```sql
 -- 3. Find all 3D geometry attributes
 SELECT class_name, attribute_name, geometry_kind, dimension
-FROM ili_geometry_attributes('testdata/synthetic/geometries')
+FROM ili_geometry_attributes(NULL, model_sources := 'testdata/synthetic/geometries')
 WHERE dimension = 3;
 ```
 

@@ -119,7 +119,7 @@ WHERE sql_statement ILIKE '%BEGIN%' OR sql_statement ILIKE '%COMMIT%';
 -- REGRESSION-11: Model info now produces DuckDB error on compilation failure (Phase 2 FIXED)
 -- Expected: DuckDB error, NOT an empty result
 SELECT '--- REGRESSION-11: Error instead of empty result ---' AS test;
-SELECT * FROM ili_models('/nonexistent/directory');
+SELECT * FROM ili_models(NULL, model_sources := '/nonexistent/directory');
 -- Expected: DuckDB error with compilation failure details
 
 -- REGRESSION-12: No ERROR: prefix in result data (Phase 2 FIXED)

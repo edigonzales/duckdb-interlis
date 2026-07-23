@@ -1690,28 +1690,30 @@ static void mi_init_destroy(void *d) {
 }
 
 static void mi_bind(duckdb_bind_info info, const char *cmd, int ncols,
-                     const char **colnames) {
+                    const char **colnames, bool has_class_filter) {
     duckdb_logical_type vt = duckdb_create_logical_type(DUCKDB_TYPE_VARCHAR);
     for (int i = 0; i < ncols; i++)
         duckdb_bind_add_result_column(info, colnames[i], vt);
 
-    char *modeldir = ili_bind_copy_parameter_varchar_or_error(info, 0, "input");
-    char *model = ili_bind_copy_named_varchar_or_error(info, "model");
-    char *cls = ili_bind_copy_named_varchar_or_error(info, "class");
+    char *model = ili_bind_copy_parameter_varchar_or_error(info, 0, "model");
+    char *model_sources = ili_bind_copy_named_varchar_or_error(info, "model_sources");
+    char *cls = has_class_filter
+        ? ili_bind_copy_named_varchar_or_error(info, "class")
+        : NULL;
 
     mi_bind_data *bd = ili_calloc_or_error_bind(info, 1, sizeof(*bd), "mi_bind_data");
     if (!bd) {
-        free(modeldir); free(model); free(cls);
+        free(model); free(model_sources); free(cls);
         return;
     }
     bd->cmd = strdup(cmd);
     if (!bd->cmd) {
         duckdb_bind_set_error(info, "Out of memory");
         mi_bind_destroy(bd);
-        free(modeldir); free(model); free(cls);
+        free(model); free(model_sources); free(cls);
         return;
     }
-    bd->modeldir = modeldir;
+    bd->modeldir = model_sources;
     bd->model = model;
     bd->class = cls;
     duckdb_bind_set_bind_data(info, bd, mi_bind_destroy);
@@ -1803,19 +1805,19 @@ static void mi_function(duckdb_function_info tfinfo, duckdb_data_chunk output) {
 // Individual bind callbacks
 static void models_bind(duckdb_bind_info info) {
     static const char *cols[] = {"name","version","issuer","language","ili_version"};
-    mi_bind(info, "models", 5, cols);
+    mi_bind(info, "models", 5, cols, false);
 }
 static void topics_bind(duckdb_bind_info info) {
     static const char *cols[] = {"model_name","topic_name","kind"};
-    mi_bind(info, "topics", 3, cols);
+    mi_bind(info, "topics", 3, cols, false);
 }
 static void classes_bind(duckdb_bind_info info) {
     static const char *cols[] = {"model_name","topic_name","class_name","kind","is_abstract","is_extended","base_class"};
-    mi_bind(info, "classes", 7, cols);
+    mi_bind(info, "classes", 7, cols, true);
 }
 static void attrs_bind(duckdb_bind_info info) {
     static const char *cols[] = {"model_name","topic_name","class_name","attr_name","type_name","kind","is_mandatory","card_min","card_max"};
-    mi_bind(info, "attributes", 9, cols);
+    mi_bind(info, "attributes", 9, cols, true);
 }
 static void geometry_attrs_bind(duckdb_bind_info info) {
     static const char *cols[] = {
@@ -1825,30 +1827,36 @@ static void geometry_attrs_bind(duckdb_bind_info info) {
         "is_mandatory","card_min","card_max","supports_arcs",
         "is_area_type","is_multi_type","transport_encoding","duckdb_spatial_function"
     };
-    mi_bind(info, "geometry_attributes", 21, cols);
+    mi_bind(info, "geometry_attributes", 21, cols, true);
 }
 
 static void enums_bind(duckdb_bind_info info) {
     static const char *cols[] = {"model_name","topic_name","enum_name","element","element_line"};
-    mi_bind(info, "enumerations", 5, cols);
+    mi_bind(info, "enumerations", 5, cols, false);
 }
 
 static void register_model_table_functions(duckdb_connection conn) {
-    struct { const char *name; duckdb_table_function_bind_t bind; } fns[] = {
-        {"ili_models", models_bind},
-        {"ili_topics", topics_bind},
-        {"ili_classes", classes_bind},
-        {"ili_attributes", attrs_bind},
-        {"ili_enumerations", enums_bind},
-        {"ili_geometry_attributes", geometry_attrs_bind},
+    struct {
+        const char *name;
+        duckdb_table_function_bind_t bind;
+        bool has_class_filter;
+    } fns[] = {
+        {"ili_models", models_bind, false},
+        {"ili_topics", topics_bind, false},
+        {"ili_classes", classes_bind, true},
+        {"ili_attributes", attrs_bind, true},
+        {"ili_enumerations", enums_bind, false},
+        {"ili_geometry_attributes", geometry_attrs_bind, true},
     };
     duckdb_logical_type vt = duckdb_create_logical_type(DUCKDB_TYPE_VARCHAR);
     for (int i = 0; i < 6; i++) {
         duckdb_table_function fn = duckdb_create_table_function();
         duckdb_table_function_set_name(fn, fns[i].name);
         duckdb_table_function_add_parameter(fn, vt);
-        duckdb_table_function_add_named_parameter(fn, "model", vt);
-        duckdb_table_function_add_named_parameter(fn, "class", vt);
+        duckdb_table_function_add_named_parameter(fn, "model_sources", vt);
+        if (fns[i].has_class_filter) {
+            duckdb_table_function_add_named_parameter(fn, "class", vt);
+        }
         duckdb_table_function_set_bind(fn, fns[i].bind);
         duckdb_table_function_set_init(fn, mi_init);
         duckdb_table_function_set_function(fn, mi_function);

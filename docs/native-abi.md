@@ -252,6 +252,9 @@ int ili_native_model_info(graal_isolatethread_t*, char* request_json, char** out
 
 - **Purpose:** Model introspection (models, topics, classes, attributes, enumerations).
 - **Input:** `{"cmd":"models"|"topics"|"classes"|"attributes"|"enums","modeldir":"...","model":"...","class":"..."}`
+
+  The SQL metadata parameter `model_sources` is transported in the existing
+  ABI `modeldir` field; the native ABI itself remains unchanged.
 - **Returns:** 0 on success, >0 on error.
 - **Success payload:** TSV data.
 - **Error payload:** `{"status":"MODEL_ERROR","operation":"model_info","message":"...","detail":"...","path":"..."}` — status 3

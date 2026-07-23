@@ -12,12 +12,12 @@
 | 2 | `ili_native_version()` | Scalar | VARCHAR (JSON) |
 | 3 | `ili_validate_summary_json(path, modeldir)` | Scalar | VARCHAR (JSON) |
 | 4 | `ili_validate(path, modeldir =>, profile =>, max_messages =>)` | Table | 13 columns |
-| 5 | `ili_models(modeldir, model =>, class =>)` | Table | 5 columns |
-| 6 | `ili_topics(modeldir, model =>, class =>)` | Table | 3 columns |
-| 7 | `ili_classes(modeldir, model =>, class =>)` | Table | 7 columns |
-| 8 | `ili_attributes(modeldir, model =>, class =>)` | Table | 9 columns |
-| 9 | `ili_enumerations(modeldir, model =>, class =>)` | Table | 5 columns |
-| 10 | `ili_geometry_attributes(modeldir, model =>, class =>)` | Table | 21 columns |
+| 5 | `ili_models(model, model_sources =>)` | Table | 5 columns |
+| 6 | `ili_topics(model, model_sources =>)` | Table | 3 columns |
+| 7 | `ili_classes(model, model_sources =>, class =>)` | Table | 7 columns |
+| 8 | `ili_attributes(model, model_sources =>, class =>)` | Table | 9 columns |
+| 9 | `ili_enumerations(model, model_sources =>)` | Table | 5 columns |
+| 10 | `ili_geometry_attributes(model, model_sources =>, class =>)` | Table | 21 columns |
 | 11 | `read_xtf_objects(input, modeldir =>, models =>)` | Table | 11 columns |
 | 12 | `read_xtf_class(input, class =>, modeldir =>, nested =>)` | Table | Dynamic |
 | 13 | `read_xtf_structures(class =>, modeldir =>)` | Table | 12 columns |
@@ -154,19 +154,18 @@
 
 ---
 
-### `ili_models(modeldir, model =>, class =>)`
+### `ili_models(model, model_sources =>)`
 
-**Signature:** `ili_models(modeldir VARCHAR, model => VARCHAR, class => VARCHAR) → TABLE(...)`
+**Signature:** `ili_models(model VARCHAR, model_sources => VARCHAR) → TABLE(...)`
 
-**Description:** Lists INTERLIS models found in a model directory.
+**Description:** Returns metadata for one INTERLIS model. `NULL` as model lists all models found in local sources.
 
 **Parameters:**
 
 | # | Name | Kind | Required | Description |
 |---|------|------|----------|-------------|
-| 1 | `modeldir` | positional | No | ILI model directory |
-| 2 | `model` | named | No | Filter by model name |
-| 3 | `class` | named | No | Filter by class name (affects model resolution) |
+| 1 | `model` | positional | Yes | Exact model name; `NULL` means no model filter |
+| 2 | `model_sources` | named | No | Comma- or semicolon-separated `.ili` files, directories, or repository URLs |
 
 **Return columns:**
 
@@ -180,6 +179,11 @@
 
 **NULL behaviour:** Empty strings for missing metadata fields. NULL and empty string are not distinguished.
 
+`model_sources` accepts comma- or semicolon-separated local directories, direct
+`.ili` files, and HTTP(S) model repositories. If omitted, the
+`ILI_DEFAULT_MODELDIR` environment variable or `https://models.interlis.ch` is
+used. A `NULL` model selects all models available from local sources.
+
 **Error behaviour:**
 - Native library init failure → `duckdb_init_set_error(g_error_buf)`.
 - Native call failure → DuckDB error with extracted NativeError message (Phase 2 fix).
@@ -187,14 +191,14 @@
 **Known limitations:**
 - Model compilation failures now throw RuntimeException instead of returning empty result (Phase 2 fixed).
 - Error string from Java now uses NativeError JSON with proper status codes — no more `"ERROR:"` prefixes (Phase 2 fixed).
-- Non-threadsafe `HashMap` cache in Java (Phase 5 fix).
-- Cache key does not include file fingerprint — stale results if model files change on disk (Phase 5 fix).
+- Thread-safe shared Java model cache with bounded LRU eviction.
+- Cache keys include normalized source lists, selected model names, and local `.ili` file fingerprints.
 
 ---
 
-### `ili_topics(modeldir, model =>, class =>)`
+### `ili_topics(model, model_sources =>)`
 
-**Signature:** `ili_topics(modeldir VARCHAR, model => VARCHAR, class => VARCHAR) → TABLE(...)`
+**Signature:** `ili_topics(model VARCHAR, model_sources => VARCHAR) → TABLE(...)`
 
 **Description:** Lists topics within INTERLIS models.
 
@@ -206,13 +210,13 @@
 | `topic_name` | VARCHAR |
 | `kind` | VARCHAR |
 
-**Parameters, NULL behaviour, error behaviour, known limitations:** Same as `ili_models`.
+**Parameters, NULL behaviour, error behaviour, known limitations:** Same as `ili_models`; `NULL` model lists topics from local sources.
 
 ---
 
-### `ili_classes(modeldir, model =>, class =>)`
+### `ili_classes(model, model_sources =>, class =>)`
 
-**Signature:** `ili_classes(modeldir VARCHAR, model => VARCHAR, class => VARCHAR) → TABLE(...)`
+**Signature:** `ili_classes(model VARCHAR, model_sources => VARCHAR, class => VARCHAR) → TABLE(...)`
 
 **Description:** Lists classes within INTERLIS models/topics.
 
@@ -228,13 +232,13 @@
 | `is_extended` | VARCHAR |
 | `base_class` | VARCHAR |
 
-**Parameters, NULL behaviour, error behaviour, known limitations:** Same as `ili_models`.
+**Parameters, NULL behaviour, error behaviour, known limitations:** Same as `ili_models`; `class` optionally filters by short, topic-qualified, or fully qualified class name.
 
 ---
 
-### `ili_attributes(modeldir, model =>, class =>)`
+### `ili_attributes(model, model_sources =>, class =>)`
 
-**Signature:** `ili_attributes(modeldir VARCHAR, model => VARCHAR, class => VARCHAR) → TABLE(...)`
+**Signature:** `ili_attributes(model VARCHAR, model_sources => VARCHAR, class => VARCHAR) → TABLE(...)`
 
 **Description:** Lists attributes of classes in INTERLIS models.
 
@@ -252,13 +256,13 @@
 | `card_min` | VARCHAR |
 | `card_max` | VARCHAR |
 
-**Parameters, NULL behaviour, error behaviour, known limitations:** Same as `ili_models`.
+**Parameters, NULL behaviour, error behaviour, known limitations:** Same as `ili_models`; `class` optionally filters by short, topic-qualified, or fully qualified class name.
 
 ---
 
-### `ili_enumerations(modeldir, model =>, class =>)`
+### `ili_enumerations(model, model_sources =>)`
 
-**Signature:** `ili_enumerations(modeldir VARCHAR, model => VARCHAR, class => VARCHAR) → TABLE(...)`
+**Signature:** `ili_enumerations(model VARCHAR, model_sources => VARCHAR) → TABLE(...)`
 
 **Description:** Lists enumeration values defined in INTERLIS models.
 
@@ -272,13 +276,13 @@
 | `element` | VARCHAR |
 | `element_line` | VARCHAR |
 
-**Parameters, NULL behaviour, error behaviour, known limitations:** Same as `ili_models`.
+**Parameters, NULL behaviour, error behaviour, known limitations:** Same as `ili_models`; `NULL` model lists enumeration values from local sources.
 
 ---
 
-### `ili_geometry_attributes(modeldir, model =>, class =>)`
+### `ili_geometry_attributes(model, model_sources =>, class =>)`
 
-**Signature:** `ili_geometry_attributes(modeldir VARCHAR, model => VARCHAR, class => VARCHAR) → TABLE(...)`
+**Signature:** `ili_geometry_attributes(model VARCHAR, model_sources => VARCHAR, class => VARCHAR) → TABLE(...)`
 
 **Description:** Lists geometry attributes found in INTERLIS models. Returns metadata including geometry kind, dimension, coordinate domain, CRS, cardinality, and encoding info. No XTF input needed — pure model introspection.
 
@@ -286,9 +290,9 @@
 
 | # | Name | Kind | Required | Description |
 |---|------|------|----------|-------------|
-| 1 | `modeldir` | positional | No | ILI model directory |
-| 2 | `model` | named | No | Filter by model name |
-| 3 | `class` | named | No | Filter by class name |
+| 1 | `model` | positional | Yes | Exact model name; `NULL` means no model filter |
+| 2 | `model_sources` | named | No | Comma- or semicolon-separated `.ili` files, directories, or repository URLs |
+| 3 | `class` | named | No | Optional short, topic-qualified, or fully qualified class name |
 
 **Return columns:**
 

@@ -105,19 +105,22 @@ WHERE severity = 'ERROR';
 
 ```sql
 -- What models are available?
-SELECT name, version FROM ili_models('/path/to/models');
+SELECT name, version
+FROM ili_models(NULL, model_sources := '/path/to/models');
 
 -- What classes exist in a model?
 SELECT topic_name, class_name, kind
-FROM ili_classes('/path/to/models', model := 'MyModel');
+FROM ili_classes('MyModel', model_sources := '/path/to/models');
 
 -- What attributes does a class have?
 SELECT attr_name, type_name, kind, is_mandatory
-FROM ili_attributes('/path/to/models', class := 'Gemeinde');
+FROM ili_attributes('MyModel',
+    model_sources := '/path/to/models',
+    class := 'Gemeinde');
 
 -- What geometry types are defined?
 SELECT class_name, attribute_name, geometry_kind, dimension
-FROM ili_geometry_attributes('/path/to/models');
+FROM ili_geometry_attributes(NULL, model_sources := '/path/to/models');
 ```
 
 ### 3. Read XTF Data as a Table
@@ -172,6 +175,18 @@ export ILI_DEFAULT_MODELDIR='https://models.interlis.ch;https://geo.so.ch/models
 ```
 
 Then omit `modeldir` in queries — it defaults automatically.
+
+For model metadata, use the model name first and pass one or more model sources
+with `model_sources`. Sources may be directories, direct `.ili` files, or
+repository URLs; commas and semicolons are accepted as separators:
+
+```sql
+SELECT model_name, topic_name, class_name, kind
+FROM ili_classes(
+    'SO_ARP_SEin_Konfiguration_20250115',
+    model_sources := '/path/to/SO_ARP_SEin_Konfiguration_20250115.ili,/path/to/models/AGI;https://models.interlis.ch'
+);
+```
 
 ## Next Steps
 

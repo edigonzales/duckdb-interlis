@@ -22,42 +22,64 @@ public class IliModelService {
             ? System.getenv("ILI_DEFAULT_MODELDIR")
             : "https://models.interlis.ch";
 
-    private TransferDescription compileIli(String modelDir) {
-        String effectiveDir = ModelRepositoryResolver.resolveToString(modelDir, DEFAULT_MODELDIR);
-        String fingerprint = ModelCache.computeFingerprint(effectiveDir);
-        ModelCache.CacheKey key = new ModelCache.CacheKey(effectiveDir, emptySet(), fingerprint);
-        return ModelCache.getInstance().getOrCompile(key, () -> doCompileIli(effectiveDir));
+    private TransferDescription compileIli(String modelSources, String modelName) {
+        String effectiveSources = ModelRepositoryResolver.resolveToString(modelSources, DEFAULT_MODELDIR);
+        String normalizedModel = normalizeFilter(modelName);
+        String fingerprint = ModelCache.computeFingerprint(effectiveSources);
+        Set<String> modelNames = normalizedModel == null
+                ? emptySet()
+                : Set.of(normalizedModel);
+        ModelCache.CacheKey key = new ModelCache.CacheKey(effectiveSources, modelNames, fingerprint);
+        return ModelCache.getInstance().getOrCompile(
+                key,
+                () -> doCompileIli(effectiveSources, normalizedModel));
     }
 
-    private TransferDescription doCompileIli(String effectiveDir) {
+    private TransferDescription doCompileIli(String effectiveSources, String modelName) {
         try {
             IliManager manager = new IliManager();
-            List<String> repositories = ModelRepositoryResolver.resolve(effectiveDir, DEFAULT_MODELDIR);
+            validateSources(effectiveSources);
+
+            List<String> repositories = ModelRepositoryResolver.repositorySources(effectiveSources, DEFAULT_MODELDIR);
             manager.setRepositories(repositories.toArray(String[]::new));
 
             ArrayList<String> entries = new ArrayList<>();
-            for (Path directory : ModelRepositoryResolver.localDirectories(effectiveDir, DEFAULT_MODELDIR)) {
+            for (Path file : ModelRepositoryResolver.localFiles(effectiveSources, DEFAULT_MODELDIR)) {
+                entries.add(file.toAbsolutePath().toString());
+            }
+            for (Path directory : ModelRepositoryResolver.localDirectories(effectiveSources, DEFAULT_MODELDIR)) {
                 try (DirectoryStream<Path> stream = Files.newDirectoryStream(directory, "*.ili")) {
                     for (Path f : stream)
                         entries.add(f.toAbsolutePath().toString());
                 }
             }
 
-            Configuration cfg = manager.getConfigWithFiles(entries, null, 0.0);
+            Configuration cfg;
+            if (modelName != null && ModelRepositoryResolver.localFiles(effectiveSources, DEFAULT_MODELDIR).isEmpty()) {
+                // IliManager resolves the selected model and its imports from
+                // the configured repositories without compiling every local
+                // model in those repositories.
+                cfg = manager.getConfig(new ArrayList<>(List.of(modelName)), 0.0);
+            } else {
+                if (entries.isEmpty()) {
+                    throw new RuntimeException("no local .ili files found; a model name is required for remote-only sources");
+                }
+                cfg = manager.getConfigWithFiles(entries, null, 0.0);
+            }
             if (cfg == null) {
-                throw new RuntimeException("INTERLIS model compilation failed for: " + effectiveDir
+                throw new RuntimeException("INTERLIS model compilation failed for: " + effectiveSources
                         + " — no ILI files found or invalid model directory");
             }
 
             Ili2cSettings settings = new Ili2cSettings();
             Main.setDefaultIli2cPathMap(settings);
-            settings.setIlidirs(effectiveDir);
+            settings.setIlidirs(effectiveSources);
 
             IliLogger.suppress();
             try {
                 TransferDescription td = Main.runCompiler(cfg, settings, null);
                 if (td == null) {
-                    throw new RuntimeException("INTERLIS model compilation returned null for: " + effectiveDir);
+                    throw new RuntimeException("INTERLIS model compilation returned null for: " + effectiveSources);
                 }
                 return td;
             } finally {
@@ -66,20 +88,51 @@ public class IliModelService {
         } catch (RuntimeException e) {
             throw e;
         } catch (Exception e) {
-            throw new RuntimeException("INTERLIS model compilation failed for: " + effectiveDir, e);
+            throw new RuntimeException("INTERLIS model compilation failed for: " + effectiveSources, e);
         }
+    }
+
+    // Kept as a small compatibility seam for the cache tests and internal
+    // callers that exercise compilation without a model filter.
+    private TransferDescription doCompileIli(String modelSources) {
+        String effectiveSources = ModelRepositoryResolver.resolveToString(modelSources, DEFAULT_MODELDIR);
+        return doCompileIli(effectiveSources, null);
+    }
+
+    private static void validateSources(String effectiveSources) {
+        for (String source : ModelRepositoryResolver.resolve(effectiveSources, DEFAULT_MODELDIR)) {
+            if (ModelRepositoryResolver.isRemote(source)) continue;
+            try {
+                Path path = Path.of(source);
+                if (Files.isDirectory(path)) continue;
+                if (Files.isRegularFile(path)
+                        && path.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".ili")) continue;
+                throw new RuntimeException("INTERLIS model compilation failed for: " + effectiveSources
+                        + " — model source is not an existing directory or .ili file: " + source);
+            } catch (InvalidPathException e) {
+                throw new RuntimeException("INTERLIS model compilation failed for: " + effectiveSources
+                        + " — invalid model source: " + source, e);
+            }
+        }
+    }
+
+    private static String normalizeFilter(String value) {
+        if (value == null || value.isBlank()) return null;
+        return value;
     }
 
     private static boolean isBaseModel(String name) {
         return "INTERLIS".equals(name);
     }
 
-    public String getModels(String modelDir) {
+    public String getModels(String modelSources, String modelName) {
         StringBuilder sb = new StringBuilder();
-        TransferDescription td = compileIli(modelDir);
+        String selectedModel = normalizeFilter(modelName);
+        TransferDescription td = compileIli(modelSources, selectedModel);
         for (Iterator<Model> it = td.iterator(); it.hasNext(); ) {
             Model m = it.next();
             if (isBaseModel(m.getName())) continue;
+            if (selectedModel != null && !selectedModel.equals(m.getName())) continue;
             sb.append(TsvCodec.encodeNullable(m.getName())).append('\t').append(TsvCodec.encodeNullable(m.getModelVersion())).append('\t');
             sb.append(TsvCodec.encodeNullable(m.getIssuer())).append('\t').append(TsvCodec.encodeNullable(m.getLanguage())).append('\t');
             sb.append(TsvCodec.encodeNullable(m.getIliVersion())).append('\n');
@@ -87,12 +140,13 @@ public class IliModelService {
         return sb.toString();
     }
 
-    public String getTopics(String modelDir, String modelName) {
+    public String getTopics(String modelSources, String modelName) {
         StringBuilder sb = new StringBuilder();
-        TransferDescription td = compileIli(modelDir);
+        String selectedModel = normalizeFilter(modelName);
+        TransferDescription td = compileIli(modelSources, selectedModel);
         for (Iterator<Model> it = td.iterator(); it.hasNext(); ) {
             Model m = it.next();
-            if (modelName != null && !modelName.equals(m.getName())) continue;
+            if (selectedModel != null && !selectedModel.equals(m.getName())) continue;
             for (Iterator<Element> eit = m.iterator(); eit.hasNext(); ) {
                 if (eit.next() instanceof Topic t) {
                     sb.append(TsvCodec.encodeNullable(m.getName())).append('\t').append(TsvCodec.encodeNullable(t.getName())).append('\t');
@@ -103,19 +157,21 @@ public class IliModelService {
         return sb.toString();
     }
 
-    public String getClasses(String modelDir, String modelName) {
+    public String getClasses(String modelSources, String modelName, String classFilter) {
         StringBuilder sb = new StringBuilder();
-        TransferDescription td = compileIli(modelDir);
+        String selectedModel = normalizeFilter(modelName);
+        TransferDescription td = compileIli(modelSources, selectedModel);
         for (Iterator<Model> it = td.iterator(); it.hasNext(); ) {
             Model m = it.next();
             if (isBaseModel(m.getName())) continue;
-            if (modelName != null && !modelName.equals(m.getName())) continue;
+            if (selectedModel != null && !selectedModel.equals(m.getName())) continue;
             for (Iterator<Element> eit = m.iterator(); eit.hasNext(); ) {
                 Element el = eit.next();
                 if (el instanceof Topic t) {
                     for (Iterator<Element> tit = t.iterator(); tit.hasNext(); ) {
                         Element tel = tit.next();
                         if (tel instanceof AbstractClassDef c && !(tel instanceof AssociationDef)) {
+                            if (!matchesClass(classFilter, m, t, c)) continue;
                             String kind = tel instanceof Table ? "TABLE" : "CLASS";
                             String base = c.getExtending() != null ? c.getExtending().getScopedName(null) : "";
                             sb.append(TsvCodec.encodeNullable(m.getName())).append('\t').append(TsvCodec.encodeNullable(t.getName())).append('\t');
@@ -131,20 +187,21 @@ public class IliModelService {
         return sb.toString();
     }
 
-    public String getAttributes(String modelDir, String className) {
+    public String getAttributes(String modelSources, String modelName, String classFilter) {
         StringBuilder sb = new StringBuilder();
-        TransferDescription td = compileIli(modelDir);
+        String selectedModel = normalizeFilter(modelName);
+        TransferDescription td = compileIli(modelSources, selectedModel);
         for (Iterator<Model> it = td.iterator(); it.hasNext(); ) {
             Model m = it.next();
             if (isBaseModel(m.getName())) continue;
+            if (selectedModel != null && !selectedModel.equals(m.getName())) continue;
             for (Iterator<Element> eit = m.iterator(); eit.hasNext(); ) {
                 Element el = eit.next();
                 if (el instanceof Topic t) {
                     for (Iterator<Element> tit = t.iterator(); tit.hasNext(); ) {
                         Element tel = tit.next();
                         if (tel instanceof AbstractClassDef c && !(tel instanceof AssociationDef)) {
-                            String fn = m.getName() + "." + t.getName() + "." + c.getName();
-                            if (className != null && !className.equals(fn)) continue;
+                            if (!matchesClass(classFilter, m, t, c)) continue;
                             Iterator<?> ait = c.getAttributesAndRoles2();
                             while (ait.hasNext()) {
                                 ViewableTransferElement vte = (ViewableTransferElement) ait.next();
@@ -203,13 +260,14 @@ public class IliModelService {
         return sb.toString();
     }
 
-    public String getEnumerations(String modelDir, String modelName) {
+    public String getEnumerations(String modelSources, String modelName) {
         StringBuilder sb = new StringBuilder();
-        TransferDescription td = compileIli(modelDir);
+        String selectedModel = normalizeFilter(modelName);
+        TransferDescription td = compileIli(modelSources, selectedModel);
         for (Iterator<Model> it = td.iterator(); it.hasNext(); ) {
             Model m = it.next();
             if (isBaseModel(m.getName())) continue;
-            if (modelName != null && !modelName.equals(m.getName())) continue;
+            if (selectedModel != null && !selectedModel.equals(m.getName())) continue;
             for (Iterator<Element> eit = m.iterator(); eit.hasNext(); ) {
                 Element el = eit.next();
                 if (el instanceof Topic t) collectEnums(t, m.getName(), t.getName(), sb);
@@ -267,13 +325,14 @@ public class IliModelService {
         }
     }
 
-    public String getGeometryAttributes(String modelDir, String modelFilter, String classFilter) {
-        TransferDescription td = compileIli(modelDir);
+    public String getGeometryAttributes(String modelSources, String modelFilter, String classFilter) {
+        String selectedModel = normalizeFilter(modelFilter);
+        TransferDescription td = compileIli(modelSources, selectedModel);
         InterlisGeometryTypeResolver typeResolver = new InterlisGeometryTypeResolver();
         GeometryCrsResolver crsResolver = new MapGeometryCrsResolver();
         GeometryAttributeMetadataService service = new GeometryAttributeMetadataService(typeResolver, crsResolver);
 
-        List<GeometryMetadata> attrs = service.listGeometryAttributes(td, modelFilter, classFilter);
+        List<GeometryMetadata> attrs = service.listGeometryAttributes(td, selectedModel, classFilter);
 
         StringBuilder sb = new StringBuilder();
         // No header line – columns are defined by the C extension bind callback
@@ -304,6 +363,15 @@ public class IliModelService {
         return sb.toString();
     }
 
+    private static boolean matchesClass(String classFilter, Model model, Topic topic, AbstractClassDef classDef) {
+        if (classFilter == null || classFilter.isBlank()) return true;
+        String classFqn = model.getName() + "." + topic.getName() + "." + classDef.getName();
+        String topicClass = topic.getName() + "." + classDef.getName();
+        return classFilter.equals(classDef.getName())
+                || classFilter.equals(topicClass)
+                || classFilter.equals(classFqn);
+    }
+
     private static String formatEnumType(EnumerationType et) {
         ch.interlis.ili2c.metamodel.Enumeration en = et.getConsolidatedEnumeration();
         if (en == null) en = et.getEnumeration();
@@ -319,4 +387,3 @@ public class IliModelService {
         return sb.toString();
     }
 }
-

@@ -41,8 +41,12 @@ public final class GeometryAttributeMetadataService {
                         Element tel = tit.next();
                         if (tel instanceof AbstractClassDef classDef
                                 && !(tel instanceof AssociationDef)) {
+                            String classFqn = model.getName() + "." + topic.getName() + "." + classDef.getName();
+                            String topicClass = topic.getName() + "." + classDef.getName();
                             if (classFilter != null && !classFilter.isBlank()
-                                    && !classFilter.equals(classDef.getName())) {
+                                    && !classFilter.equals(classDef.getName())
+                                    && !classFilter.equals(topicClass)
+                                    && !classFilter.equals(classFqn)) {
                                 continue;
                             }
                             collectFromClass(model, topic, classDef, result);

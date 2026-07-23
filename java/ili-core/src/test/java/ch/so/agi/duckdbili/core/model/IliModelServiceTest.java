@@ -25,7 +25,7 @@ class IliModelServiceTest {
 
     @Test
     void modelsReturnCorrectName() {
-        String tsv = svc.getModels(MODEL_DIR);
+        String tsv = svc.getModels(MODEL_DIR, null);
         System.err.println("MODELS TSV: [" + tsv + "]");
         assertTrue(tsv.contains("SO_AGI_Simple_20260605"), "Should contain model name, got: " + tsv);
     }
@@ -38,14 +38,14 @@ class IliModelServiceTest {
 
     @Test
     void classesContainGemeinde() {
-        String tsv = svc.getClasses(MODEL_DIR, null);
+        String tsv = svc.getClasses(MODEL_DIR, null, null);
         assertTrue(tsv.contains("Gemeinde"), "Should contain Gemeinde class");
         assertTrue(tsv.contains("Abbaustelle"), "Should contain Abbaustelle class");
     }
 
     @Test
     void attributesContainName() {
-        String tsv = svc.getAttributes(MODEL_DIR, null);
+        String tsv = svc.getAttributes(MODEL_DIR, null, null);
         assertTrue(tsv.contains("Name"), "Should contain Name attribute");
         assertTrue(tsv.contains("MANDATORY") || tsv.contains("true"), "Should have mandatory info");
     }
@@ -55,5 +55,21 @@ class IliModelServiceTest {
         String tsv = svc.getEnumerations(MODEL_DIR, null);
         // The model has an inline enum for Status: (aktiv, inaktiv, geplant)
         assertTrue(tsv.length() > 0 || tsv.isEmpty(), "Enumerations TSV should be parseable");
+    }
+
+    @Test
+    void directIliFileIsAccepted() {
+        Path ili = Path.of(MODEL_DIR, "SO_AGI_Simple_20260605.ili");
+        String tsv = svc.getClasses(ili.toString(), "SO_AGI_Simple_20260605", "Gemeinde");
+        assertTrue(tsv.contains("SO_AGI_Simple_20260605\tTopic\tGemeinde"),
+                "Direct .ili source should resolve the selected model and class");
+    }
+
+    @Test
+    void classFilterAcceptsFullyQualifiedName() {
+        String tsv = svc.getClasses(MODEL_DIR, "SO_AGI_Simple_20260605",
+                "SO_AGI_Simple_20260605.Topic.Gemeinde");
+        assertTrue(tsv.contains("\tGemeinde\t"));
+        assertFalse(tsv.contains("\tAbbaustelle\t"));
     }
 }

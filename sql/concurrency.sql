@@ -11,19 +11,19 @@ SELECT severity, count(*) AS cnt FROM ili_validate('testdata/synthetic/simple/in
 
 SELECT '=== CONCURRENCY-3: Parallel model introspection ===' AS test;
 
-SELECT name FROM ili_models('testdata/synthetic/simple') LIMIT 5;
+SELECT name FROM ili_models(NULL, model_sources := 'testdata/synthetic/simple') LIMIT 5;
 
 SELECT '=== CONCURRENCY-4: Parallel model info (multiple calls) ===' AS test;
 
-SELECT 'models' AS cmd, count(*) AS cnt FROM ili_models('testdata/synthetic/simple')
+SELECT 'models' AS cmd, count(*) AS cnt FROM ili_models(NULL, model_sources := 'testdata/synthetic/simple')
 UNION ALL
-SELECT 'topics', count(*) FROM ili_topics('testdata/synthetic/simple')
+SELECT 'topics', count(*) FROM ili_topics(NULL, model_sources := 'testdata/synthetic/simple')
 UNION ALL
-SELECT 'classes', count(*) FROM ili_classes('testdata/synthetic/simple')
+SELECT 'classes', count(*) FROM ili_classes(NULL, model_sources := 'testdata/synthetic/simple')
 UNION ALL
-SELECT 'attributes', count(*) FROM ili_attributes('testdata/synthetic/simple')
+SELECT 'attributes', count(*) FROM ili_attributes(NULL, model_sources := 'testdata/synthetic/simple')
 UNION ALL
-SELECT 'enumerations', count(*) FROM ili_enumerations('testdata/synthetic/simple');
+SELECT 'enumerations', count(*) FROM ili_enumerations(NULL, model_sources := 'testdata/synthetic/simple');
 
 SELECT '=== CONCURRENCY-5: Parallel XTF reads ===' AS test;
 

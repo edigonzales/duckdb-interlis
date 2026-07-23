@@ -121,11 +121,11 @@ Zielspalten:
 ### 3.3 Modellanalyse
 
 ```sql
-SELECT * FROM ili_models('testdata/models/SO_AGI_Simple_20260605.ili');
-SELECT * FROM ili_topics('SO_AGI_Simple_20260605', modeldir := 'testdata/models');
-SELECT * FROM ili_classes('SO_AGI_Simple_20260605', modeldir := 'testdata/models');
-SELECT * FROM ili_attributes('SO_AGI_Simple_20260605.Topic.Gebaeude', modeldir := 'testdata/models');
-SELECT * FROM ili_enumerations('SO_AGI_Simple_20260605', modeldir := 'testdata/models');
+SELECT * FROM ili_models(NULL, model_sources := 'testdata/models/SO_AGI_Simple_20260605.ili');
+SELECT * FROM ili_topics('SO_AGI_Simple_20260605', model_sources := 'testdata/models');
+SELECT * FROM ili_classes('SO_AGI_Simple_20260605', model_sources := 'testdata/models');
+SELECT * FROM ili_attributes('SO_AGI_Simple_20260605', model_sources := 'testdata/models', class := 'Topic.Gebaeude');
+SELECT * FROM ili_enumerations('SO_AGI_Simple_20260605', model_sources := 'testdata/models');
 ```
 
 Ziel: Der Coding-Agent soll die Modellanalyse vor dem komplexen XTF-Import implementieren. Damit kann `read_xtf_class()` später im Bind-Schritt ein DuckDB-Schema aus dem INTERLIS-Modell ableiten.
@@ -479,10 +479,10 @@ SELECT * FROM ili_validate_summary('file.xtf', modeldir := '...');
 #### Phase 4
 
 ```sql
-SELECT * FROM ili_models('model.ili');
-SELECT * FROM ili_classes('ModelName', modeldir := '...');
-SELECT * FROM ili_attributes('Model.Topic.Class', modeldir := '...');
-SELECT * FROM ili_enumerations('ModelName', modeldir := '...');
+SELECT * FROM ili_models(NULL, model_sources := 'model.ili');
+SELECT * FROM ili_classes('ModelName', model_sources := '...');
+SELECT * FROM ili_attributes('ModelName', model_sources := '...', class := 'Topic.Class');
+SELECT * FROM ili_enumerations('ModelName', model_sources := '...');
 ```
 
 #### Phase 5+

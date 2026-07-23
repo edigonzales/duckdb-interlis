@@ -52,7 +52,7 @@ echo ""
 
 echo "--- Test 2: 20 parallel model info queries ---"
 for i in $(seq 1 20); do
-    run_query "m$i" "SELECT count(*) FROM ili_models('$TESTDATA');" &
+    run_query "m$i" "SELECT count(*) FROM ili_models(NULL, model_sources := '$TESTDATA');" &
 done
 wait
 echo ""

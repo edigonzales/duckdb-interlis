@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -149,23 +150,29 @@ public final class ModelCache {
     public static String computeFingerprint(String modelDir) {
         try {
             MessageDigest md = MessageDigest.getInstance("SHA-256");
-            for (String repo : ModelRepositoryResolver.resolve(modelDir, "")) {
-                if (repo.startsWith("http://") || repo.startsWith("https://")) {
-                    md.update(repo.getBytes(StandardCharsets.UTF_8));
+            for (String source : ModelRepositoryResolver.resolve(modelDir, "")) {
+                if (ModelRepositoryResolver.isRemote(source)) {
+                    md.update(source.getBytes(StandardCharsets.UTF_8));
                     continue;
                 }
-                Path dir = Path.of(repo);
-                if (!Files.isDirectory(dir)) continue;
-                try (DirectoryStream<Path> ds = Files.newDirectoryStream(dir, "*.ili")) {
-                    List<Path> sorted = new ArrayList<>();
-                    for (Path f : ds) sorted.add(f);
-                    sorted.sort(Comparator.comparing(Path::toString));
-                    for (Path f : sorted) {
-                        String abs = f.toAbsolutePath().toString();
-                        long size = Files.size(f);
-                        long mtime = Files.getLastModifiedTime(f).toMillis();
-                        String entry = abs + ":" + size + ":" + mtime;
-                        md.update(entry.getBytes(StandardCharsets.UTF_8));
+
+                Path path;
+                try {
+                    path = Path.of(source);
+                } catch (InvalidPathException e) {
+                    md.update(("invalid:" + source).getBytes(StandardCharsets.UTF_8));
+                    continue;
+                }
+                if (Files.isRegularFile(path)) {
+                    updateFileFingerprint(md, path);
+                    continue;
+                }
+                if (Files.isDirectory(path)) {
+                    try (DirectoryStream<Path> ds = Files.newDirectoryStream(path, "*.ili")) {
+                        List<Path> sorted = new ArrayList<>();
+                        for (Path f : ds) sorted.add(f);
+                        sorted.sort(Comparator.comparing(Path::toString));
+                        for (Path f : sorted) updateFileFingerprint(md, f);
                     }
                 }
             }
@@ -176,6 +183,14 @@ public final class ModelCache {
         } catch (IOException | NoSuchAlgorithmException e) {
             return "error:" + e.getMessage();
         }
+    }
+
+    private static void updateFileFingerprint(MessageDigest md, Path file) throws IOException {
+        String abs = file.toAbsolutePath().normalize().toString();
+        long size = Files.size(file);
+        long mtime = Files.getLastModifiedTime(file).toMillis();
+        String entry = abs + ":" + size + ":" + mtime;
+        md.update(entry.getBytes(StandardCharsets.UTF_8));
     }
 
     // ---------------------------------------------------------------

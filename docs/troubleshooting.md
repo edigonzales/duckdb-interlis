@@ -80,6 +80,12 @@ Error: MODEL_ERROR: INTERLIS model compilation failed for modelDir=...
 - If using a URL, is the network reachable?
 - Do the `.ili` files exist in the specified directory?
 
+For model metadata functions (`ili_models`, `ili_topics`, `ili_classes`,
+`ili_attributes`, `ili_enumerations`, `ili_geometry_attributes`), use
+`model_sources := ...` and pass the model name as the first argument. Sources
+may be comma- or semicolon-separated directories, URLs, or direct `.ili`
+files.
+
 **Solution:** Use explicit local model directories:
 
 ```sql

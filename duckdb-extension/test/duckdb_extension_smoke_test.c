@@ -306,7 +306,7 @@ int main(void) {
     for (int rep = 0; rep < 100; rep++) {
         char sql[512];
         snprintf(sql, sizeof(sql),
-            "SELECT * FROM ili_models('" TESTDATA_DIR "')");
+            "SELECT * FROM ili_models(NULL, model_sources := '" TESTDATA_DIR "')");
         verify_query(conn, sql, "ili_models_repeated", 1);
     }
 
@@ -472,7 +472,7 @@ int main(void) {
     {
         char sql[512];
         snprintf(sql, sizeof(sql),
-            "SELECT * FROM ili_models('" TESTDATA_DIR "')");
+            "SELECT * FROM ili_models(NULL, model_sources := '" TESTDATA_DIR "')");
         duckdb_result r;
         p_query(conn, sql, &r);
         verify_column_name(&r, 0, "name", "models_col0");
@@ -496,7 +496,7 @@ int main(void) {
     {
         char sql[512];
         snprintf(sql, sizeof(sql),
-            "SELECT * FROM ili_topics('" TESTDATA_DIR "')");
+            "SELECT * FROM ili_topics(NULL, model_sources := '" TESTDATA_DIR "')");
         duckdb_result r;
         p_query(conn, sql, &r);
         verify_column_name(&r, 0, "model_name", "topics_col0");

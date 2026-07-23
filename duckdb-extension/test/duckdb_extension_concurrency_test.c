@@ -66,9 +66,9 @@ static void barrier_wait(void) {
 }
 
 static const char *queries[] = {
-    "SELECT * FROM ili_models('" TESTDATA_DIR "')",
-    "SELECT * FROM ili_topics('" TESTDATA_DIR "')",
-    "SELECT * FROM ili_classes('" TESTDATA_DIR "')",
+    "SELECT * FROM ili_models(NULL, model_sources := '" TESTDATA_DIR "')",
+    "SELECT * FROM ili_topics(NULL, model_sources := '" TESTDATA_DIR "')",
+    "SELECT * FROM ili_classes(NULL, model_sources := '" TESTDATA_DIR "')",
     "SELECT * FROM read_xtf_objects('" TESTDATA_XTF "', "
         "modeldir := '" TESTDATA_DIR "')",
     "SELECT * FROM read_xtf_class('" TESTDATA_XTF "', "

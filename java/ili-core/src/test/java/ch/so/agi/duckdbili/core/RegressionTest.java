@@ -56,7 +56,7 @@ class RegressionTest {
     void modelCompileFailureSilentlyReturnsEmpty() {
         IliModelService svc = new IliModelService();
         RuntimeException ex = assertThrows(RuntimeException.class, () ->
-            svc.getModels("/nonexistent/directory/that/does/not/exist"));
+            svc.getModels("/nonexistent/directory/that/does/not/exist", null));
         assertNotNull(ex.getMessage());
         assertTrue(ex.getMessage().contains("compilation failed"));
     }
@@ -85,7 +85,7 @@ class RegressionTest {
     void modelInfoReturnsEmptyOnFailure() {
         IliModelService svc = new IliModelService();
         RuntimeException ex = assertThrows(RuntimeException.class, () ->
-            svc.getModels("/nonexistent/path"));
+            svc.getModels("/nonexistent/path", null));
         assertNotNull(ex.getMessage());
         assertTrue(ex.getMessage().contains("compilation failed"));
     }
@@ -102,8 +102,8 @@ class RegressionTest {
         IliModelService svc1 = new IliModelService();
         IliModelService svc2 = new IliModelService();
 
-        String r1 = svc1.getModels(SIMPLE_DIR.toString());
-        String r2 = svc2.getModels(SIMPLE_DIR.toString());
+        String r1 = svc1.getModels(SIMPLE_DIR.toString(), null);
+        String r2 = svc2.getModels(SIMPLE_DIR.toString(), null);
 
         assertEquals(r1, r2, "Same model dir should produce same result");
     }
@@ -397,11 +397,11 @@ class RegressionTest {
                 try {
                     IliModelService svc = new IliModelService();
                     for (int i = 0; i < iterations; i++) {
-                        String models = svc.getModels(SIMPLE_DIR.toString());
+                        String models = svc.getModels(SIMPLE_DIR.toString(), null);
                         assertNotNull(models);
                         String topics = svc.getTopics(SIMPLE_DIR.toString(), null);
                         assertNotNull(topics);
-                        String classes = svc.getClasses(SIMPLE_DIR.toString(), null);
+                        String classes = svc.getClasses(SIMPLE_DIR.toString(), null, null);
                         assertNotNull(classes);
                     }
                 } catch (Exception e) {

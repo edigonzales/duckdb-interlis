@@ -299,18 +299,18 @@ public class NativeEntryPoints {
         }
 
         String cmd = getField(request.cmd());
-        String modelDir = getField(request.modeldir());
+        String modelSources = getField(request.modeldir());
         String modelName = getField(request.model());
         String className = getField(request.class_name());
 
         try {
             String result = switch (cmd != null ? cmd : "") {
-                case "models" -> getModelService().getModels(modelDir);
-                case "topics" -> getModelService().getTopics(modelDir, modelName);
-                case "classes" -> getModelService().getClasses(modelDir, modelName);
-                case "attributes" -> getModelService().getAttributes(modelDir, className);
-                case "enumerations" -> getModelService().getEnumerations(modelDir, modelName);
-                case "geometry_attributes" -> getModelService().getGeometryAttributes(modelDir, modelName, className);
+                case "models" -> getModelService().getModels(modelSources, modelName);
+                case "topics" -> getModelService().getTopics(modelSources, modelName);
+                case "classes" -> getModelService().getClasses(modelSources, modelName, className);
+                case "attributes" -> getModelService().getAttributes(modelSources, modelName, className);
+                case "enumerations" -> getModelService().getEnumerations(modelSources, modelName);
+                case "geometry_attributes" -> getModelService().getGeometryAttributes(modelSources, modelName, className);
                 default -> {
                     NativeError err = NativeError.unsupported("model_info", "Unknown command", cmd);
                     outPayload.write(allocCString(err.toJson()));
@@ -324,7 +324,7 @@ public class NativeEntryPoints {
         } catch (Exception e) {
             NativeError err = NativeError.modelError("model_info",
                     "Model info failed: " + (e.getMessage() != null ? e.getMessage() : e.getClass().getName()),
-                    e.toString(), modelDir);
+                    e.toString(), modelSources);
             outPayload.write(allocCString(err.toJson()));
             return NativeStatus.MODEL_ERROR;
         }
