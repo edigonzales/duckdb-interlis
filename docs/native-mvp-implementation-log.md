@@ -161,6 +161,54 @@ The verified local artifact recorded during this phase was:
 No npm package was published, no Git tag or release was created, and neither excluded
 repository (`interlis-language-tools`, `interlis-web-ide`) was changed.
 
+## Phase 5 — iox minimal IOM path access
+
+Repository revision: `iox-cpp` commit `36e3a7d` (`phase 5: add minimal IOM path access`).
+
+The native core now provides a small parsed `IomPath` selector with first, one-based
+index, and wildcard steps. Primitive reads return copied values and zero-based indexes;
+single primitive writes validate the model, reject wildcard or ambiguous matches, and
+recursively write nested child objects back through the parent object. Missing names,
+invalid selectors, type mismatches, and invalid write targets use the existing iox error
+categories. Documentation and focused tests were added.
+
+### Phase 5 verification
+
+- ilic-enabled Debug build and full CTest: 35/35 passed.
+- Focused `iox-test-core` IomPath cases: 5/5 passed.
+- Fresh Emscripten WASM build: passed.
+- WASM/Node tests: 10/10 passed.
+- `git diff --check`: passed.
+
+No package publication, Git tag/release, push, or excluded-repository change was made.
+
+## Phase 6 — iox native IOM geometry projection
+
+Repository revision: `iox-cpp` commit `dcd2002` (`phase 6: add native IOM geometry projection`).
+
+The native geometry module now converts model-free IOM objects into deterministic WKB
+for coordinates, multi-coordinates, polylines, directed variants, surfaces, areas, and
+multi-geometries. It supports straight and circular-arc segments, strict dimensional
+and numeric validation, holes, configurable arc sagitta, and reports whether arcs were
+approximated. GEOS integration is optional and reentrant behind `IOX_ENABLE_GEOS`; no
+GEOS download or fallback was added. The converter and WKB writer are also compiled in
+the WASM build with GEOS disabled.
+
+### Phase 6 verification
+
+- ilic-enabled Debug build and full CTest: 36/36 passed.
+- Focused geometry cases: 5/5 passed.
+- DuckDB 1.5.3 CLI decoded representative 2D and ISO 3D WKB as `POINT` and
+  `POINT Z (1 2 3)`.
+- GEOS-enabled configuration failed clearly because no local GEOS CMake package is
+  installed; GEOS remained disabled as required by the no-download policy.
+- Fresh Emscripten WASM build: passed.
+- WASM/Node tests: 10/10 passed.
+- `git diff --check`: passed after restoring the generated whitespace-only wrapper.
+
+No Java golden fixture generation, package publication, Git tag/release, push, or
+excluded-repository change was made.
+
 ## Phase 4 — iox compact ilic property descriptors
 
 Repository revision: `iox-cpp` commit `9fad2be` (`phase 4: expose compact ilic property descriptors`).
