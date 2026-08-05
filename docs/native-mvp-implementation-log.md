@@ -120,3 +120,43 @@ Results:
 4. The pre-existing documentation-canary failure is not fixed in Phase 0 because its
    triggering file is untracked user work. Later phase documentation must avoid changing
    or deleting that file; the failure will be re-evaluated after the native work is committed.
+
+## Phase 1 — `ilic` 0.10.0-SNAPSHOT line
+
+Repository revision: `ilic-fork` commit `3aa3b95` (`phase 1: begin ilic 0.10.0 snapshot line`).
+
+The compiler now has one source version contract, `0.10.0-SNAPSHOT`, derived from the
+numeric CMake project version `0.10.0` and the `SNAPSHOT` qualifier. The native CLI,
+C++/C version APIs, WASM wrapper, and the three source npm manifests use that source
+version. Concrete package artifacts use an immutable UTC timestamp and optional numeric
+build ID, for example `0.10.0-SNAPSHOT.20260805213000.123456789`. Stable npm staging is
+explicitly rejected while the source line carries the snapshot qualifier.
+
+The package verifier writes the ignored `artifacts/compiler-wasm-snapshot.json` manifest.
+The verified local artifact recorded during this phase was:
+
+```json
+{
+  "baseVersion": "0.10.0-SNAPSHOT",
+  "snapshotId": "20260805213000.123456789",
+  "createdAt": "2026-08-05T21:30:00Z",
+  "resolvedVersion": "0.10.0-SNAPSHOT.20260805213000.123456789",
+  "sourceRevision": "3aa3b95bb05b602e02041d4292255496cb66d302",
+  "tarball": "ilic-compiler-wasm-0.10.0-SNAPSHOT.20260805213000.123456789.tgz",
+  "sha256": "764784a1e497a4b1e7bf861a3d90e0099dffb40fd081ed7f3cc7f84af6b8512a"
+}
+```
+
+### Phase 1 verification
+
+- Focused npm preparation/release/version tests: 19 passed, 0 failed.
+- Fresh Emscripten WASM build with the concrete snapshot version: passed.
+- Packed and installed three-package npm consumer smoke test: passed.
+- Debug native build: passed; `build/native-mvp/ilic -version` reported
+  `ilic 0.10.0-SNAPSHOT`.
+- Native version-contract CTest: 2/2 passed.
+- Full native CTest: 131/132 passed. The sole known failure remains the documentation
+  canary rejecting the pre-existing untracked `ilic-p2-compiler-context-spec.md`.
+
+No npm package was published, no Git tag or release was created, and neither excluded
+repository (`interlis-language-tools`, `interlis-web-ide`) was changed.
