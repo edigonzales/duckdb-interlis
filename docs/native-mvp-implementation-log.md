@@ -160,3 +160,31 @@ The verified local artifact recorded during this phase was:
 
 No npm package was published, no Git tag or release was created, and neither excluded
 repository (`interlis-language-tools`, `interlis-web-ide`) was changed.
+
+## Phase 2 — owned native model compilation
+
+Repository revision: `ilic-fork` commit `a54bf070ed03cf8648c287fd252625efa5e40673`
+(`phase 2: expose owned native model compilation`).
+
+The additive C++ API `ilic::ModelCompilation` now accepts in-memory `ModelSource`
+values and a `CompilationRequest`, runs one private `detail::CompilerContext`, and
+retains that context until the owning object is destroyed or move-assigned. Its
+`metamodel::MetaModelStore` is therefore valid for native introspection after the
+compilation call. Copying is disabled; move construction and move assignment preserve
+ownership. Duplicate source URIs with different content are rejected, and `models()`
+throws for failed compilations. The C-ABI, WASM JSON API, and existing
+`CompilerSession` contract remain unchanged.
+
+### Phase 2 verification
+
+- Native `ilic_model_compilation` test: passed, covering store lifetime, move/copy
+  semantics, failed compilation, duplicate URI rejection, and independent stores.
+- Full Debug native build: passed.
+- Full native CTest: 132/133 passed. The new test and all existing tests passed; the
+  sole failure remains the documentation canary rejecting the pre-existing untracked
+  `ilic-p2-compiler-context-spec.md`.
+- Fresh Emscripten build including `ModelCompilation.cpp`: passed.
+- WASM/Node tests: 15 passed, 1 skipped, 0 failed.
+
+No npm package was published, no Git tag or release was created, and neither excluded
+repository (`interlis-language-tools`, `interlis-web-ide`) was changed.
