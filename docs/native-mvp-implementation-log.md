@@ -161,6 +161,30 @@ The verified local artifact recorded during this phase was:
 No npm package was published, no Git tag or release was created, and neither excluded
 repository (`interlis-language-tools`, `interlis-web-ide`) was changed.
 
+## Phase 4 — iox compact ilic property descriptors
+
+Repository revision: `iox-cpp` commit `9fad2be` (`phase 4: expose compact ilic property descriptors`).
+
+The native ilic adapter now exposes standalone value-only `PropertyDescriptor` and
+`GeometryDescriptor` APIs. The index copies semantic property FQNs, translated transfer
+names, cardinalities, role metadata, primitive kind classification, and geometry metadata
+without retaining pointers into the source `MetaModelStore`. Geometry values include line
+kind, coordinate dimension/domain, lexical and parsed `MaxOverlap`, standard/custom line
+forms, the default straight-segment semantics for an empty line-form list, and line
+attribute presence. Documentation and model-based coverage were added for local,
+inherited, translated, 2D/3D, area/surface/polyline, integer/double, and store-lifetime
+cases.
+
+### Phase 4 verification
+
+- ilic-enabled Debug build with the local `ilic-fork` `0.10.0-SNAPSHOT` source: passed.
+- Full ilic-enabled CTest: 34/34 passed.
+- Focused `iox-test-model-based`: 16/16 passed.
+- `git diff --check`: passed.
+
+No GEOS conversion, WASM model adapter, package publication, Git tag/release, or push was
+performed in this phase.
+
 ## Phase 3 — `ilic` geometry metadata contract
 
 Repository revision: `ilic-fork` commit `bfcf010ed8e0034a18559409fda1a030f6e79517`
