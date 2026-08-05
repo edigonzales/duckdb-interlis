@@ -161,6 +161,30 @@ The verified local artifact recorded during this phase was:
 No npm package was published, no Git tag or release was created, and neither excluded
 repository (`interlis-language-tools`, `interlis-web-ide`) was changed.
 
+## Phase 3 — `ilic` geometry metadata contract
+
+Repository revision: `ilic-fork` commit `bfcf010ed8e0034a18559409fda1a030f6e79517`
+(`phase 3: verify ilic geometry metadata contract`).
+
+No new geometry abstraction was introduced in `ilic`. A direct native metamodel test
+now verifies the existing `metamodel::LineType` representation: Surface and Area kinds,
+two-axis `CoordType`, `MaxOverlap`, built-in `STRAIGHTS`/`ARCS` line forms, a local
+Polyline type, a custom line form, and `LINE ATTRIBUTES` ownership. The fixture uses two
+decimal places for its coordinate domain because the existing semantic checker requires
+`MaxOverlap` and coordinate precision to match; parser and compiler semantics were not
+changed.
+
+### Phase 3 verification
+
+- `ilic_geometry_metadata` targeted CTest: passed.
+- Full Debug native build: passed.
+- Full native CTest: 133/134 passed. The new geometry test and all existing tests passed;
+  the sole failure remains the documentation canary rejecting the pre-existing untracked
+  `ilic-p2-compiler-context-spec.md`.
+
+No npm package was published, no Git tag or release was created, and neither excluded
+repository (`interlis-language-tools`, `interlis-web-ide`) was changed.
+
 ## Phase 2 — owned native model compilation
 
 Repository revision: `ilic-fork` commit `a54bf070ed03cf8648c287fd252625efa5e40673`
