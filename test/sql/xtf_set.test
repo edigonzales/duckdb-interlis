@@ -1,0 +1,110 @@
+# name: test/sql/xtf_set.test
+# description: native INTERLIS single primitive XTF rewrite
+# group: [sql]
+
+require interlis
+
+query IIIIIIII
+SELECT *
+FROM xtf_set('testdata/native/scan.xtf',
+             '__TEST_DIR__/xtf-set-output.xtf',
+             'NativeScan.Data.Feature',
+             'F1',
+             'Name',
+             'changed',
+             ['testdata/native/scan.ili'],
+             bid := 'B1');
+----
+B1	F1	NativeScan.Data.Feature	Name	alpha	changed	UPDATED	one primitive value rewritten
+
+query I
+SELECT Name
+FROM xtf_scan('__TEST_DIR__/xtf-set-output.xtf',
+               'NativeScan.Data.Feature',
+               ['testdata/native/scan.ili'])
+WHERE _tid = 'F1';
+----
+changed
+
+query I
+SELECT value
+FROM xtf_values('__TEST_DIR__/xtf-set-output.xtf',
+                 'NativeScan.Data.Feature',
+                 'DetailsValue.Label',
+                 ['testdata/native/scan.ili'],
+                 tid := 'F1');
+----
+nested
+
+statement error
+SELECT *
+FROM xtf_set('testdata/native/scan.xtf',
+             '__TEST_DIR__/xtf-set-mismatch.xtf',
+             'NativeScan.Data.Feature',
+             'F1',
+             'Name',
+             'rejected',
+             ['testdata/native/scan.ili'],
+             expected := 'wrong');
+----
+expected value does not match
+
+statement error
+SELECT *
+FROM xtf_set('testdata/native/scan.xtf',
+             '__TEST_DIR__/xtf-set-output.xtf',
+             'NativeScan.Data.Feature',
+             'F1',
+             'Name',
+             'again',
+             ['testdata/native/scan.ili']);
+----
+output file already exists
+
+query IIIIIIII
+SELECT *
+FROM xtf_set('testdata/native/scan.xtf',
+             '__TEST_DIR__/xtf-set-output.xtf',
+             'NativeScan.Data.Feature',
+             'F1',
+             'DetailsValue.Label',
+             'updated-nested',
+             ['testdata/native/scan.ili'],
+             bid := 'B1', overwrite := true);
+----
+B1	F1	NativeScan.Data.Feature	DetailsValue.Label	nested	updated-nested	UPDATED	one primitive value rewritten
+
+query I
+SELECT value
+FROM xtf_values('__TEST_DIR__/xtf-set-output.xtf',
+                 'NativeScan.Data.Feature',
+                 'DetailsValue.Label',
+                 ['testdata/native/scan.ili'],
+                 tid := 'F1');
+----
+updated-nested
+
+statement error
+SELECT *
+FROM xtf_set('testdata/native/scan.xtf',
+             'testdata/native/scan.xtf',
+             'NativeScan.Data.Feature',
+             'F1',
+             'Name',
+             'nope',
+             ['testdata/native/scan.ili']);
+----
+input and output must be different files
+
+statement error
+SELECT *
+FROM xtf_set('testdata/native/scan.xtf',
+             '__TEST_DIR__/xtf-set-no-bid.xtf',
+             'NativeScan.Data.Feature',
+             'F1',
+             'Name',
+             'nope',
+             ['testdata/native/scan.ili'],
+             bid := 'wrong-bid');
+----
+found no matching object

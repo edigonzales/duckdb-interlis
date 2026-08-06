@@ -88,6 +88,17 @@ index, and wildcard selectors. Optional `tid` and `bid` filters are applied whil
 events are streamed, and the result preserves transfer order with a one-based
 `occurrence` column.
 
+## Phase 12 — single-value XTF rewrite
+
+`xtf_set` is a local, side-effecting table function that rewrites one primitive value
+by TID (and optionally BID). It refuses wildcards, roles, geometries, collections,
+transient properties, same-path input/output, and ambiguous matches. The original
+file is never changed: output is streamed into a uniquely named temporary file in
+the destination directory and moved into place only after a successful writer close.
+`expected` provides optimistic lexical conflict detection; `overwrite := true` permits
+an existing destination. The rewrite performs structural XTF/IOM checks, not full
+INTERLIS semantic validation.
+
 ## Development build
 
 From a checkout with submodules initialized and a working vcpkg toolchain:

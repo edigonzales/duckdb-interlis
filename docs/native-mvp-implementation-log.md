@@ -184,6 +184,28 @@ separate.
 - `test/sql/geometry_metadata.test`: 18 assertions passed.
 - `git diff --check`: passed before the phase commit.
 
+## Phase 12 — transactional `xtf_set`
+
+`xtf_set` rewrites exactly one primitive value in a local XTF stream. Bind validates
+the distinct normalized input/output paths, mandatory TID, non-wildcard IOM path, and
+the model descriptor for the target property. Execution reads and writes events
+sequentially, uses a file-backed temporary sink in the output directory, applies the
+optional `expected` lexical conflict check, and atomically moves the completed file
+into place only after writer close and exactly one match. A failed rewrite removes the
+temporary file and leaves the input untouched. The pinned DuckDB 1.5.3 table-function
+API has no table-function stability flag; statement caching is disabled and the global
+state is explicitly single-threaded for this side-effecting operation.
+
+### Phase 12 verification
+
+- Debug and Release extension/static host builds: passed.
+- `test/sql/xtf_set.test`: 23 assertions passed for direct and nested rewrites,
+  expected-value conflicts, output overwrite policy, BID filtering, and same-path
+  rejection.
+- Rewritten output was rescanned successfully through both `xtf_scan` and
+  `xtf_values`; the source fixture remains unchanged.
+- `git diff --check`: passed before the phase commit.
+
 The static DuckDB host and its SQLLogicTest runner receive ilic/iox link dependencies
 through a deferred parent-directory CMake hook; the exported extension target keeps
 those local build-only targets out of its install interface. No remote model download,
