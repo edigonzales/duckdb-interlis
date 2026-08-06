@@ -1,41 +1,47 @@
 # AGENTS.md
 
-Toolchain for development on macOS ARM64.
+Native C++ toolchain for macOS ARM64.
 
 ## Paths
 
 | Tool | Location |
 |---|---|
-| GraalVM JDK | `/Users/stefan/.sdkman/candidates/java/25.0.3-graal` |
-| `native-image` | `/Users/stefan/.sdkman/candidates/java/25.0.3-graal/bin/native-image` |
 | DuckDB CLI | `~/bin/duckdb` (v1.5.3) |
 | CMake | `~/cmake-4.1.0/CMake.app/Contents/bin/cmake` |
+| ilic-fork | `/Users/stefan/sources/ilic-fork` |
+| iox-cpp | `/Users/stefan/sources/iox-cpp` |
 
 ## Environment
 
-Source `scripts/env.sh` before running builds or tests:
+Source `scripts/env.sh` before local builds and tests:
 
 ```bash
 source scripts/env.sh
 ```
 
-`scripts/env.sh` is local (gitignored). Template: `scripts/env.example.sh`.
+The file is local and gitignored. Use `scripts/env.example.sh` as its template.
+Set `INTERLIS_ILIC_SOURCE_DIR`, `INTERLIS_IOX_SOURCE_DIR`, and
+`VCPKG_TOOLCHAIN_PATH` for a local dependency build.
 
-## Build Commands
+## Build commands
 
 | Script | Purpose |
 |---|---|
-| `scripts/doctor.sh` | Verify toolchain |
-| `scripts/build-java.sh` | Compile and test Java |
-| `scripts/build-native.sh` | Build GraalVM native shared library |
-| `scripts/build-extension.sh` | Build DuckDB C API extension |
-| `scripts/build-all.sh` | Full build |
-| `scripts/dev-duckdb.sh` | Start DuckDB with extension loaded |
-| `scripts/smoke-test.sh` | Run smoke tests |
-| `scripts/download-testdata.sh` | Download external test data |
+| `scripts/doctor.sh` | Verify native toolchain and dependencies |
+| `scripts/build-extension.sh` | Build the Release loadable extension |
+| `scripts/build-all.sh` | Build Debug/Release and run SQLLogicTests |
+| `scripts/dev-duckdb.sh` | Start DuckDB with the native extension loaded |
+| `scripts/smoke-test.sh` | Run the native smoke SQL |
+| `scripts/download-testdata.sh` | Download optional external fixtures |
+
+Equivalent extension-template targets are `make debug`, `make release`, and
+`make test_release`.
 
 ## Important
 
-- DuckDB version: **1.5.3** (pinned)
-- Extension loading requires `-unsigned` flag
-- Never commit `scripts/env.sh`
+- DuckDB version: **1.5.3** (pinned).
+- Extension loading requires the `-unsigned` flag.
+- Models are local `.ili` files or non-recursive local directories in the MVP.
+- No Java, GraalVM, validator, remote model repository, or `ATTACH` support is
+  part of the native MVP.
+- Never commit `scripts/env.sh`.

@@ -12,25 +12,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  java-tests:
-    name: Java Tests
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: graalvm/setup-graalvm@v1
-        with:
-          java-version: '25'
-          distribution: 'graalvm'
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          cache: 'gradle'
-
-      - name: Run Java tests
-        run: ./gradlew :java:ili-core:test :java:ili-native:test
-
-  build:
-    name: Build ${{ matrix.classifier }}
-    needs: java-tests
+  native-build:
+    name: Native build (${{ matrix.classifier }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -39,313 +22,60 @@ jobs:
           - classifier: linux-x86_64
             os: ubuntu-24.04
             duckdb-platform: linux_amd64
-            native-lib: libduckdb_ili_native.so
-            duckdb-cli-url: https://github.com/duckdb/duckdb/releases/download/v1.5.3/duckdb_cli-linux-amd64.zip
-            duckdb-cli-bin: duckdb
           - classifier: linux-aarch64
             os: ubuntu-24.04-arm
             duckdb-platform: linux_arm64
-            native-lib: libduckdb_ili_native.so
-            duckdb-cli-url: https://github.com/duckdb/duckdb/releases/download/v1.5.3/duckdb_cli-linux-arm64.zip
-            duckdb-cli-bin: duckdb
           - classifier: osx-aarch64
             os: macos-15
             duckdb-platform: osx_arm64
-            native-lib: libduckdb_ili_native.dylib
-            duckdb-cli-url: https://github.com/duckdb/duckdb/releases/download/v1.5.3/duckdb_cli-osx-universal.zip
-            duckdb-cli-bin: duckdb
           - classifier: windows-x86_64
             os: windows-2025
             duckdb-platform: windows_amd64
-            native-lib: libduckdb_ili_native.dll
-            duckdb-cli-url: https://github.com/duckdb/duckdb/releases/download/v1.5.3/duckdb_cli-windows-amd64.zip
-            duckdb-cli-bin: duckdb.exe
 
     steps:
       - uses: actions/checkout@v4
-
-      - uses: graalvm/setup-graalvm@v1
         with:
-          java-version: '25'
-          distribution: 'graalvm'
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          cache: 'gradle'
+          submodules: recursive
 
-      - name: Build GraalVM native shared library
+      - name: Configure vcpkg environment
         shell: bash
         run: |
-          echo "GRAALVM_HOME=$GRAALVM_HOME"
-          ls "$GRAALVM_HOME/bin/native-image"* 2>/dev/null || echo "native-image missing"
-          ./gradlew :java:ili-native:nativeSharedLibrary
-          ls -la java/ili-native/build/native/ 2>/dev/null || echo "No native output"
-
-      - name: Generate SBOM (CycloneDX)
-        shell: bash
-        run: |
-          ./gradlew cyclonedxBom
-          find java -name "*sbom*.json" -type f
-
-      - name: Upload SBOM artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: sbom-${{ matrix.classifier }}
-          path: |
-            java/*/build/sbom/*.json
-
-      - name: Copy native library to extension directory
-        shell: bash
-        run: |
-          mkdir -p duckdb-extension/build/native/current
-          NATIVE_DIR="java/ili-native/build/native"
-          NATIVE_FILE="libduckdb_ili_native"
-          ls -la "$NATIVE_DIR/" || echo "No files in $NATIVE_DIR"
-          for ext in .dylib .so .dll ""; do
-            if [ -f "${NATIVE_DIR}/${NATIVE_FILE}${ext}" ]; then
-              cp "${NATIVE_DIR}/${NATIVE_FILE}${ext}" duckdb-extension/build/native/current/
-              echo "Copied ${NATIVE_FILE}${ext}"
-              break
-            fi
-          done
-
-      - name: Embed native library
-        shell: bash
-        run: |
-          NATIVE_LIB=$(find duckdb-extension/build/native/current -name "libduckdb_ili_native.*" | head -1)
-          if [ -z "$NATIVE_LIB" ]; then
-            echo "ERROR: Native library not found"
-            find duckdb-extension/build/native/current -type f || true
+          if [ -z "${VCPKG_INSTALLATION_ROOT:-}" ]; then
+            echo "VCPKG_INSTALLATION_ROOT is not available on this runner" >&2
             exit 1
           fi
-          PYTHON=$(command -v python3 || command -v python)
-          $PYTHON scripts/embed_native_lib.py "$NATIVE_LIB" duckdb-extension/build/embedded_native_lib.c
-          echo "Generated embedded_native_lib.c"
+          echo "VCPKG_TOOLCHAIN_PATH=$VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" >> "$GITHUB_ENV"
 
-      - name: Build DuckDB C extension
+      - name: Build native Release extension
+        shell: bash
+        env:
+          DUCKDB_PLATFORM: ${{ matrix.duckdb-platform }}
+        run: |
+          make release \
+            VCPKG_TOOLCHAIN_PATH="$VCPKG_TOOLCHAIN_PATH" \
+            DISABLE_SANITIZER=1
+
+      - name: Run native SQLLogicTests
+        shell: bash
+        run: make test_release
+
+      - name: Collect extension artifact
         shell: bash
         run: |
-          cmake -S duckdb-extension -B duckdb-extension/build -DCMAKE_BUILD_TYPE=Release
-          cmake --build duckdb-extension/build --config Release -j
-          # Multi-config generators (VS, Xcode) output to Debug/Release/ subdirectory
-          # Single-config generators (Make, Ninja) ignore --config and output to build/
-          echo "Build output structure:"
-          find duckdb-extension/build -name "interlis.duckdb_extension" -type f 2>/dev/null || true
-          LIB=$(find duckdb-extension/build -name "interlis.duckdb_extension" -type f | head -1)
-          if [ -n "$LIB" ] && [ "$LIB" != "duckdb-extension/build/interlis.duckdb_extension" ]; then
-            mv "$LIB" duckdb-extension/build/interlis.duckdb_extension
-            echo "Moved $LIB -> interlis.duckdb_extension"
-          fi
-          ls -la duckdb-extension/build/interlis.duckdb_extension
+          mkdir -p "artifact/${{ matrix.classifier }}"
+          cp build/release/extension/interlis/interlis.duckdb_extension "artifact/${{ matrix.classifier }}/interlis.duckdb_extension"
+          shasum -a 256 "artifact/${{ matrix.classifier }}/interlis.duckdb_extension" > "artifact/${{ matrix.classifier }}/interlis.duckdb_extension.sha256" || \
+            sha256sum "artifact/${{ matrix.classifier }}/interlis.duckdb_extension" > "artifact/${{ matrix.classifier }}/interlis.duckdb_extension.sha256"
 
-      - name: Append extension metadata
-        shell: bash
-        run: |
-          EXT_VERSION=$(cat VERSION)
-          PYTHON=$(command -v python3 || command -v python)
-          $PYTHON scripts/append_extension_metadata.py \
-            -l duckdb-extension/build/interlis.duckdb_extension \
-            -n interlis \
-            -p ${{ matrix.duckdb-platform }} \
-             -dv v1.2.0 \
-            -ev "$EXT_VERSION" \
-            -o duckdb-extension/build/interlis.duckdb_extension
-
-      - name: Set writable HOME for DuckDB (Windows CI workaround)
-        if: runner.os == 'Windows'
-        shell: bash
-        run: |
-          DUCKDB_HOME="${{ github.workspace }}/.duckdb_home"
-          mkdir -p "$DUCKDB_HOME"
-          echo "HOME=$DUCKDB_HOME" >> $GITHUB_ENV
-
-      - name: Install DuckDB CLI
-        shell: bash
-        run: |
-          curl -L -o duckdb_cli.zip "${{ matrix.duckdb-cli-url }}"
-          unzip -o duckdb_cli.zip
-          chmod +x ${{ matrix.duckdb-cli-bin }}
-          ./${{ matrix.duckdb-cli-bin }} --version
-
-      - name: Smoke tests
-        shell: bash
-        run: |
-          EXT_PATH="${{ github.workspace }}/duckdb-extension/build/interlis.duckdb_extension"
-          ./${{ matrix.duckdb-cli-bin }} -unsigned -cmd "LOAD '$EXT_PATH'" < sql/smoke.sql
-
-      - name: Regression tests (intentional errors ignored)
-        shell: bash
-        run: |
-          EXT_PATH="${{ github.workspace }}/duckdb-extension/build/interlis.duckdb_extension"
-          ./${{ matrix.duckdb-cli-bin }} -unsigned -cmd "LOAD '$EXT_PATH'" < sql/regression.sql || true
-
-      - name: Concurrency tests
-        shell: bash
-        run: |
-          EXT_PATH="${{ github.workspace }}/duckdb-extension/build/interlis.duckdb_extension"
-          ./${{ matrix.duckdb-cli-bin }} -unsigned -cmd "LOAD '$EXT_PATH'" < sql/concurrency.sql
-
-      - name: Generate checksums
-        shell: bash
-        run: |
-          EXT_PATH="duckdb-extension/build/interlis.duckdb_extension"
-          if command -v sha256sum &>/dev/null; then
-            sha256sum "$EXT_PATH" > "${EXT_PATH}.sha256"
-          elif command -v shasum &>/dev/null; then
-            shasum -a 256 "$EXT_PATH" > "${EXT_PATH}.sha256"
-          else
-            echo "WARNING: No sha256sum or shasum available"
-          fi
-          echo "SHA-256:"
-          cat "${EXT_PATH}.sha256" 2>/dev/null || true
-
-      - name: Upload extension artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: interlis-${{ matrix.classifier }}
-          path: |
-            duckdb-extension/build/interlis.duckdb_extension
-            duckdb-extension/build/interlis.duckdb_extension.sha256
-
-  sanitizer:
-    name: Sanitizer (ASan + UBSan + LSan)
-    needs: java-tests
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: graalvm/setup-graalvm@v1
-        with:
-          java-version: '25'
-          distribution: 'graalvm'
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          cache: 'gradle'
-
-      - name: Build GraalVM native shared library
-        run: |
-          ./gradlew :java:ili-native:nativeSharedLibrary
-
-      - name: Copy native library
-        run: |
-          mkdir -p duckdb-extension/build/native/current
-          cp java/ili-native/build/native/libduckdb_ili_native.so duckdb-extension/build/native/current/
-
-      - name: Embed native library
-        run: |
-          python3 scripts/embed_native_lib.py \
-            duckdb-extension/build/native/current/libduckdb_ili_native.so \
-            duckdb-extension/build/embedded_native_lib.c
-
-      - name: Build C extension with sanitizers
-        run: |
-          cmake -S duckdb-extension -B duckdb-extension/build \
-            -DCMAKE_BUILD_TYPE=Debug \
-            -DCMAKE_C_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer -g"
-          cmake --build duckdb-extension/build -j
-
-      - name: Append extension metadata
-        run: |
-          EXT_VERSION=$(cat VERSION)
-          python3 scripts/append_extension_metadata.py \
-            -l duckdb-extension/build/interlis.duckdb_extension \
-            -n interlis \
-            -p linux_amd64 \
-            -dv v1.2.0 \
-            -ev "$EXT_VERSION" \
-            -o duckdb-extension/build/interlis.duckdb_extension
-
-      - name: Compile and run native smoke test with sanitizers
-        run: |
-          cc -fsanitize=address,undefined -g \
-            -o duckdb-extension/test/native_smoke_test \
-            duckdb-extension/test/native_smoke_test.c \
-            -Iduckdb-extension/src/include \
-            -Ijava/ili-native/build/native \
-            -ldl -lpthread
-          LSAN_OPTIONS="exitcode=0" \
-          ILI_NATIVE_LIB="java/ili-native/build/native/libduckdb_ili_native.so" \
-            duckdb-extension/test/native_smoke_test
-
-      - name: Download libduckdb for extension smoke test
-        run: |
-          curl -fsSL -o libduckdb.zip \
-            https://github.com/duckdb/duckdb/releases/download/v1.5.3/libduckdb-linux-amd64.zip
-          unzip -o libduckdb.zip
-
-      - name: Compile and run DuckDB extension smoke test with sanitizers
-        run: |
-          cc -g \
-            -o duckdb-extension/test/duckdb_extension_smoke_test \
-            duckdb-extension/test/duckdb_extension_smoke_test.c \
-            -Iduckdb-extension/src/include \
-            -ldl -lpthread
-          ASAN_OPTIONS="detect_leaks=1" \
-          LSAN_OPTIONS="exitcode=0" \
-          LD_LIBRARY_PATH=".:$LD_LIBRARY_PATH" \
-          DUCKDB_LIB="libduckdb.so" \
-          INTERLIS_EXTENSION="duckdb-extension/build/interlis.duckdb_extension" \
-            duckdb-extension/test/duckdb_extension_smoke_test
-
-  thread-sanitizer:
-    name: ThreadSanitizer
-    needs: java-tests
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: graalvm/setup-graalvm@v1
-        with:
-          java-version: '25'
-          distribution: 'graalvm'
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          cache: 'gradle'
-
-      - name: Build GraalVM native shared library
-        run: |
-          ./gradlew :java:ili-native:nativeSharedLibrary
-
-      - name: Copy native library
-        run: |
-          mkdir -p duckdb-extension/build/native/current
-          cp java/ili-native/build/native/libduckdb_ili_native.so duckdb-extension/build/native/current/
-
-      - name: Embed native library
-        run: |
-          python3 scripts/embed_native_lib.py \
-            duckdb-extension/build/native/current/libduckdb_ili_native.so \
-            duckdb-extension/build/embedded_native_lib.c
-
-      - name: Build C extension with TSAN
-        run: |
-          cmake -S duckdb-extension -B duckdb-extension/build \
-            -DCMAKE_BUILD_TYPE=Debug \
-            -DCMAKE_C_FLAGS="-fsanitize=thread -fno-omit-frame-pointer -g"
-          cmake --build duckdb-extension/build -j
-
-      - name: Append extension metadata
-        run: |
-          EXT_VERSION=$(cat VERSION)
-          python3 scripts/append_extension_metadata.py \
-            -l duckdb-extension/build/interlis.duckdb_extension \
-            -n interlis \
-            -p linux_amd64 \
-            -dv v1.2.0 \
-            -ev "$EXT_VERSION" \
-            -o duckdb-extension/build/interlis.duckdb_extension
-
-      - name: Compile and run native smoke test with TSAN
-        run: |
-          cc -fsanitize=thread -g \
-            -o duckdb-extension/test/native_smoke_test_tsan \
-            duckdb-extension/test/native_smoke_test.c \
-            -Iduckdb-extension/src/include \
-            -Ijava/ili-native/build/native \
-            -ldl -lpthread
-          ILI_NATIVE_LIB="java/ili-native/build/native/libduckdb_ili_native.so" \
-            duckdb-extension/test/native_smoke_test_tsan
+          path: artifact/${{ matrix.classifier }}
 
   deploy:
-    name: Deploy to Repository
+    name: Deploy extension repository
     if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
-    needs: build
+    needs: native-build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -353,35 +83,29 @@ jobs:
           pattern: interlis-*
           merge-multiple: false
 
-      - name: Organize into repository structure
+      - name: Organize repository tree
+        shell: bash
         run: |
-          # Struktur: v1.5.3/<platform>/interlis.duckdb_extension
           mkdir -p repo/v1.5.3/{osx_arm64,linux_amd64,linux_arm64,windows_amd64}
-          
           declare -A PLATFORM_MAP=(
-            ["linux-x86_64"]="linux_amd64"
-            ["linux-aarch64"]="linux_arm64"
-            ["osx-aarch64"]="osx_arm64"
-            ["windows-x86_64"]="windows_amd64"
+            [linux-x86_64]=linux_amd64
+            [linux-aarch64]=linux_arm64
+            [osx-aarch64]=osx_arm64
+            [windows-x86_64]=windows_amd64
           )
-          
           for dir in interlis-*/; do
-            classifier=$(basename "$dir" | sed 's/interlis-//')
-            platform=${PLATFORM_MAP[$classifier]}
+            classifier="${dir#interlis-}"
+            classifier="${classifier%/}"
+            platform="${PLATFORM_MAP[$classifier]}"
             cp "$dir/interlis.duckdb_extension" "repo/v1.5.3/$platform/"
-            echo "Copied $classifier -> $platform"
           done
-          
-          echo "Repository structure:"
-          find repo -type f
 
-      - name: Deploy via SCP
-        uses: appleboy/scp-action@v0.1.7
+      - uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
-          source: "repo/*"
+          source: repo/*
           target: ${{ secrets.DEPLOY_PATH }}
           strip_components: 1
           rm: false
@@ -389,24 +113,17 @@ jobs:
   release:
     name: Create GitHub Release
     if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
-    needs: build
+    needs: native-build
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      attestations: write
     steps:
       - uses: actions/download-artifact@v4
         with:
           pattern: interlis-*
           merge-multiple: false
 
-      - uses: actions/download-artifact@v4
-        with:
-          pattern: sbom-*
-          merge-multiple: false
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v2
         with:
           draft: ${{ github.event_name == 'workflow_dispatch' }}
           files: |

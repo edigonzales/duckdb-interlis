@@ -1,52 +1,22 @@
-# SQL Examples
+# SQL examples
 
-Runnable examples demonstrating every SQL function of the `interlis` extension.
+The domain-oriented SQL files in this directory are retained as historical
+INTERLIS examples and fixtures. Files `02`–`09` target the pre-native API and
+are not part of the native MVP test contract. Use the native functions documented
+in [docs/functions.md](../../docs/functions.md) for current queries.
 
-## Recommended Order
+The maintained native example is:
 
-The examples are numbered in a logical progression. Run them in order if you're new:
+| File | What it shows |
+|---|---|
+| `10-native-mvp.sql` | Components, model introspection, `xtf_scan`, `xtf_values`, and `xtf_set` |
 
-| # | File | What it shows | Needs XTF? |
-|---|------|---------------|------------|
-| 01 | `01-version.sql` | Verify extension loaded, display version info | No |
-| 02 | `02-validate.sql` | Validate XTF files, filter validation messages | Yes |
-| 03 | `03-inspect.sql` | Introspect models, topics, classes, attributes, enums | No |
-| 04 | `04-read-objects.sql` | Generic XTF reader (JSON output, no schema) | Yes |
-| 05 | `05-read-class.sql` | Typed class reader, structures, geometry | Yes |
-| 06 | `06-read-structures.sql` | Inspect STRUCTURE definitions in models | No |
-| 07 | `07-read-association.sql` | Read associations, JOIN with classes | Yes |
-| 08 | `08-import.sql` | Generate DDL/DML import SQL, manual import | Yes |
-| 09 | `09-geometry-attributes.sql` | Inspect geometry attribute metadata | No |
+Run it against a locally built extension:
 
-## Running Examples
-
-### With dev script (extension auto-loaded):
-
-```bash
-scripts/dev-duckdb.sh < sql/examples/01-version.sql
+```sh
+scripts/dev-duckdb.sh < sql/examples/10-native-mvp.sql
 ```
 
-### With DuckDB directly:
-
-```bash
-duckdb -unsigned -cmd "LOAD '/path/to/interlis.duckdb_extension'" < sql/examples/01-version.sql
-```
-
-## Test Data
-
-All examples use synthetic test data in `testdata/synthetic/`:
-
-| Directory | Model | Description |
-|---|---|---|
-| `simple/` | `SO_AGI_Simple_20260605` | Basic classes with scalars, enums |
-| `structures/` | `SO_AGI_Structures_20260605` | Classes with STRUCTURE and BAG OF attributes |
-| `geometries/` | `SO_AGI_Geometries_20260605` | Classes with POINT, SURFACE geometry types |
-| `associations/` | `SO_AGI_Associations_20260605` | Classes linked via associations |
-
-## Key Patterns
-
-- **Named parameters**: All INTERLIS functions use DuckDB's `name := value` syntax for optional parameters
-- **Fully qualified names**: Classes and associations use `Model.Topic.Name` convention
-- **`_json` suffix**: Structure/BAG attributes returned as JSON
-- **`_geom` suffix**: Geometry attributes returned as `GEOMETRY` (v2 typed path) or WKT `VARCHAR` (v1 fallback)
-- **`_ref` suffix**: Association role references (foreign keys to `xtf_tid`)
+The older files and synthetic test data remain available for domain comparison;
+they are not loaded by CI and do not imply validator, remote-model, or import
+support in the native MVP.

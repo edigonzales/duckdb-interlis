@@ -2,6 +2,18 @@
 
 All notable changes to the duckdb-interlis extension.
 
+# 0.2.0 — native C++ MVP
+
+- Replaced the former runtime and C bridge with a fully native DuckDB C++ extension.
+- Added local model compilation/introspection through ilic and iox-cpp.
+- Added streaming `xtf_scan`, primitive `xtf_values`, and transactional `xtf_set`.
+- Added native GEOMETRY projection with optional GEOS support.
+- Removed validator, remote model repositories, `ATTACH`, and legacy import/read APIs
+  from the MVP contract.
+
+The entries below describe the pre-native implementation history and are retained
+for release traceability.
+
 ## [0.1.0-dev] — Unreleased
 
 ### Added
@@ -34,3 +46,5 @@ All notable changes to the duckdb-interlis extension.
 - Error handling: NativeError JSON protocol with proper status codes, no more `"ERROR:"` prefixes in payloads
 - ABI handshake with version and capability negotiation
 - Thread-safe initialization with exactly-once guarantee
+The entries below describe the pre-native implementation history and are retained
+for release traceability.

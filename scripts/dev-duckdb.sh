@@ -9,8 +9,16 @@ if [[ -f "$SCRIPT_DIR/env.sh" ]]; then
 fi
 
 DUCKDB="${DUCKDB_CLI:-$HOME/bin/duckdb}"
-EXTENSION="${DUCKDB_ILI_EXTENSION:-$REPO_ROOT/duckdb-extension/build/interlis.duckdb_extension}"
-NATIVE_LIB="${DUCKDB_ILI_NATIVE_LIB:-$REPO_ROOT/java/ili-native/build/native/libduckdb_ili_native.dylib}"
+EXTENSION="${INTERLIS_EXTENSION:-$REPO_ROOT/build/release/extension/interlis/interlis.duckdb_extension}"
 
-export DUCKDB_ILI_NATIVE_LIB="$NATIVE_LIB"
+if [[ ! -x "$DUCKDB" ]]; then
+    echo "DuckDB CLI not found: $DUCKDB" >&2
+    exit 1
+fi
+if [[ ! -f "$EXTENSION" ]]; then
+    echo "Native extension not found: $EXTENSION" >&2
+    echo "Run scripts/build-extension.sh first." >&2
+    exit 1
+fi
+
 exec "$DUCKDB" -unsigned -cmd "LOAD '$EXTENSION';" "$@"

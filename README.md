@@ -1,215 +1,115 @@
 # duckdb-interlis
 
-DuckDB extension providing INTERLIS/XTF functionality via GraalVM Native Image.
+`duckdb-interlis` is a fully native C++ DuckDB extension for local INTERLIS/XTF
+workflows. It integrates [`ilic`](https://github.com/edigonzales/ilic-fork),
+[`iox-cpp`](https://codeberg.org/edigonzales/iox-cpp), and GEOS with DuckDB
+1.5.3. The native MVP has no validator, accepts local model sources only, and
+does not implement `ATTACH` integration.
 
-## Setup (macOS ARM64)
+The MVP focuses on deterministic model introspection, streaming typed XTF reads,
+primitive path reads, and one-value rewrites. It has no Java runtime, GraalVM
+artifact, embedded native library, or C bridge.
 
-### Prerequisites
+## Quick start
 
-| Tool | Min Version | Install |
-|---|---|---|
-| GraalVM JDK | 25.0.3 | `sdk install java 25.0.3-graal` |
-| DuckDB CLI | 1.5.3 | `brew install duckdb` or download from GitHub |
-| CMake | 3.15+ | `brew install cmake` or download from Kitware |
-| Xcode CLT | any | `xcode-select --install` |
+Start DuckDB with unsigned extensions enabled and load the extension:
 
-### Environment
-
-```bash
-cp scripts/env.example.sh scripts/env.sh
-# Edit scripts/env.sh if your paths differ
-source scripts/env.sh
-```
-
-### Build
-
-```bash
-scripts/build-all.sh
-```
-
-### Manual Testing
-
-```bash
-scripts/dev-duckdb.sh
-```
-
-Then in DuckDB:
-
-```sql
-SELECT ili_extension_version();
-```
-
-### Smoke Test
-
-```bash
-scripts/smoke-test.sh
-```
-
-## Installation & Loading
-
-The extension ships as a single self-contained file — the GraalVM native library is embedded and extracted automatically on first use.
-
-> **Important**: The extension is **unsigned**. You must start DuckDB with the `-unsigned` flag when loading.
-
-### Verifying After Load
-
-```sql
-SELECT ili_extension_version();
--- => 0.1.0-dev
-
-SELECT ili_native_version();
--- => {"nativeVersion": "0.1.0", "coreVersion": ...}
-```
-
----
-
-### Production: Install from Repository
-
-> **Note**: The extension is **unsigned**. DuckDB must be started with `-unsigned`, otherwise `INSTALL` and `LOAD` will fail.
-
-```bash
-duckdb -unsigned
-```
-
-```sql
-INSTALL interlis FROM 'https://duckdb-ext.interlis.guru';
-LOAD interlis;
-```
-
-If DuckDB is already running without `-unsigned`:
-
-```sql
-SET allow_unsigned_extensions = true;
-INSTALL interlis FROM 'https://duckdb-ext.interlis.guru';
-LOAD interlis;
-```
-
-DuckDB uses the repository root `https://duckdb-ext.interlis.guru` and appends the product-version path automatically. For example, DuckDB `1.5.3` requests `.../v1.5.3/osx_arm64/interlis.duckdb_extension` and installs the downloaded extension to `~/.duckdb/extensions/v1.5.3/osx_arm64/interlis.duckdb_extension`.
-
-The embedded GraalVM native library is a separate artifact. On first `LOAD`, it is extracted into the ABI-based native cache, for example `~/.duckdb/extensions/v1.2.0/osx_arm64/{hashed_filename}`.
-
-This repository can publish multiple DuckDB product versions side by side. If the `C_STRUCT` ABI stays compatible, the same binary can be copied into multiple release directories such as `v1.5.3/` and `v1.5.4/`. If the ABI or behavior changes, publish a newly built binary for that DuckDB release.
-
-### Production: Manual Load from Release Binary
-
-Download the `interlis.duckdb_extension` for your platform from [GitHub Releases](https://github.com/SOAG/duckdb-interlis/releases):
-
-| Platform | File |
-|---|---|
-| Linux x86_64 | `interlis-linux-x86_64/interlis.duckdb_extension` |
-| Linux ARM64 | `interlis-linux-aarch64/interlis.duckdb_extension` |
-| macOS ARM64 | `interlis-osx-aarch64/interlis.duckdb_extension` |
-| Windows x86_64 | `interlis-windows-x86_64/interlis.duckdb_extension` |
-
-```bash
+```sh
 duckdb -unsigned
 ```
 
 ```sql
 LOAD '/path/to/interlis.duckdb_extension';
-SELECT ili_extension_version();
+SELECT *
+FROM xtf_scan('/path/to/data.xtf',
+               'MyModel.MyTopic.MyClass',
+               ['/path/to/model.ili']);
 ```
 
-The native library is extracted automatically to the ABI-based cache `~/.duckdb/extensions/v1.2.0/{PLATFORM}/{hashed_filename}` on first load.
+`xtf_set` writes a rewritten transfer to a distinct output file after exactly
+one matching object has been found:
 
-### Development: Build & Load Locally
+```sql
+SELECT *
+FROM xtf_set('/path/to/data.xtf',
+             '/path/to/data-updated.xtf',
+             'MyModel.MyTopic.MyClass',
+             'obj-1', 'Name', 'new value',
+             ['/path/to/model.ili']);
+```
 
-```bash
-# 1. Setup environment (once)
+See [docs/functions.md](docs/functions.md) for the complete native SQL API and
+[docs/limitations.md](docs/limitations.md) for the intentionally narrow MVP
+scope.
+
+## Build from source
+
+Prerequisites on macOS ARM64 are DuckDB 1.5.3, CMake 4.1 or newer, an AppleClang
+toolchain, and a local vcpkg installation with GEOS available. The sibling
+checkouts can be supplied explicitly:
+
+```sh
 cp scripts/env.example.sh scripts/env.sh
-# Edit paths if needed
 source scripts/env.sh
-
-# 2. Full build
+scripts/doctor.sh
 scripts/build-all.sh
+```
 
-# 3. Start DuckDB with extension pre-loaded
+For a local development checkout, `scripts/env.sh` may set
+`INTERLIS_ILIC_SOURCE_DIR`, `INTERLIS_IOX_SOURCE_DIR`, `VCPKG_TOOLCHAIN_PATH`,
+and `DUCKDB_CLI`. Without sibling overrides, CMake fetches the pinned ilic and
+iox-cpp revisions recorded in `CMakeLists.txt`.
+
+The extension artifact is written below
+`build/release/extension/interlis/interlis.duckdb_extension`. A direct local
+load uses `-unsigned`:
+
+```sh
 scripts/dev-duckdb.sh
 ```
 
-The dev script sets `DUCKDB_ILI_NATIVE_LIB` so the extension finds the native library at build time. In production, the native library is embedded in the extension binary.
+Run the native SQL smoke test with:
 
-### Native Library Resolution Order
-
-The extension finds the GraalVM native library in this order:
-
-1. **Environment variable** `DUCKDB_ILI_NATIVE_LIB` — used for local development
-2. **DuckDB extension cache** `~/.duckdb/extensions/v1.2.0/{PLATFORM}/{EXT_VERSION}_{ABI_VERSION}_{PLATFORM}_{SHA256_SHORT}_libduckdb_ili_native.dylib` — extracted from the embedded blob on first load
-3. **Local fallback paths** `build/native/current/`, `../java/ili-native/build/native/`
-
----
-
-## Usage
-
-New to duckdb-interlis? Start with **[docs/getting-started.md](docs/getting-started.md)** for a step-by-step walkthrough.
-
-See **[docs/functions.md](docs/functions.md)** for a complete function reference with examples for every function.
-
-Quick start examples are in **`sql/examples/`** — run them with:
-
-```bash
-duckdb -unsigned -cmd "LOAD '/path/to/interlis.duckdb_extension';" < sql/examples/01-version.sql
+```sh
+scripts/smoke-test.sh
 ```
 
-or with the dev helper:
+The root Makefile remains the canonical extension-template entry point:
 
-```bash
-scripts/dev-duckdb.sh < sql/examples/01-version.sql
+```sh
+make debug
+make release
+make test_release
 ```
 
-See **[sql/examples/README.md](sql/examples/README.md)** for an index of all examples and the recommended order.
+## Native API overview
+
+The current functions are:
+
+- `interlis_version()` and `interlis_components()`;
+- `ili_models`, `ili_classes`, `ili_properties`, and
+  `ili_geometry_properties`;
+- `xtf_scan`, `xtf_values`, and `xtf_set`.
+
+Model sources are local `.ili` files or non-recursive directories containing
+`.ili` files. XTF input and output are local regular files. Unsupported object
+content is preserved in `_unsupported_json` where the scan contract allows it;
+rewrites never modify the input file in place.
 
 ## Documentation
 
-| Document | Description |
-|---|---|
-| [docs/getting-started.md](docs/getting-started.md) | Step-by-step guide for new users |
-| [docs/installation.md](docs/installation.md) | Detailed installation, environment variables |
-| [docs/security.md](docs/security.md) | Security architecture: hash verification, atomic extraction, symlink rejection |
-| [docs/functions.md](docs/functions.md) | Complete function reference with examples (15 SQL functions) |
-| [docs/current-api.md](docs/current-api.md) | Phase 0 baseline: all functions with signatures, NULL/error behaviour, known limitations |
-| [docs/validation-profiles.md](docs/validation-profiles.md) | Validation profiles: FULL, STRUCTURAL, FAST |
-| [docs/error-handling.md](docs/error-handling.md) | Error codes, error visibility, common scenarios |
-| [docs/limitations.md](docs/limitations.md) | Known limitations: file size, memory, parallelism, construct coverage |
-| [docs/performance.md](docs/performance.md) | Performance characteristics, caching, debug metrics |
-| [docs/troubleshooting.md](docs/troubleshooting.md) | Common problems and solutions |
-| [docs/native-abi.md](docs/native-abi.md) | Native ABI reference (for developers) |
-| [docs/architecture.md](docs/architecture.md) | System architecture overview |
-| [docs/production-readiness.md](docs/production-readiness.md) | Production readiness checklist |
-| [docs/VERSIONS.md](docs/VERSIONS.md) | Version types and compatibility |
-| [CHANGELOG.md](CHANGELOG.md) | Release history and changes |
-
-## Debug Mode
-
-Set `DUCKDB_ILI_DEBUG=1` for diagnostic output on stderr:
-
-```bash
-DUCKDB_ILI_DEBUG=1 duckdb -unsigned -c "SELECT count(*) FROM validate_xtf('file.xtf');"
-```
-
-See [docs/performance.md](docs/performance.md) and [docs/troubleshooting.md](docs/troubleshooting.md) for details.
-
-## Project Structure
-
-```
-duckdb-ili/
-├── CHANGELOG.md            # Release history
-├── java/                   # Java business logic (GraalVM)
-│   ├── ili-core/           # Core services
-│   └── ili-native/         # GraalVM native image C API
-├── duckdb-extension/       # DuckDB C API extension
-├── scripts/                # Build & dev scripts
-├── sql/                    # SQL examples (see sql/examples/README.md)
-├── testdata/               # Test data (synthetic + external)
-└── docs/                   # Documentation
-```
+- [Native architecture](docs/native-architecture.md)
+- [Functions](docs/functions.md)
+- [Geometry](docs/geometry.md)
+- [Model sources](docs/model-sources.md)
+- [Limitations](docs/limitations.md)
+- [Development](docs/development.md)
+- [Release and publishing](docs/release.md)
+- [Migration from GraalVM](docs/migration-from-graalvm.md)
+- [Installation](docs/installation.md)
+- [Security](docs/security.md)
+- [Changelog](CHANGELOG.md)
 
 ## License
 
-MIT - see [LICENSE](LICENSE)
-
-## DuckDB Version
-
-Development and automated tests are currently pinned to **DuckDB 1.5.3**.
-
-For distribution, DuckDB resolves extension downloads by **DuckDB product version** such as `v1.5.3`, while `C_STRUCT` compatibility is checked separately through the embedded **DuckDB C API version** such as `v1.2.0`. Multiple DuckDB releases can be supported by publishing matching release directories in the repository. Reusing the same binary across releases is fine only when the `C_STRUCT` ABI and runtime behavior remain compatible.
+MIT — see [LICENSE](LICENSE).

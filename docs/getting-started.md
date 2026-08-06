@@ -1,207 +1,54 @@
-# Getting Started with duckdb-interlis
+# Getting started
 
-This guide walks you through installing the extension and running your first INTERLIS queries in DuckDB — no build tools required.
+Load the native extension into DuckDB 1.5.3:
 
-## What is duckdb-interlis?
-
-`duckdb-interlis` is a DuckDB extension that brings the Swiss [INTERLIS](https://www.interlis.ch) geodata standard directly into your SQL workflow. With it you can:
-
-- **Validate** INTERLIS transfer files (`.xtf`) against their data models
-- **Read** XTF data as SQL tables with proper column types
-- **Inspect** INTERLIS model definitions — classes, attributes, geometry types, enumerations
-- **Generate** `CREATE TABLE` / `INSERT` SQL for importing XTF into a DuckDB schema
-- **Work with geometries** natively via DuckDB's `GEOMETRY` type and the `spatial` extension
-
-## Quick Install
-
-### Prerequisites
-
-- **DuckDB** `1.5.3` is the current pinned development/test version
-- One of: Linux x86_64, Linux ARM64, macOS ARM64, Windows x86_64
-
-No Java, GraalVM, or other runtimes needed — the extension is self-contained.
-
-The repository can publish binaries for multiple DuckDB product versions side by side. DuckDB resolves downloads by product version, while `C_STRUCT` compatibility is checked separately from the extension metadata.
-
-### Install from Repository
-
-Start DuckDB with the `-unsigned` flag (the extension is unsigned):
-
-```bash
-duckdb -unsigned
-```
-
-Then install and load:
-
-```sql
-INSTALL interlis FROM 'https://duckdb-ext.interlis.guru';
-LOAD interlis;
-```
-
-If DuckDB is already running without `-unsigned`:
-
-```sql
-SET allow_unsigned_extensions = true;
-INSTALL interlis FROM 'https://duckdb-ext.interlis.guru';
-LOAD interlis;
-```
-
-DuckDB uses the repository root above and appends the DuckDB product-version path automatically. For example, DuckDB `1.5.3` requests `.../v1.5.3/osx_arm64/interlis.duckdb_extension`.
-
-If the same `C_STRUCT`-compatible binary works for multiple DuckDB releases, it can be published under multiple release directories. Otherwise, each DuckDB product version needs its own rebuilt binary.
-
-### Manual Install from Release
-
-Download `interlis.duckdb_extension` for your platform from [GitHub Releases](https://github.com/SOAG/duckdb-interlis/releases):
-
-| Platform | File |
-|---|---|
-| Linux x86_64 | `interlis-linux-x86_64/interlis.duckdb_extension` |
-| Linux ARM64 | `interlis-linux-aarch64/interlis.duckdb_extension` |
-| macOS ARM64 | `interlis-osx-aarch64/interlis.duckdb_extension` |
-| Windows x86_64 | `interlis-windows-x86_64/interlis.duckdb_extension` |
-
-```bash
+```sh
 duckdb -unsigned
 ```
 
 ```sql
 LOAD '/path/to/interlis.duckdb_extension';
+SELECT * FROM interlis_components();
 ```
 
-## Verify Installation
+Compile a local model and inspect its classes:
 
 ```sql
-SELECT ili_extension_version();
--- => 0.1.0-dev
-
-SELECT ili_native_version();
--- => {"nativeVersion":"0.1.0","coreVersion":"0.1.0",...}
-```
-
-If both return results, you're ready to go.
-
-## First Steps
-
-### 1. Validate an XTF File
-
-```sql
--- Quick summary: is the file valid?
-SELECT json_extract(result, '$.valid') AS valid,
-       json_extract(result, '$.errorCount') AS errors
-FROM (
-    SELECT validate_xtf_summary_json('my_data.xtf', '/path/to/models') AS result
+SELECT * FROM ili_classes(
+  ['/path/to/model.ili'],
+  model := 'MyModel'
 );
 ```
 
-```sql
--- Detailed messages (e.g. only errors):
-SELECT severity, message, line, xtf_tid, class_name
-FROM validate_xtf('my_data.xtf', model_sources := '/path/to/models')
-WHERE severity = 'ERROR';
-```
-
-### 2. Inspect the Data Model
+Read one class from a local XTF file:
 
 ```sql
--- What models are available?
-SELECT name, version
-FROM ili_models(NULL, model_sources := '/path/to/models');
-
--- What classes exist in a model?
-SELECT topic_name, class_name, kind
-FROM ili_classes('MyModel', model_sources := '/path/to/models');
-
--- What attributes does a class have?
-SELECT attr_name, type_name, kind, is_mandatory
-FROM ili_attributes('MyModel',
-    model_sources := '/path/to/models',
-    class := 'Gemeinde');
-
--- What geometry types are defined?
-SELECT class_name, attribute_name, geometry_kind, dimension
-FROM ili_geometry_attributes(NULL, model_sources := '/path/to/models');
+SELECT _tid, Name, Geometry
+FROM xtf_scan('/path/to/data.xtf',
+               'MyModel.Data.Feature',
+               ['/path/to/model.ili']);
 ```
 
-### 3. Read XTF Data as a Table
+Read a nested primitive value:
 
 ```sql
--- Read a specific class with typed columns:
-SELECT xtf_tid, Name, bfs_nr
-FROM read_xtf_class('my_data.xtf',
-    class := 'MyModel.Topic.Gemeinde',
-    model_sources := '/path/to/models');
+SELECT *
+FROM xtf_values('/path/to/data.xtf',
+                'MyModel.Data.Feature',
+                'Details.Label',
+                ['/path/to/model.ili']);
 ```
 
-Geometry attributes appear as `_geom` columns (`GEOMETRY` type). Use DuckDB's `spatial` extension for spatial analysis:
+Write one primitive value to a new transfer:
 
 ```sql
-INSTALL spatial;
-LOAD spatial;
-SELECT Name, ST_Area(Flaeche_geom) AS area_m2
-FROM read_xtf_class('my_data.xtf',
-    class := 'MyModel.Topic.FlaechenObjekt',
-    model_sources := '/path/to/models');
+SELECT *
+FROM xtf_set('/path/to/data.xtf',
+             '/path/to/data-updated.xtf',
+             'MyModel.Data.Feature',
+             'F1', 'Name', 'updated',
+             ['/path/to/model.ili']);
 ```
 
-### 4. Import into a Schema
-
-```sql
--- Generate CREATE TABLE + INSERT statements:
-SELECT sql_statement
-FROM ili_generate_import_sql('my_data.xtf',
-    schema := 'my_schema',
-    model_sources := '/path/to/models');
-```
-
-Three import modes available:
-- `'create'` (default): `CREATE TABLE IF NOT EXISTS` + `INSERT`
-- `'replace'`: `DROP TABLE` + `CREATE TABLE` + `INSERT`
-- `'append'`: `INSERT` only (tables must exist)
-
-## Using Remote Model Repositories
-
-Instead of a local directory, you can point `model_sources` to INTERLIS model repositories:
-
-```sql
-SELECT * FROM validate_xtf('data.xtf',
-    model_sources := 'https://models.interlis.ch;https://geo.so.ch/models');
-```
-
-Set a default via environment variable to avoid repeating:
-
-```bash
-export ILI_DEFAULT_MODELDIR='https://models.interlis.ch;https://geo.so.ch/models'
-```
-
-Then omit `model_sources` in queries — it defaults automatically.
-
-For model metadata, use the model name first and pass one or more model sources
-with `model_sources`. Sources may be directories, direct `.ili` files, or
-repository URLs; commas and semicolons are accepted as separators:
-
-```sql
-SELECT model_name, topic_name, class_name, kind
-FROM ili_classes(
-    'SO_ARP_SEin_Konfiguration_20250115',
-    model_sources := '/path/to/SO_ARP_SEin_Konfiguration_20250115.ili,/path/to/models/AGI;https://models.interlis.ch'
-);
-```
-
-## Next Steps
-
-- **[functions.md](functions.md)** — Complete reference for all 15 SQL functions
-- **[sql/examples/](../sql/examples/)** — Runnable example scripts covering every function
-- **[limitations.md](limitations.md)** — Known limitations and edge cases
-- **[validation-profiles.md](validation-profiles.md)** — Validation profiles: full, structural, fast
-
-## Troubleshooting
-
-| Problem | Solution |
-|---|---|
-| Extension won't load | Start DuckDB with `-unsigned`, or `SET allow_unsigned_extensions = true` |
-| "Failed to initialize native library" | Check network access if using remote model repos; extension may need to download on first use |
-| Model compilation fails | Verify `model_sources` path exists and contains `.ili` files; remote repos must be reachable |
-| Empty results / no rows | Check that class names are fully qualified (`Model.Topic.Class`); try `ili_classes()` to list available names |
-
-More in **[troubleshooting.md](troubleshooting.md)**.
+The MVP does not validate data, resolve remote models, support `ATTACH`, or
+modify a transfer in place.

@@ -8,31 +8,35 @@ if [[ -f "$SCRIPT_DIR/env.sh" ]]; then
     source "$SCRIPT_DIR/env.sh"
 fi
 
-if [[ -z "${GRAALVM_HOME:-}" ]]; then
-    echo "ERROR: GRAALVM_HOME is not set. Run: source scripts/env.sh" >&2
-    exit 1
-fi
-export JAVA_HOME="$GRAALVM_HOME"
-export PATH="$JAVA_HOME/bin:$PATH"
-
 cd "$REPO_ROOT"
-
-echo "=== Stage 1: Doctor ==="
 "$SCRIPT_DIR/doctor.sh"
 
-echo ""
-echo "=== Stage 2: Build Java ==="
-"$SCRIPT_DIR/build-java.sh"
+CMAKE="${CMAKE:-cmake}"
+if [[ "$CMAKE" == */* ]]; then
+    export PATH="$(dirname "$CMAKE"):$PATH"
+fi
+native_flags="-DINTERLIS_BUILD_NATIVE_TESTS=OFF"
+if [[ -n "${INTERLIS_ILIC_SOURCE_DIR:-}" ]]; then
+    native_flags+=" -DINTERLIS_ILIC_SOURCE_DIR=${INTERLIS_ILIC_SOURCE_DIR}"
+fi
+if [[ -n "${INTERLIS_IOX_SOURCE_DIR:-}" ]]; then
+    native_flags+=" -DINTERLIS_IOX_SOURCE_DIR=${INTERLIS_IOX_SOURCE_DIR}"
+fi
 
-echo ""
-echo "=== Stage 3: Build Native Library ==="
-"$SCRIPT_DIR/build-native.sh" || echo "WARNING: Native build failed (Phase 1 will complete this)"
+make debug \
+    CMAKE="$CMAKE" \
+    EXT_DEBUG_FLAGS="$native_flags" \
+    VCPKG_TOOLCHAIN_PATH="${VCPKG_TOOLCHAIN_PATH:-}" \
+    VCPKG_TARGET_TRIPLET="${VCPKG_TARGET_TRIPLET:-}" \
+    DISABLE_SANITIZER=1
 
-echo ""
-echo "=== Stage 4: Build DuckDB Extension ==="
-"$SCRIPT_DIR/build-extension.sh"
+make release \
+    CMAKE="$CMAKE" \
+    EXT_RELEASE_FLAGS="$native_flags" \
+    VCPKG_TOOLCHAIN_PATH="${VCPKG_TOOLCHAIN_PATH:-}" \
+    VCPKG_TARGET_TRIPLET="${VCPKG_TARGET_TRIPLET:-}" \
+    DISABLE_SANITIZER=1
 
-echo ""
-echo "=== Build complete ==="
-echo "Extension: $REPO_ROOT/duckdb-extension/build/interlis.duckdb_extension"
-echo "Native lib (may not exist yet): $REPO_ROOT/java/ili-native/build/native/libduckdb_ili_native.dylib"
+make test_release
+
+echo "Native build and SQLLogicTests completed."

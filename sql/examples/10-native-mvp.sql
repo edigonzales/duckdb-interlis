@@ -1,14 +1,8 @@
--- Native MVP smoke test. The fixture is deliberately local and deterministic.
-SELECT interlis_version();
+-- Current native MVP example.
+SELECT * FROM interlis_components();
 
-SELECT count(*) AS component_count
-FROM interlis_components();
-
-SELECT name, version, language, ili_version
+SELECT *
 FROM ili_models(['testdata/native/introspection.ili']);
-
-SELECT count(*) AS class_count
-FROM ili_classes(['testdata/native/introspection.ili']);
 
 SELECT _tid, Name
 FROM xtf_scan('testdata/native/simple.xtf',
@@ -20,3 +14,13 @@ FROM xtf_values('testdata/native/simple.xtf',
                 'NativeIntrospection.Data.Feature',
                 'Name',
                 ['testdata/native/introspection.ili']);
+
+SELECT *
+FROM xtf_set('testdata/native/simple.xtf',
+             '/tmp/duckdb-interlis-native-mvp-updated.xtf',
+             'NativeIntrospection.Data.Feature',
+             'F1',
+             'Name',
+             'updated',
+             ['testdata/native/introspection.ili'],
+             overwrite := true);

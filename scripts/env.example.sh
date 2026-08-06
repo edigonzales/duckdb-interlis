@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# Template for scripts/env.sh (copy to scripts/env.sh and adjust paths)
-export GRAALVM_HOME="/path/to/graalvm-jdk-25"
-export JAVA_HOME="$GRAALVM_HOME"
+# Optional local overrides for the native C++ build. This file is safe to copy
+# to scripts/env.sh; scripts/env.sh is intentionally gitignored.
+export DUCKDB_VERSION="1.5.3"
 export DUCKDB_CLI="$HOME/bin/duckdb"
 export CMAKE="$HOME/cmake-4.1.0/CMake.app/Contents/bin/cmake"
-export DUCKDB_ILI_NATIVE_LIB="$PWD/java/ili-native/build/native/libduckdb_ili_native.dylib"
-export DUCKDB_ILI_EXTENSION="$PWD/duckdb-extension/build/interlis.duckdb_extension"
-# C_STRUCT ABI version for extension metadata (check your DuckDB CLI's supported version)
-export DUCKDB_ABI_VERSION="v1.2.0"
+# export INTERLIS_ILIC_SOURCE_DIR="/path/to/ilic-fork"
+# export INTERLIS_IOX_SOURCE_DIR="/path/to/iox-cpp"
+# export VCPKG_TOOLCHAIN_PATH="/path/to/vcpkg/scripts/buildsystems/vcpkg.cmake"
+# export VCPKG_TARGET_TRIPLET="arm64-osx"
+# export DUCKDB_BUILD_DIR="$PWD/build/release"

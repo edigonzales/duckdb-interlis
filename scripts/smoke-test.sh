@@ -9,16 +9,9 @@ if [[ -f "$SCRIPT_DIR/env.sh" ]]; then
 fi
 
 DUCKDB="${DUCKDB_CLI:-$HOME/bin/duckdb}"
-EXTENSION="${DUCKDB_ILI_EXTENSION:-$REPO_ROOT/duckdb-extension/build/interlis.duckdb_extension}"
-NATIVE_LIB="${DUCKDB_ILI_NATIVE_LIB:-$REPO_ROOT/java/ili-native/build/native/libduckdb_ili_native.dylib}"
+EXTENSION="${INTERLIS_EXTENSION:-$REPO_ROOT/build/release/extension/interlis/interlis.duckdb_extension}"
 
-echo "=== Smoke Test ==="
+echo "=== Native DuckDB smoke test ==="
 echo "Extension: $EXTENSION"
-echo "Native lib: $NATIVE_LIB"
-echo ""
-
-export DUCKDB_ILI_NATIVE_LIB="$NATIVE_LIB"
-"$DUCKDB" -unsigned -cmd "LOAD '$EXTENSION'" < "$REPO_ROOT/sql/smoke.sql"
-
-echo ""
+"$DUCKDB" -unsigned -cmd "LOAD '$EXTENSION';" < "$REPO_ROOT/sql/smoke.sql"
 echo "=== Smoke test passed ==="
