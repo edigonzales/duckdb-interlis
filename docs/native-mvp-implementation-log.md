@@ -245,6 +245,37 @@ remain documented for installations that provide Ninja. No legacy implementation
 deleted, and no package publication, Git tag/release, push, or excluded-repository
 change was made.
 
+## Phase 8 — local INTERLIS model sources and compiled model
+
+Repository revision: this phase's `phase 8: compile local INTERLIS model sources`
+commit.
+
+`ModelSourceResolver` now accepts local regular `.ili` files and non-recursive
+directories. It reads source bytes unchanged, assigns normalized absolute paths as
+deterministic URIs, sorts directory entries, removes duplicate normalized paths, and
+uses every resolved file as a `CompilationRequest` root. HTTP(S) model sources fail
+with the exact native-MVP message rather than falling back to a repository. Empty
+directories, missing files, non-`.ili` files, and non-regular files produce clear
+DuckDB input errors.
+
+`CompiledModel` owns `ilic::ModelCompilation` and then builds `iox::ilic::IlicModelIndex`
+from the retained `MetaModelStore`. Compiler failures are summarized as a bounded
+DuckDB exception with source location, code/message, and total detail count. No global
+model cache was introduced.
+
+### Phase 8 verification
+
+- Debug extension build with local `/Users/stefan/sources/ilic-fork` and
+  `/Users/stefan/sources/iox-cpp`: passed.
+- Optional native `interlis_model_source_test`: passed; it covers individual files,
+  directory filtering/order, duplicate removal, missing and URL errors, invalid
+  compilation, two model sources, and index/store lifetime.
+- `git diff --check`: passed.
+
+The default build keeps the optional native test target disabled. No remote model
+download, legacy implementation deletion, package publication, Git tag/release, push,
+or excluded-repository change was made.
+
 ## Phase 4 — iox compact ilic property descriptors
 
 Repository revision: `iox-cpp` commit `9fad2be` (`phase 4: expose compact ilic property descriptors`).

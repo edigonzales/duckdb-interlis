@@ -25,6 +25,31 @@ The current extension registers only `interlis_version()`. The model, XTF scan, 
 and update registration functions are explicit no-op seams for Phases 8–12, so no
 global static registrators or parallel legacy framework are introduced.
 
+## Phase 8 — local model sources
+
+Phase 8 adds `ModelSourceResolver` and `CompiledModel`. Model inputs are local regular
+`.ili` files or one-level directories. Directory entries are filtered and sorted
+lexicographically, paths are normalized before URI assignment, and duplicate paths are
+removed. HTTP(S) sources fail with the explicit native-MVP message
+`Remote model sources are not supported by the native MVP`; there is no repository or
+network fallback.
+
+All resolved sources are compilation roots. This is deliberately strict: a directory
+containing unrelated invalid models can fail the compilation, so callers that need
+reproducibility should prefer an explicit file list. `CompiledModel` owns the ilic
+compilation context and constructs `iox::ilic::IlicModelIndex` only after successful
+compilation. The index therefore remains valid for the lifetime of the compiled model;
+there is no global model cache.
+
+Compiler diagnostics are converted to one bounded DuckDB exception summary with source
+location, diagnostic code/message, and an omitted-detail count. Errors are not returned
+as a JSON payload.
+
+The optional native resolver test can be enabled in a DuckDB build with
+`-DINTERLIS_BUILD_NATIVE_TESTS=ON`; it covers file/directory resolution, sorting,
+duplicates, missing and remote inputs, invalid compilation, two model sources, and
+index/store lifetime.
+
 DuckDB 1.5.3 exposes the C++ extension hook as `Extension::Load(ExtensionLoader &)`,
 so the implementation uses that concrete API while keeping the requested
 `InterlisExtension` boundary and explicit registration functions.

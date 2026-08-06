@@ -23,6 +23,7 @@ set(INTERLIS_ILIC_VERSION "0.10.0-SNAPSHOT" CACHE STRING "ilic source version")
 set(INTERLIS_IOX_VERSION "0.2.0" CACHE STRING "iox-cpp source version")
 set(INTERLIS_DUCKDB_VERSION "1.5.3" CACHE STRING "DuckDB product version")
 set(INTERLIS_GEOS_VERSION "3.x" CACHE STRING "GEOS component version family")
+option(INTERLIS_BUILD_NATIVE_TESTS "Build native duckdb-interlis model-source tests" OFF)
 
 include(FetchContent)
 
@@ -87,6 +88,8 @@ set(EXTENSION_SOURCES
     src/functions/xtf_scan.cpp
     src/functions/xtf_values.cpp
     src/functions/xtf_set.cpp
+    src/model/model_source_resolver.cpp
+    src/model/compiled_model.cpp
 )
 
 include_directories(src/include)
@@ -109,6 +112,9 @@ target_compile_definitions(interlis_loadable_extension PRIVATE
     INTERLIS_GEOS_VERSION="${INTERLIS_GEOS_VERSION}"
 )
 
+set_property(TARGET interlis_extension APPEND PROPERTY LINK_LIBRARIES iox::ilic ilic::core)
+set_property(TARGET interlis_loadable_extension APPEND PROPERTY LINK_LIBRARIES iox::ilic ilic::core)
+
 set(INTERLIS_COMPONENT_REVISIONS
     "duckdb-interlis=working-tree"
     "ilic=${INTERLIS_ILIC_COMMIT}"
@@ -121,3 +127,19 @@ install(
     EXPORT "${DUCKDB_EXPORT_SET}"
     LIBRARY DESTINATION "${INSTALL_LIB_DIR}"
     ARCHIVE DESTINATION "${INSTALL_LIB_DIR}")
+
+if(INTERLIS_BUILD_NATIVE_TESTS)
+    enable_testing()
+    add_executable(interlis_model_source_test test/model/model_source_resolver_test.cpp)
+    target_include_directories(interlis_model_source_test PRIVATE src src/include)
+    target_link_libraries(interlis_model_source_test PRIVATE
+        interlis_extension
+        duckdb_static
+        duckdb_generated_extension_loader
+        core_functions_extension
+        parquet_extension
+        iox::ilic
+        ilic::core
+    )
+    add_test(NAME interlis_model_source_test COMMAND interlis_model_source_test)
+endif()
