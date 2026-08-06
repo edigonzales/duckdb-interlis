@@ -1,0 +1,19 @@
+# name: test/sql/geometry_metadata.test
+# description: native INTERLIS geometry introspection
+# group: [sql]
+
+require interlis
+
+query IIIIII
+SELECT property_name,
+       geometry_kind,
+       coordinate_domain_fqn,
+       dimension,
+       max_overlap_lexical,
+       array_to_string(line_forms, ',')
+FROM ili_geometry_properties('NativeIntrospection.Data.Feature', ['testdata/native/introspection.ili'])
+ORDER BY property_name;
+----
+AreaGeometry	AREA	NativeIntrospection.Coord2	2	NULL	STRAIGHTS
+Geometry	SURFACE	NativeIntrospection.Coord2	2	0.02	STRAIGHTS,ARCS
+LocalGeometry	POLYLINE	NativeIntrospection.Coord2	2	NULL	STRAIGHTS

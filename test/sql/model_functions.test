@@ -1,0 +1,37 @@
+# name: test/sql/model_functions.test
+# description: native INTERLIS model introspection
+# group: [sql]
+
+require interlis
+
+query II
+SELECT component, version
+FROM interlis_components()
+ORDER BY component;
+----
+duckdb	1.5.3
+duckdb-interlis	0.2.0
+geos	3.x
+ilic	0.10.0-SNAPSHOT
+iox-cpp	0.2.0
+
+query III
+SELECT name, language, ili_version
+FROM ili_models(['testdata/native/introspection.ili']);
+----
+NativeIntrospection	en	2.3
+
+query II
+SELECT class_fqn, kind
+FROM ili_classes(['testdata/native/introspection.ili'], model := 'NativeIntrospection');
+----
+NativeIntrospection.Data.Feature	CLASS
+
+query IIII
+SELECT property_name, interlis_type, duckdb_type, is_transient
+FROM ili_properties('NativeIntrospection.Data.Feature', ['testdata/native/introspection.ili']);
+----
+Name	TextType	VARCHAR	false
+Geometry	LineType	GEOMETRY	false
+AreaGeometry	LineType	GEOMETRY	false
+LocalGeometry	LineType	GEOMETRY	false

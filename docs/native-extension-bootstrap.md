@@ -21,8 +21,9 @@ The DuckDB and extension-ci-tools repositories are pinned submodules under
 network access; otherwise CMake uses the exact commit SHA fallback recorded in the
 cache variables.
 
-The current extension registers only `interlis_version()`. The model, XTF scan, value,
-and update registration functions are explicit no-op seams for Phases 8–12, so no
+The extension exposes `interlis_version()` and the component table
+`interlis_components()`. Model, XTF scan, value, and update registration functions are
+explicit seams, with model compilation/introspection implemented in Phases 8–9. No
 global static registrators or parallel legacy framework are introduced.
 
 ## Phase 8 — local model sources
@@ -53,6 +54,20 @@ index/store lifetime.
 DuckDB 1.5.3 exposes the C++ extension hook as `Extension::Load(ExtensionLoader &)`,
 so the implementation uses that concrete API while keeping the requested
 `InterlisExtension` boundary and explicit registration functions.
+
+## Phase 9 — native model introspection
+
+The extension now provides list-based local model introspection through
+`ili_models`, `ili_classes`, `ili_properties`, and `ili_geometry_properties`. Each bind
+compiles its `model_sources` once and retains the resulting `CompiledModel` in bind
+data. Class rows follow model/topic/declaration order; property rows follow transfer
+order and retain transient declarations. Geometry rows expose lexical and numeric
+`MAX OVERLAPS` separately, coordinate-domain FQNs, dimensions, line forms, and the
+straight/arc/custom/attribute flags from the iox descriptors.
+
+`interlis_components()` reports the extension, ilic, iox-cpp, GEOS, and pinned DuckDB
+versions. SQLLogicTests cover the component contract, model/class/property output, and
+geometry metadata using the checked-in native fixture.
 
 ## Development build
 

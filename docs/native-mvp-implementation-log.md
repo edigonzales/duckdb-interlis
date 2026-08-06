@@ -161,6 +161,35 @@ The verified local artifact recorded during this phase was:
 No npm package was published, no Git tag or release was created, and neither excluded
 repository (`interlis-language-tools`, `interlis-web-ide`) was changed.
 
+## Phase 9 — native model introspection
+
+The native extension now exposes the requested list-based introspection surface:
+`interlis_components()`, `ili_models(model_sources)`, `ili_classes(model_sources,
+model := NULL)`, `ili_properties(class_name, model_sources)`, and
+`ili_geometry_properties(class_name, model_sources)`. Model source arrays are compiled
+once during bind; bind data retains the compiled model and materialized rows for
+deterministic execution without recompilation. Class traversal preserves model/topic/
+declaration order, property traversal follows transfer order, and geometry metadata is
+copied from the iox descriptor API with lexical and numeric overlap values kept
+separate.
+
+### Phase 9 verification
+
+- Release build with local `/Users/stefan/sources/ilic-fork` and
+  `/Users/stefan/sources/iox-cpp`: passed with sanitizers disabled for the standalone
+  CLI/test-runner verification.
+- Neutral DuckDB CLI load with `-unsigned`: component, model, class, property, and
+  geometry queries returned the expected rows from `testdata/native/introspection.ili`.
+- `test/sql/model_functions.test`: 31 assertions passed.
+- `test/sql/geometry_metadata.test`: 18 assertions passed.
+- `git diff --check`: passed before the phase commit.
+
+The static DuckDB host and its SQLLogicTest runner receive ilic/iox link dependencies
+through a deferred parent-directory CMake hook; the exported extension target keeps
+those local build-only targets out of its install interface. No remote model download,
+legacy implementation deletion, package publication, Git tag/release, push, or
+excluded-repository change was made.
+
 ## Phase 5 — iox minimal IOM path access
 
 Repository revision: `iox-cpp` commit `36e3a7d` (`phase 5: add minimal IOM path access`).
