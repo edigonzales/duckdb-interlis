@@ -86,6 +86,7 @@ set(EXTENSION_SOURCES
     src/functions/xtf_scan.cpp
     src/functions/xtf_values.cpp
     src/functions/xtf_set.cpp
+    src/xtf/xtf_stream.cpp
     src/model/model_source_resolver.cpp
     src/model/compiled_model.cpp
 )

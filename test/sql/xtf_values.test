@@ -1,0 +1,57 @@
+# name: test/sql/xtf_values.test
+# description: native INTERLIS primitive XTF path values
+# group: [sql]
+
+require interlis
+
+query IIIII
+SELECT tid, occurrence, value, bid, class_name
+FROM xtf_values('testdata/native/scan.xtf',
+                 'NativeScan.Data.Feature',
+                 'Name',
+                 ['testdata/native/scan.ili'])
+ORDER BY tid;
+----
+F1	1	alpha	B1	NativeScan.Data.Feature
+F2	1	beta	B1	NativeScan.Data.Feature
+
+query IIIII
+SELECT tid, occurrence, value, bid, class_name
+FROM xtf_values('testdata/native/scan.xtf',
+                 'NativeScan.Data.Feature',
+                 'Tags[*].Value',
+                 ['testdata/native/scan.ili'],
+                 tid := 'F1', bid := 'B1');
+----
+F1	1	one	B1	NativeScan.Data.Feature
+F1	2	two	B1	NativeScan.Data.Feature
+
+query III
+SELECT tid, occurrence, value
+FROM xtf_values('testdata/native/scan.xtf',
+                 'NativeScan.Data.Feature',
+                 'DetailsValue.Label',
+                 ['testdata/native/scan.ili'],
+                 tid := 'F1');
+----
+F1	1	nested
+
+query I
+SELECT count(*)
+FROM xtf_values('testdata/native/scan.xtf',
+                 'NativeScan.Data.Feature',
+                 'Name',
+                 ['testdata/native/scan.ili'],
+                 tid := 'does-not-exist');
+----
+0
+
+statement error
+SELECT *
+FROM xtf_values('testdata/native/scan.xtf',
+                 'NativeScan.Data.Feature',
+                 'DetailsValue',
+                 ['testdata/native/scan.ili'],
+                 tid := 'F1');
+----
+IOM path target is not primitive

@@ -2,10 +2,9 @@
 
 #include "model/compiled_model.hpp"
 #include "model/model_source_resolver.hpp"
+#include "xtf/xtf_stream.hpp"
 
 #include "duckdb/common/exception.hpp"
-#include "duckdb/common/file_open_flags.hpp"
-#include "duckdb/common/file_system.hpp"
 #include "duckdb/common/operator/double_cast_operator.hpp"
 #include "duckdb/function/table_function.hpp"
 #include "duckdb/main/extension/extension_loader.hpp"
@@ -32,8 +31,6 @@
 namespace duckdb {
 
 namespace {
-
-constexpr idx_t XTF_INPUT_BUFFER_SIZE = 64U * 1024U;
 
 struct ScanProperty final {
     iox::ilic::PropertyDescriptor descriptor;
@@ -81,13 +78,8 @@ struct XtfScanGlobalState final : GlobalTableFunctionState {
 };
 
 struct XtfScanLocalState final : LocalTableFunctionState {
-    unique_ptr<FileHandle> file;
-    unique_ptr<iox::ilic::IlicXtfReader> reader;
+    XtfStreamState stream;
     unique_ptr<iox::geometry::IomGeometryConverter> geometryConverter;
-    std::vector<uint8_t> inputBuffer = std::vector<uint8_t>(XTF_INPUT_BUFFER_SIZE);
-    std::string currentBid;
-    bool inputFinished = false;
-    bool streamFinished = false;
 };
 
 std::optional<std::string> NamedString(const TableFunctionBindInput &input, const char *name) {
@@ -402,7 +394,7 @@ Value GeometryValue(const ScanProperty &property, const iox::IomValue &value,
                     const iox::IomObject &object) {
     if (!value.isObject()) {
         throw InvalidInputException("%s geometry value is not an IOM object",
-                                    ReadContext(bindData, &object, property.name, local.currentBid));
+                                    ReadContext(bindData, &object, property.name, local.stream.currentBid));
     }
     const auto result = local.geometryConverter->toWkb(value.object(), *property.descriptor.geometry);
     return Value::GEOMETRY(result.wkb.data(), result.wkb.size());
@@ -416,7 +408,7 @@ Value PropertyValue(const ScanProperty &property, const iox::IomObject &object,
     }
     if (count != 1) {
         throw InvalidInputException("%s expected one value but found %llu",
-                                    ReadContext(bindData, &object, property.name, local.currentBid),
+                                    ReadContext(bindData, &object, property.name, local.stream.currentBid),
                                     static_cast<unsigned long long>(count));
     }
     const auto &value = object.value(property.name, 0);
@@ -428,70 +420,20 @@ Value PropertyValue(const ScanProperty &property, const iox::IomObject &object,
     }
     if (!value.isPrimitive()) {
         throw InvalidInputException("%s expected a primitive value",
-                                    ReadContext(bindData, &object, property.name, local.currentBid));
+                                    ReadContext(bindData, &object, property.name, local.stream.currentBid));
     }
-    return ParsePrimitive(property, value.primitive(), bindData, object, local.currentBid);
-}
-
-void ThrowDiagnostics(const XtfScanBindData &bindData, std::vector<iox::Diagnostic> diagnostics) {
-    for (const auto &diagnostic : diagnostics) {
-        if (diagnostic.severity != iox::DiagnosticSeverity::Error &&
-            diagnostic.severity != iox::DiagnosticSeverity::Fatal) {
-            continue;
-        }
-        std::ostringstream message;
-        message << "XTF read failed: " << bindData.path;
-        if (!diagnostic.location.sourceName.empty()) {
-            message << " at " << diagnostic.location.sourceName << ':' << diagnostic.location.line << ':'
-                    << diagnostic.location.column;
-        }
-        message << " " << iox::diagnosticCodeName(diagnostic.code) << ": " << diagnostic.message;
-        throw InvalidInputException("%s", message.str());
-    }
-}
-
-std::optional<iox::IoxEvent> NextEvent(XtfScanLocalState &local, const XtfScanBindData &bindData) {
-    while (!local.streamFinished) {
-        try {
-            const auto outcome = local.reader->next();
-            ThrowDiagnostics(bindData, local.reader->takeDiagnostics());
-            if (outcome.progress == iox::ReaderProgress::Event) {
-                return outcome.event;
-            }
-            if (outcome.progress == iox::ReaderProgress::End) {
-                local.streamFinished = true;
-                return std::nullopt;
-            }
-
-            if (local.inputFinished) {
-                local.reader->finish();
-                continue;
-            }
-            const auto read = local.file->Read(local.inputBuffer.data(), local.inputBuffer.size());
-            if (read <= 0) {
-                local.inputFinished = true;
-                local.reader->finish();
-            } else {
-                local.reader->feed(iox::ByteView(local.inputBuffer.data(), static_cast<std::size_t>(read)));
-            }
-        } catch (const iox::IoxError &error) {
-            std::ostringstream message;
-            message << "XTF read failed: " << bindData.path << ' ' << error.what();
-            throw InvalidInputException("%s", message.str());
-        }
-    }
-    return std::nullopt;
+    return ParsePrimitive(property, value.primitive(), bindData, object, local.stream.currentBid);
 }
 
 std::optional<std::vector<Value>> NextMatchingRow(XtfScanLocalState &local,
                                                   const XtfScanBindData &bindData) {
     while (true) {
-        const auto event = NextEvent(local, bindData);
+        const auto event = NextXtfEvent(local.stream, bindData.path);
         if (!event.has_value()) {
             return std::nullopt;
         }
         if (const auto *basket = std::get_if<iox::StartBasketEvent>(&*event)) {
-            local.currentBid = basket->basket.basketId;
+            local.stream.currentBid = basket->basket.basketId;
             continue;
         }
         const auto *objectEvent = std::get_if<iox::ObjectEvent>(&*event);
@@ -505,7 +447,7 @@ std::optional<std::vector<Value>> NextMatchingRow(XtfScanLocalState &local,
 
         std::vector<Value> row;
         row.reserve(6 + bindData.properties.size());
-        row.emplace_back(local.currentBid);
+        row.emplace_back(local.stream.currentBid);
         row.emplace_back(object.oid().has_value() ? Value(*object.oid()) : Value());
         row.emplace_back(NameOf(object.tag()));
         row.emplace_back(OperationName(object.operation()));
@@ -523,7 +465,7 @@ std::optional<std::vector<Value>> NextMatchingRow(XtfScanLocalState &local,
             }
             if (count != 1) {
                 throw InvalidInputException("%s expected one value but found %llu",
-                                            ReadContext(bindData, &object, property.name, local.currentBid),
+                                            ReadContext(bindData, &object, property.name, local.stream.currentBid),
                                             static_cast<unsigned long long>(count));
             }
             if (property.descriptor.valueKind == iox::ilic::PropertyValueKind::Reference) {
@@ -543,7 +485,7 @@ std::optional<std::vector<Value>> NextMatchingRow(XtfScanLocalState &local,
                     continue;
                 }
                 throw InvalidInputException("%s: %s",
-                                            ReadContext(bindData, &object, property.name, local.currentBid),
+                                            ReadContext(bindData, &object, property.name, local.stream.currentBid),
                                             error.what());
             }
         }
@@ -641,17 +583,7 @@ unique_ptr<LocalTableFunctionState> InitXtfScanLocal(ExecutionContext &context, 
                                                      GlobalTableFunctionState *) {
     auto &data = input.bind_data->Cast<XtfScanBindData>();
     auto result = make_uniq<XtfScanLocalState>();
-    auto &fileSystem = FileSystem::GetFileSystem(context.client);
-    result->file = fileSystem.OpenFile(data.path, FileFlags::FILE_FLAGS_READ);
-    if (!result->file || result->file->GetType() != FileType::FILE_TYPE_REGULAR) {
-        throw InvalidInputException("XTF input is not a readable regular file: %s", data.path);
-    }
-    iox::ilic::IlicXtfReaderOptions options;
-    options.xtf.sourceName = data.path;
-    options.rejectUnknownTopics = false;
-    options.rejectUnknownClasses = false;
-    options.rejectUnknownProperties = false;
-    result->reader = make_uniq<iox::ilic::IlicXtfReader>(data.model->models(), options);
+    result->stream = OpenXtfStream(context.client, data.model->models(), data.path);
     iox::geometry::GeometryConversionOptions geometryOptions;
     geometryOptions.arcToleranceOverride = data.arcToleranceOverride;
     result->geometryConverter = make_uniq<iox::geometry::IomGeometryConverter>(geometryOptions);

@@ -266,6 +266,24 @@ The implementation remains local-file-only and does not add network model resolu
 parallel stream scanning, package publication, Git tag/release, push, or changes to
 the excluded repositories.
 
+## Phase 11 — primitive `xtf_values`
+
+`xtf_values(path, class_name, path_expression, model_sources, tid := NULL,
+bid := NULL)` now uses the same XTF stream feeder as `xtf_scan`. Bind parses and owns
+one `iox::IomPath`; execution filters fully qualified classes and optional TID/BID
+values, then emits primitive matches in document order with one-based occurrence
+numbers. Nested structures and wildcard selectors are handled by the iox path API;
+non-primitive targets and structural path errors are reported with stream context.
+
+### Phase 11 verification
+
+- Debug and Release extension/static host builds: passed.
+- `test/sql/xtf_values.test`: 25 assertions passed for simple, nested, wildcard,
+  TID/BID-filtered, empty, and non-primitive paths.
+- The shared feeder remains fixed-buffer and single-threaded; no second XTF parser or
+  whole-file materialization was introduced.
+- `git diff --check`: passed before the phase commit.
+
 ## Phase 7 — native DuckDB C++ extension bootstrap
 
 Repository revision: this phase's `phase 7: bootstrap native DuckDB C++ extension`

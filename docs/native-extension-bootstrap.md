@@ -80,6 +80,14 @@ diagnostics in `_unsupported_json`. Geometry values are stored as DuckDB GEOMETR
 the iox WKB projection; `ST_AsText` is available in the pinned DuckDB host used for
 the SQLLogicTests.
 
+## Phase 11 — primitive XTF paths
+
+`xtf_values` exposes primitive lexemes through the shared streaming reader and
+`iox::IomPath`. Its `path_expression` supports the native first-value, one-based
+index, and wildcard selectors. Optional `tid` and `bid` filters are applied while
+events are streamed, and the result preserves transfer order with a one-based
+`occurrence` column.
+
 ## Development build
 
 From a checkout with submodules initialized and a working vcpkg toolchain:
