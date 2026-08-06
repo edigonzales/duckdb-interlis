@@ -238,6 +238,34 @@ the WASM build with GEOS disabled.
 No Java golden fixture generation, package publication, Git tag/release, push, or
 excluded-repository change was made.
 
+## Phase 10 — streaming `xtf_scan`
+
+The native extension now streams local XTF input through `iox::ilic::IlicXtfReader`
+using a fixed 64 KiB input buffer and a single DuckDB scan thread. The result schema
+starts with `_bid`, `_tid`, `_class`, and `_operation`, follows transfer order for
+supported one-valued primitive, role, and geometry properties, and ends with the
+deterministic `_unsupported_json` column. Boolean, integer, and double lexemes are
+validated; geometry is projected directly to DuckDB GEOMETRY from iox WKB. Invalid
+geometry can either abort the query or produce `NULL` plus a property diagnostic in
+unsupported JSON. Model compilation is owned by bind data, so no model is recompiled
+while chunks are read.
+
+### Phase 10 verification
+
+- Release extension and static SQLLogicTest runner builds: passed.
+- `test/sql/xtf_scan.test`: 11 assertions passed.
+- `test/sql/xtf_scan_types.test`: 16 assertions passed, including `ST_AsText` for
+  point and polyline output and structure/list preservation in unsupported JSON.
+- `test/sql/xtf_scan_geometry_errors.test`: 4 assertions passed for `error` and
+  `null` geometry policies.
+- Neutral DuckDB CLI smoke query: passed with two objects, missing values, and an
+  empty exact-class result.
+- `git diff --check`: passed before the phase commit.
+
+The implementation remains local-file-only and does not add network model resolution,
+parallel stream scanning, package publication, Git tag/release, push, or changes to
+the excluded repositories.
+
 ## Phase 7 — native DuckDB C++ extension bootstrap
 
 Repository revision: this phase's `phase 7: bootstrap native DuckDB C++ extension`

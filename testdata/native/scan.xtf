@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TRANSFER xmlns="http://www.interlis.ch/INTERLIS2.3">
+  <HEADERSECTION SENDER="duckdb-interlis" VERSION="2.3">
+    <MODELS>
+      <MODEL NAME="NativeScan" VERSION="1" URI="https://example.invalid"/>
+    </MODELS>
+  </HEADERSECTION>
+  <DATASECTION>
+    <NativeScan.Data BID="B1">
+      <NativeScan.Data.Target TID="T1">
+        <Code>target</Code>
+      </NativeScan.Data.Target>
+      <NativeScan.Data.Feature TID="F1">
+        <Flag>true</Flag>
+        <Count>42</Count>
+        <Ratio>3.5</Ratio>
+        <Name>alpha</Name>
+        <DetailsValue>
+          <NativeScan.Details>
+            <Label>nested</Label>
+          </NativeScan.Details>
+        </DetailsValue>
+        <Tags><NativeScan.Tag><Value>one</Value></NativeScan.Tag></Tags>
+        <Tags><NativeScan.Tag><Value>two</Value></NativeScan.Tag></Tags>
+        <Point><COORD><C1>10</C1><C2>20</C2></COORD></Point>
+        <Line><POLYLINE><COORD><C1>10</C1><C2>20</C2></COORD><COORD><C1>30</C1><C2>40</C2></COORD></POLYLINE></Line>
+      </NativeScan.Data.Feature>
+      <NativeScan.Data.Feature TID="F2">
+        <Flag>false</Flag>
+        <Count>7</Count>
+        <Ratio>2.25</Ratio>
+        <Name>beta</Name>
+      </NativeScan.Data.Feature>
+    </NativeScan.Data>
+  </DATASECTION>
+</TRANSFER>

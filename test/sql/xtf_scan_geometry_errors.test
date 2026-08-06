@@ -1,0 +1,21 @@
+# name: test/sql/xtf_scan_geometry_errors.test
+# description: native INTERLIS XTF geometry error policy
+# group: [sql]
+
+require interlis
+
+query III
+SELECT _tid, Line IS NULL, contains(_unsupported_json, 'POLYLINE requires at least two coordinates')
+FROM xtf_scan('testdata/native/scan_bad_geometry.xtf',
+               'NativeScan.Data.Feature',
+               ['testdata/native/scan.ili'],
+               geometry_errors := 'null');
+----
+BAD1	true	true
+
+statement error
+FROM xtf_scan('testdata/native/scan_bad_geometry.xtf',
+              'NativeScan.Data.Feature',
+              ['testdata/native/scan.ili']);
+----
+POLYLINE requires at least two coordinates

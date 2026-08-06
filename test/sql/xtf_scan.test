@@ -1,0 +1,32 @@
+# name: test/sql/xtf_scan.test
+# description: native INTERLIS XTF streaming scan
+# group: [sql]
+
+require interlis
+
+query IIIIIIIII
+SELECT _bid, _tid, _class, _operation, Name,
+       Geometry IS NULL, AreaGeometry IS NULL, LocalGeometry IS NULL,
+       _unsupported_json
+FROM xtf_scan('testdata/native/simple.xtf',
+               'NativeIntrospection.Data.Feature',
+               ['testdata/native/introspection.ili'])
+ORDER BY _tid;
+----
+B1	F1	NativeIntrospection.Data.Feature	INSERT	alpha	true	true	true	{}
+
+query I
+SELECT count(*)
+FROM xtf_scan('testdata/native/simple.xtf',
+               'NativeIntrospection.Data.Feature',
+               ['testdata/native/introspection.ili']);
+----
+1
+
+query I
+SELECT count(*)
+FROM xtf_scan('testdata/native/scan.xtf',
+               'NativeScan.Data.Empty',
+               ['testdata/native/scan.ili']);
+----
+0

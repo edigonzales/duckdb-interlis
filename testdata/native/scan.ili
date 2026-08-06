@@ -1,0 +1,35 @@
+INTERLIS 2.3;
+
+MODEL NativeScan (en) AT "https://example.invalid" VERSION "1" =
+  DOMAIN
+    Coord2 = COORD 0.00 .. 1000.00, 0.00 .. 1000.00;
+    LineDomain = POLYLINE WITH (STRAIGHTS) VERTEX Coord2;
+
+  STRUCTURE Details =
+    Label : TEXT*20;
+  END Details;
+
+  STRUCTURE Tag =
+    Value : TEXT*20;
+  END Tag;
+
+  TOPIC Data =
+    CLASS Target =
+      Code : TEXT*20;
+    END Target;
+
+    CLASS Feature =
+      Flag : BOOLEAN;
+      Count : 0 .. 100;
+      Ratio : 0.0 .. 100.0;
+      Name : TEXT*20;
+      DetailsValue : Details;
+      Tags : LIST {0..10} OF Tag;
+      Point : Coord2;
+      Line : LineDomain;
+    END Feature;
+
+    CLASS Empty =
+    END Empty;
+  END Data;
+END NativeScan.

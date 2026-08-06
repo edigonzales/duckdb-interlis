@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TRANSFER xmlns="http://www.interlis.ch/INTERLIS2.3">
+  <HEADERSECTION SENDER="duckdb-interlis" VERSION="2.3">
+    <MODELS>
+      <MODEL NAME="NativeScan" VERSION="1" URI="https://example.invalid"/>
+    </MODELS>
+  </HEADERSECTION>
+  <DATASECTION>
+    <NativeScan.Data BID="B2">
+      <NativeScan.Data.Feature TID="BAD1">
+        <Flag>true</Flag>
+        <Count>1</Count>
+        <Ratio>1.0</Ratio>
+        <Name>bad-line</Name>
+        <Line><POLYLINE><COORD><C1>10</C1><C2>20</C2></COORD></POLYLINE></Line>
+      </NativeScan.Data.Feature>
+    </NativeScan.Data>
+  </DATASECTION>
+</TRANSFER>

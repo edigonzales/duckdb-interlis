@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TRANSFER xmlns="http://www.interlis.ch/INTERLIS2.3">
+  <HEADERSECTION SENDER="duckdb-interlis" VERSION="2.3">
+    <MODELS>
+      <MODEL NAME="NativeIntrospection" VERSION="1" URI="https://example.invalid"/>
+    </MODELS>
+  </HEADERSECTION>
+  <DATASECTION>
+    <NativeIntrospection.Data BID="B1">
+      <NativeIntrospection.Data.Feature TID="F1">
+        <Name>alpha</Name>
+      </NativeIntrospection.Data.Feature>
+    </NativeIntrospection.Data>
+  </DATASECTION>
+</TRANSFER>

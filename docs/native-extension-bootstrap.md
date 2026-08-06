@@ -69,6 +69,17 @@ straight/arc/custom/attribute flags from the iox descriptors.
 versions. SQLLogicTests cover the component contract, model/class/property output, and
 geometry metadata using the checked-in native fixture.
 
+## Phase 10 — streaming XTF scan
+
+`xtf_scan(path, class_name, model_sources, geometry_errors := 'error',
+arc_tolerance_override := NULL)` reads local XTF input incrementally through the
+model-aware iox reader. It uses one stream state and a fixed 64 KiB input buffer. The
+dynamic result begins with transfer metadata, emits supported properties in transfer
+order, and places structures, collections, unsupported values, and nullable geometry
+diagnostics in `_unsupported_json`. Geometry values are stored as DuckDB GEOMETRY from
+the iox WKB projection; `ST_AsText` is available in the pinned DuckDB host used for
+the SQLLogicTests.
+
 ## Development build
 
 From a checkout with submodules initialized and a working vcpkg toolchain:

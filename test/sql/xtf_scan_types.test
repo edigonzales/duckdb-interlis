@@ -1,0 +1,17 @@
+# name: test/sql/xtf_scan_types.test
+# description: native INTERLIS XTF primitive, role, unsupported, and geometry values
+# group: [sql]
+
+require interlis
+
+query IIIIIIII
+SELECT _tid, Flag, Count, Ratio, Name,
+       ST_AsText(Point), ST_AsText(Line),
+       _unsupported_json
+FROM xtf_scan('testdata/native/scan.xtf',
+               'NativeScan.Data.Feature',
+               ['testdata/native/scan.ili'])
+ORDER BY _tid;
+----
+F1	true	42	3.5	alpha	POINT (10 20)	LINESTRING (10 20, 30 40)	{"DetailsValue":[{"_tag":"NativeScan.Details","_attrs":{"Label":["nested"]}}],"Tags":[{"_tag":"NativeScan.Tag","_attrs":{"Value":["one"]}},{"_tag":"NativeScan.Tag","_attrs":{"Value":["two"]}}]}
+F2	false	7	2.25	beta	NULL	NULL	{}
