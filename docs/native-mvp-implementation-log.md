@@ -209,6 +209,42 @@ the WASM build with GEOS disabled.
 No Java golden fixture generation, package publication, Git tag/release, push, or
 excluded-repository change was made.
 
+## Phase 7 — native DuckDB C++ extension bootstrap
+
+Repository revision: this phase's `phase 7: bootstrap native DuckDB C++ extension`
+commit.
+
+The repository now has the DuckDB extension-template structure at the root, with
+explicit `InterlisExtension` loading and registration seams for version, model, XTF
+scan, value, and update functions. The existing GraalVM/C-API tree remains intact for
+the migration comparison phase. DuckDB `v1.5.3` is pinned to
+`14eca11bd9d4a0de2ea0f078be588a9c1c5b279c`; the extension-template reference is
+`cfaf3e236008e782d27f4341b0ee036002d0a449`; extension-ci-tools `v1.5.3` is pinned to
+`4b3b37b0c9de00da54e1765d65abfea3f94617f4`; and the vcpkg baseline is
+`ce613c41372b23b1f51333815feb3edd87ef8a8b`. Native builds enable iox ilic, GEOS, and
+JSON support exactly once, passing the selected local ilic source into iox to avoid a
+second `ilic-core` registration.
+
+### Phase 7 verification
+
+- Pinned vcpkg installed GEOS `3.13.0` for `arm64-osx`; the host had no `pkg-config`,
+  so only a temporary local validation shim was used for vcpkg's package-file check.
+  The shim is not part of the repository.
+- Debug build with local `/Users/stefan/sources/ilic-fork` and
+  `/Users/stefan/sources/iox-cpp`: passed.
+- Release build with the same local sources: passed.
+- Debug SQLLogicTest: 1/1 passed.
+- Release SQLLogicTest: 1/1 passed.
+- Direct Debug DuckDB load with `-unsigned` returned the deterministic
+  `interlis_version()` component line for DuckDB `1.5.3`.
+- `git diff --cached --check`: passed.
+
+The environment did not provide Ninja, so the exact verification used the pinned
+CMake `4.1.0` Unix Makefiles generator; the template-compatible `GEN=ninja` commands
+remain documented for installations that provide Ninja. No legacy implementation was
+deleted, and no package publication, Git tag/release, push, or excluded-repository
+change was made.
+
 ## Phase 4 — iox compact ilic property descriptors
 
 Repository revision: `iox-cpp` commit `9fad2be` (`phase 4: expose compact ilic property descriptors`).

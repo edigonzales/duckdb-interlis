@@ -1,0 +1,10 @@
+# name: test/sql/version.test
+# description: native INTERLIS extension bootstrap
+# group: [sql]
+
+require interlis
+
+query I
+SELECT interlis_version();
+----
+duckdb-interlis/0.2.0 ilic/0.10.0-SNAPSHOT iox-cpp/0.2.0 geos/3.x duckdb/1.5.3
