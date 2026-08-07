@@ -26,7 +26,11 @@
 #include <utility>
 #include <vector>
 
+#if defined(_WIN32)
+#include <process.h>
+#else
 #include <unistd.h>
+#endif
 
 namespace duckdb {
 
@@ -363,8 +367,15 @@ std::string CreateTempPath(FileSystem &fileSystem, const std::string &output) {
                             : outputPath.parent_path();
     const auto filename = outputPath.filename().string();
     for (;;) {
-        const auto suffix = std::to_string(static_cast<unsigned long long>(getpid())) +
-                            "-" + std::to_string(static_cast<unsigned long long>(counter.fetch_add(1)));
+        const auto processId = static_cast<unsigned long long>(
+#if defined(_WIN32)
+            _getpid()
+#else
+            getpid()
+#endif
+        );
+        const auto suffix = std::to_string(processId) + "-" +
+                            std::to_string(static_cast<unsigned long long>(counter.fetch_add(1)));
         const auto candidate = fileSystem.JoinPath(parent.generic_string(),
                                                    "." + filename + ".interlis-tmp-" + suffix);
         if (!fileSystem.FileExists(candidate)) {
