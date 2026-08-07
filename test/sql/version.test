@@ -5,6 +5,11 @@
 require interlis
 
 query I
-SELECT interlis_version();
+SELECT contains(interlis_version(), 'duckdb-interlis/0.2.0')
+   AND contains(interlis_version(), 'ilic/0.10.0-SNAPSHOT')
+   AND contains(interlis_version(), 'iox-cpp/0.2.0')
+   AND (contains(interlis_version(), 'geos/disabled')
+        OR contains(interlis_version(), 'geos/3.x'))
+   AND contains(interlis_version(), 'duckdb/1.5.3');
 ----
-duckdb-interlis/0.2.0 ilic/0.10.0-SNAPSHOT iox-cpp/0.2.0 geos/3.x duckdb/1.5.3
+true

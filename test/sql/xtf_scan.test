@@ -30,3 +30,30 @@ FROM xtf_scan('testdata/native/scan.xtf',
                ['testdata/native/scan.ili']);
 ----
 0
+
+query IIIIIIII
+SELECT _bid, _tid, _class, _operation, Flag, Count, Ratio, Name
+FROM xtf_scan('testdata/native/scan24.xtf',
+               'NativeScan24.Data.Feature',
+               ['testdata/native/scan24.ili'])
+ORDER BY _tid;
+----
+B24	F24	NativeScan24.Data.Feature	INSERT	true	24	24.5	twenty-four
+
+query III
+SELECT _tid, Lage3d IS NOT NULL, _unsupported_json
+FROM xtf_scan(
+       'testdata/synthetic/geometries/valid-3d.xtf',
+       'SO_AGI_Geometries_20260605.Topic.Punkt3dObjekt',
+       ['testdata/synthetic/geometries/SO_AGI_Geometries_20260605.ili']);
+----
+p3d1	true	{}
+
+query III
+SELECT _tid, Verlauf IS NOT NULL, _unsupported_json
+FROM xtf_scan(
+       'testdata/synthetic/geometries/valid-arcs.xtf',
+       'SO_AGI_Geometries_20260605.Topic.LinienObjektArc',
+       ['testdata/synthetic/geometries/SO_AGI_Geometries_20260605.ili']);
+----
+arc1	true	{}

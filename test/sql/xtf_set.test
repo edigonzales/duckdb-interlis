@@ -27,6 +27,21 @@ WHERE _tid = 'F1';
 changed
 
 query I
+SELECT md5(content)
+FROM read_blob('testdata/native/scan.xtf');
+----
+07b5f0bf721c1f7886d552654970f257
+
+query II
+SELECT ST_AsText(Point), ST_AsText(Line)
+FROM xtf_scan('__TEST_DIR__/xtf-set-output.xtf',
+               'NativeScan.Data.Feature',
+               ['testdata/native/scan.ili'])
+WHERE _tid = 'F1';
+----
+POINT (10 20)	LINESTRING (10 20, 30 40)
+
+query I
 SELECT value
 FROM xtf_values('__TEST_DIR__/xtf-set-output.xtf',
                  'NativeScan.Data.Feature',
@@ -84,6 +99,28 @@ FROM xtf_values('__TEST_DIR__/xtf-set-output.xtf',
 ----
 updated-nested
 
+query IIIIIIII
+SELECT *
+FROM xtf_set('testdata/native/scan24.xtf',
+             '__TEST_DIR__/xtf-set-output24.xtf',
+             'NativeScan24.Data.Feature',
+             'F24',
+             'Name',
+             'updated-24',
+             ['testdata/native/scan24.ili'],
+             bid := 'B24', expected := 'twenty-four', overwrite := true);
+----
+B24	F24	NativeScan24.Data.Feature	Name	twenty-four	updated-24	UPDATED	one primitive value rewritten
+
+query I
+SELECT Name
+FROM xtf_scan('__TEST_DIR__/xtf-set-output24.xtf',
+               'NativeScan24.Data.Feature',
+               ['testdata/native/scan24.ili'])
+WHERE _tid = 'F24';
+----
+updated-24
+
 statement error
 SELECT *
 FROM xtf_set('testdata/native/scan.xtf',
@@ -108,3 +145,34 @@ FROM xtf_set('testdata/native/scan.xtf',
              bid := 'wrong-bid');
 ----
 found no matching object
+
+statement error
+SELECT *
+FROM xtf_set('testdata/native/scan_duplicate_tid.xtf',
+             '__TEST_DIR__/xtf-set-duplicate.xtf',
+             'NativeScan.Data.Feature',
+             'F1',
+             'Name',
+             'nope',
+             ['testdata/native/scan.ili']);
+----
+matched more than one object
+
+query IIIIIIII
+SELECT *
+FROM xtf_set('testdata/synthetic/geometries/valid-arcs.xtf',
+             '__TEST_DIR__/xtf-set-arcs.xtf',
+             'SO_AGI_Geometries_20260605.Topic.LinienObjektArc',
+             'arc1',
+             'Name',
+             'Bogenstrasse updated',
+             ['testdata/synthetic/geometries/SO_AGI_Geometries_20260605.ili'],
+             bid := 'basket1', overwrite := true);
+----
+basket1	arc1	SO_AGI_Geometries_20260605.Topic.LinienObjektArc	Name	Bogenstrasse	Bogenstrasse updated	UPDATED	one primitive value rewritten
+
+query I
+SELECT contains(content::VARCHAR, 'geom:arc')
+FROM read_blob('__TEST_DIR__/xtf-set-arcs.xtf');
+----
+true

@@ -1,0 +1,16 @@
+INTERLIS 2.4;
+
+MODEL NativeScan24 (en) AT "https://example.invalid" VERSION "1" =
+  DOMAIN
+    Coord2 = COORD 0.00 .. 1000.00, 0.00 .. 1000.00;
+
+  TOPIC Data =
+    CLASS Feature =
+      Flag : BOOLEAN;
+      Count : 0 .. 100;
+      Ratio : 0.0 .. 100.0;
+      Name : TEXT*20;
+      Point : Coord2;
+    END Feature;
+  END Data;
+END NativeScan24.

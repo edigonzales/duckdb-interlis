@@ -15,17 +15,9 @@
         <SO_AGI_Geometries_20260605:Name>Bogenstrasse</SO_AGI_Geometries_20260605:Name>
         <SO_AGI_Geometries_20260605:Verlauf>
           <geom:polyline>
-            <geom:sequence>
-              <geom:segment>
-                <geom:coord><geom:c1>2605000.000</geom:c1><geom:c2>1203000.000</geom:c2></geom:coord>
-              </geom:segment>
-              <geom:segment>
-                <geom:arc><geom:a1>2605050.000</geom:a1><geom:a2>1203050.000</geom:a2><geom:r>50.000</geom:r></geom:arc>
-              </geom:segment>
-              <geom:segment>
-                <geom:coord><geom:c1>2605100.000</geom:c1><geom:c2>1203000.000</geom:c2></geom:coord>
-              </geom:segment>
-            </geom:sequence>
+            <geom:coord><geom:c1>2605000.000</geom:c1><geom:c2>1203000.000</geom:c2></geom:coord>
+            <geom:arc><geom:c1>2605100.000</geom:c1><geom:c2>1203000.000</geom:c2><geom:a1>2605050.000</geom:a1><geom:a2>1203050.000</geom:a2><geom:r>50.000</geom:r></geom:arc>
+            <geom:coord><geom:c1>2605200.000</geom:c1><geom:c2>1203000.000</geom:c2></geom:coord>
           </geom:polyline>
         </SO_AGI_Geometries_20260605:Verlauf>
       </SO_AGI_Geometries_20260605:LinienObjektArc>

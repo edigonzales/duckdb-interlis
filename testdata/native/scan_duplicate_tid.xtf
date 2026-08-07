@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TRANSFER xmlns="http://www.interlis.ch/INTERLIS2.3">
+  <HEADERSECTION SENDER="duckdb-interlis" VERSION="2.3">
+    <MODELS><MODEL NAME="NativeScan" VERSION="1" URI="https://example.invalid"/></MODELS>
+  </HEADERSECTION>
+  <DATASECTION>
+    <NativeScan.Data BID="B1">
+      <NativeScan.Data.Feature TID="F1"><Name>alpha</Name></NativeScan.Data.Feature>
+      <NativeScan.Data.Feature TID="F1"><Name>duplicate</Name></NativeScan.Data.Feature>
+    </NativeScan.Data>
+  </DATASECTION>
+</TRANSFER>

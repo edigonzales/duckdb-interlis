@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ili:transfer xmlns:ili="http://www.interlis.ch/xtf/2.4/INTERLIS"
+              xmlns:NativeScan24="http://www.interlis.ch/xtf/2.4/NativeScan24"
+              xmlns:geom="http://www.interlis.ch/geometry/1.0">
+  <ili:headersection>
+    <ili:models><ili:model>NativeScan24</ili:model></ili:models>
+    <ili:sender>duckdb-interlis</ili:sender>
+  </ili:headersection>
+  <ili:datasection>
+    <NativeScan24:Data ili:bid="B24">
+      <NativeScan24:Feature ili:tid="F24">
+        <NativeScan24:Flag>true</NativeScan24:Flag>
+        <NativeScan24:Count>24</NativeScan24:Count>
+        <NativeScan24:Ratio>24.5</NativeScan24:Ratio>
+        <NativeScan24:Name>twenty-four</NativeScan24:Name>
+        <NativeScan24:Point>
+          <geom:coord><geom:c1>10</geom:c1><geom:c2>20</geom:c2></geom:coord>
+        </NativeScan24:Point>
+      </NativeScan24:Feature>
+    </NativeScan24:Data>
+  </ili:datasection>
+</ili:transfer>

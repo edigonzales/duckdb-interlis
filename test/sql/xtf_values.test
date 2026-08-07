@@ -46,6 +46,16 @@ FROM xtf_values('testdata/native/scan.xtf',
 ----
 0
 
+query IIIII
+SELECT tid, occurrence, value, bid, class_name
+FROM xtf_values('testdata/native/scan24.xtf',
+                 'NativeScan24.Data.Feature',
+                 'Name',
+                 ['testdata/native/scan24.ili'],
+                 tid := 'F24', bid := 'B24');
+----
+F24	1	twenty-four	B24	NativeScan24.Data.Feature
+
 statement error
 SELECT *
 FROM xtf_values('testdata/native/scan.xtf',

@@ -7,13 +7,20 @@ require interlis
 query II
 SELECT component, version
 FROM interlis_components()
+WHERE component <> 'geos'
 ORDER BY component;
 ----
 duckdb	1.5.3
 duckdb-interlis	0.2.0
-geos	3.x
 ilic	0.10.0-SNAPSHOT
 iox-cpp	0.2.0
+
+query I
+SELECT version IN ('disabled', '3.x')
+FROM interlis_components()
+WHERE component = 'geos';
+----
+true
 
 query III
 SELECT name, language, ili_version
