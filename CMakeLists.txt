@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.20)
 
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
+# This file is evaluated as DuckDB's out-of-tree extension configuration, not
+# as a standalone top-level project. Keep DuckDB's own C++ standard intact and
+# request C++17 only on the Interlis targets below.
 
 set(INTERLIS_EXTENSION_VERSION "" CACHE STRING "duckdb-interlis extension version")
 if(NOT INTERLIS_EXTENSION_VERSION)
@@ -126,6 +126,9 @@ include_directories(src/include)
 build_static_extension(interlis ${EXTENSION_SOURCES})
 build_loadable_extension(interlis " " ${EXTENSION_SOURCES})
 
+target_compile_features(interlis_extension PRIVATE cxx_std_17)
+target_compile_features(interlis_loadable_extension PRIVATE cxx_std_17)
+
 target_include_directories(interlis_extension PRIVATE src)
 target_include_directories(interlis_loadable_extension PRIVATE src)
 
@@ -152,7 +155,13 @@ target_link_libraries(interlis_loadable_extension iox::ilic ilic::core)
 set_property(TARGET interlis_extension PROPERTY INTERFACE_LINK_LIBRARIES "")
 function(_interlis_append_native_link_libraries target_name)
     if(TARGET "${target_name}")
-        set_property(TARGET "${target_name}" APPEND PROPERTY LINK_LIBRARIES iox::ilic ilic::core)
+        # Host DuckDB binaries compile with DuckDB's C++ standard. The
+        # Interlis libraries are C++17, but their compile requirements must not
+        # change the host target's standard merely because it links them.
+        set_property(TARGET "${target_name}" APPEND PROPERTY LINK_LIBRARIES
+            "$<LINK_ONLY:iox::ilic>"
+            "$<LINK_ONLY:ilic::core>"
+        )
     endif()
 endfunction()
 
@@ -183,6 +192,7 @@ install(
 if(INTERLIS_BUILD_NATIVE_TESTS)
     enable_testing()
     add_executable(interlis_model_source_test test/model/model_source_resolver_test.cpp)
+    target_compile_features(interlis_model_source_test PRIVATE cxx_std_17)
     target_include_directories(interlis_model_source_test PRIVATE src src/include)
     target_link_libraries(interlis_model_source_test PRIVATE
         interlis_extension
