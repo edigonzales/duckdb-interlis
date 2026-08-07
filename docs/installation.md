@@ -14,8 +14,9 @@ SELECT interlis_version();
 ```
 
 For a repository install, use the DuckDB product-version path configured by the
-publisher and then `LOAD interlis`. Local development builds are documented in
-[development.md](development.md). The native extension has no additional Java,
+publisher and then `LOAD interlis`. For a local source installation, follow
+[getting-started.md](getting-started.md), which builds the extension and runs a
+complete native SQL example. The native extension has no additional Java,
 GraalVM, or separately installed runtime library.
 
 Model source paths passed to SQL functions must be local `.ili` files or local

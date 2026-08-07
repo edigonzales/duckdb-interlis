@@ -9,7 +9,7 @@ The maintained native example is:
 
 | File | What it shows |
 |---|---|
-| `10-native-mvp.sql` | Components, model introspection, `xtf_scan`, `xtf_values`, and `xtf_set` |
+| `10-native-mvp.sql` | Version/components, all model introspection functions, `xtf_scan`, `xtf_values`, and `xtf_set` |
 
 Run it against a locally built extension:
 

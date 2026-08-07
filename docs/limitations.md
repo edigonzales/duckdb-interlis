@@ -28,6 +28,12 @@ Additional constraints are part of the function contracts:
   in compilation;
 - geometry conversion errors either abort the scan or produce NULL plus a
   diagnostic, according to `geometry_errors`.
+- the default GEOS-free build performs structural geometry conversion checks but
+  does not perform native topological validity checks; load DuckDB Spatial and
+  use `ST_IsValid`, or build with `INTERLIS_ENABLE_GEOS=ON`, when that check is
+  required.
+- the repaired `valid-arcs.xtf` and `valid-3d.xtf` fixtures now use the native
+  XTF 2.4 path; their structural conversion is covered by the regression tests.
 
 These restrictions are deliberate compatibility boundaries for the native MVP,
 not silently enabled fallback behavior.

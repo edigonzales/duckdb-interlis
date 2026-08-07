@@ -23,4 +23,12 @@ and a diagnostic entry in `_unsupported_json`; with the default `error`, the
 query fails.
 
 The output is WKB-backed and can be used with DuckDB's spatial functions when
-the `spatial` extension is loaded.
+the `spatial` extension is loaded. The native build is GEOS-free by default.
+In that mode, iox still performs structural conversion checks, but native
+topological validation is not performed. A GEOS-enabled strict build adds that
+validation without changing the output WKB.
+
+The distinction is visible with
+`testdata/synthetic/geometries/invalid-topology.xtf`: the GEOS-free build emits
+the structurally valid WKB and DuckDB Spatial reports `ST_IsValid = false`,
+whereas the strict build rejects the same transfer during `xtf_scan`.

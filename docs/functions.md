@@ -13,6 +13,8 @@ SELECT * FROM interlis_components();
 
 `interlis_components()` returns `component`, `version`, and `revision` for the
 extension, ilic, iox-cpp, GEOS, and DuckDB.
+The GEOS row reports `disabled` for the default GEOS-free build and the
+configured GEOS version family for a strict build.
 
 ## Model introspection
 
@@ -49,7 +51,11 @@ The result starts with `_bid`, `_tid`, `_class`, `_operation`, and
 model transfer order. Missing values are SQL `NULL`. Role references,
 structures, collections, and other unsupported values are represented in the
 diagnostic JSON column. `geometry_errors := 'null'` keeps a row and records the
-conversion diagnostic; the default raises an error.
+conversion diagnostic; the default raises an error. Structural geometry
+conversion checks are always performed. Native topological validation is only
+performed by a build with `INTERLIS_ENABLE_GEOS=ON`; in a GEOS-free build,
+DuckDB Spatial can be loaded and `ST_IsValid` can be used on the returned
+`GEOMETRY` values.
 
 ## `xtf_values`
 

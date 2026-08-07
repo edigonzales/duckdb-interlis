@@ -10,7 +10,7 @@ DuckDB table function
         │                         └── iox::ilic::IlicModelIndex
         └── iox::xtf::IlicXtfReader / iox::xtf::XtfWriter
                               │
-                              └── GEOS-backed WKB projection
+                              └── optional GEOS-backed WKB validation
 ```
 
 `CompiledModel` owns the ilic compilation and the iox model index. A function
@@ -23,9 +23,12 @@ that row order and reader lifetime are deterministic. `xtf_set` reads and writes
 sequentially through a temporary file in the destination directory and moves
 the completed file into place only after a successful writer close.
 
-Geometry metadata comes from iox descriptors. Geometry conversion uses the iox
-projection and the optional GEOS dependency; DuckDB receives WKB-backed
-`GEOMETRY` values. Ownership is RAII throughout the extension boundary.
+Geometry metadata comes from iox descriptors. Geometry conversion and WKB
+projection are provided by iox without GEOS. GEOS is an optional native
+validation step after projection; DuckDB always receives WKB-backed `GEOMETRY`
+values. Ownership is RAII throughout the extension boundary. DuckDB Spatial is
+an independent optional SQL consumer of those values, not a C++ dependency of
+this extension.
 
 The repository has no Java module, GraalVM native-image build, embedded library,
 TSV transport, or C ABI bridge. The only external source checkouts are the

@@ -1,125 +1,91 @@
--- Spatial integration test for duckdb-interlis geometry support.
--- Prerequisites: duckdb-interlis extension loaded.
--- The spatial extension is only needed for ST_GeometryType, ST_IsValid, etc.
+-- Optional DuckDB Spatial integration for the native Interlis extension.
 --
--- Geometry columns are returned as WKT (Well-Known Text) VARCHAR strings
--- with the _geom suffix. Cast to GEOMETRY with ::GEOMETRY, or use
--- ST_GeomFromText() if the spatial extension is loaded.
+-- The Interlis extension does not need GEOS to emit supported geometries:
+-- iox creates standard WKB and DuckDB stores it as GEOMETRY. DuckDB Spatial
+-- is loaded here only to provide SQL functions such as ST_IsValid and
+-- ST_GeometryType.
 --
--- Note: DuckDB GEOMETRY is a built-in type since v1.5. The spatial extension
--- is required for spatial functions (ST_Area, ST_Intersection, etc.).
+-- Run from the repository root after building/loading the extension:
+--   scripts/dev-duckdb.sh < sql/spatial.sql
 
 INSTALL spatial;
 LOAD spatial;
 
--- -----------------------------------------------------------------------
--- Test 1: POINT (COORD)
--- -----------------------------------------------------------------------
-SELECT
-    'POINT' AS test_case,
-    ST_GeometryType(Lage_geom::GEOMETRY) = 'POINT' AS correct_type,
-    ST_IsValid(Lage_geom::GEOMETRY) AS is_valid,
-    abs(ST_X(Lage_geom::GEOMETRY) - 2605000.0) < 0.001 AS x_ok,
-    abs(ST_Y(Lage_geom::GEOMETRY) - 1203000.0) < 0.001 AS y_ok
-FROM read_xtf_class('testdata/synthetic/geometries/valid.xtf',
-    class := 'SO_AGI_Geometries_20260605.Topic.PunktObjekt',
-    model_sources := 'testdata/synthetic/geometries');
+-- POINT: native GEOMETRY can be consumed directly by Spatial.
+WITH points AS (
+    SELECT _tid, Lage
+    FROM xtf_scan(
+        'testdata/synthetic/geometries/valid.xtf',
+        'SO_AGI_Geometries_20260605.Topic.PunktObjekt',
+        ['testdata/synthetic/geometries/SO_AGI_Geometries_20260605.ili'])
+    WHERE Lage IS NOT NULL
+)
+SELECT _tid,
+       ST_GeometryType(Lage) AS geometry_type,
+       ST_IsValid(Lage) AS is_valid,
+       ST_AsText(Lage) AS wkt,
+       ST_AsWKB(Lage) IS NOT NULL AS has_wkb
+FROM points;
 
--- -----------------------------------------------------------------------
--- Test 2: MULTIPOINT (MULTICOORD)
--- -----------------------------------------------------------------------
-SELECT
-    'MULTIPOINT' AS test_case,
-    ST_GeometryType(Lagen_geom::GEOMETRY) = 'MULTIPOINT' AS correct_type,
-    ST_IsValid(Lagen_geom::GEOMETRY) AS is_valid,
-    ST_NumGeometries(Lagen_geom::GEOMETRY) = 3 AS count_ok
-FROM read_xtf_class('testdata/synthetic/geometries/valid.xtf',
-    class := 'SO_AGI_Geometries_20260605.Topic.MultiPunktObjekt',
-    model_sources := 'testdata/synthetic/geometries');
+-- POLYLINE: use the returned geometry in a spatial operation.
+WITH lines AS (
+    SELECT Verlauf
+    FROM xtf_scan(
+        'testdata/synthetic/geometries/valid.xtf',
+        'SO_AGI_Geometries_20260605.Topic.LinienObjekt',
+        ['testdata/synthetic/geometries/SO_AGI_Geometries_20260605.ili'])
+    WHERE Verlauf IS NOT NULL
+)
+SELECT ST_GeometryType(Verlauf) AS geometry_type,
+       ST_IsValid(Verlauf) AS is_valid,
+       ST_Distance(
+           Verlauf,
+           ST_GeomFromText('POINT (2605000 1203000)')) AS distance_to_origin
+FROM lines;
 
--- -----------------------------------------------------------------------
--- Test 3: LINESTRING (POLYLINE)
--- -----------------------------------------------------------------------
-SELECT
-    'LINESTRING' AS test_case,
-    ST_GeometryType(Verlauf_geom::GEOMETRY) = 'LINESTRING' AS correct_type,
-    ST_IsValid(Verlauf_geom::GEOMETRY) AS is_valid,
-    ST_NPoints(Verlauf_geom::GEOMETRY) = 3 AS point_count_ok
-FROM read_xtf_class('testdata/synthetic/geometries/valid.xtf',
-    class := 'SO_AGI_Geometries_20260605.Topic.LinienObjekt',
-    model_sources := 'testdata/synthetic/geometries');
+-- MULTISURFACE: DuckDB Spatial validates and measures the WKB output.
+WITH surfaces AS (
+    SELECT Flaechen
+    FROM xtf_scan(
+        'testdata/synthetic/geometries/valid.xtf',
+        'SO_AGI_Geometries_20260605.Topic.MultiFlaechenObjekt',
+        ['testdata/synthetic/geometries/SO_AGI_Geometries_20260605.ili'])
+    WHERE Flaechen IS NOT NULL
+)
+SELECT ST_GeometryType(Flaechen) AS geometry_type,
+       ST_IsValid(Flaechen) AS is_valid,
+       ST_NumGeometries(Flaechen) AS polygon_count,
+       ST_Area(Flaechen) AS area
+FROM surfaces;
 
--- -----------------------------------------------------------------------
--- Test 4: MULTILINESTRING (MULTIPOLYLINE)
--- -----------------------------------------------------------------------
-SELECT
-    'MULTILINESTRING' AS test_case,
-    ST_GeometryType(Verlaeufe_geom::GEOMETRY) = 'MULTILINESTRING' AS correct_type,
-    ST_IsValid(Verlaeufe_geom::GEOMETRY) AS is_valid,
-    ST_NumGeometries(Verlaeufe_geom::GEOMETRY) = 2 AS count_ok
-FROM read_xtf_class('testdata/synthetic/geometries/valid.xtf',
-    class := 'SO_AGI_Geometries_20260605.Topic.MultiLinienObjekt',
-    model_sources := 'testdata/synthetic/geometries');
+-- 3D COORD: the Z ordinate is retained by the native WKB projection.
+WITH points3d AS (
+    SELECT Lage3d
+    FROM xtf_scan(
+        'testdata/synthetic/geometries/valid-3d.xtf',
+        'SO_AGI_Geometries_20260605.Topic.Punkt3dObjekt',
+        ['testdata/synthetic/geometries/SO_AGI_Geometries_20260605.ili'])
+    WHERE Lage3d IS NOT NULL
+)
+SELECT ST_GeometryType(Lage3d) AS geometry_type,
+       ST_Z(Lage3d) AS z_value,
+       ST_IsValid(Lage3d) AS is_valid,
+       ST_AsText(Lage3d) AS wkt,
+       ST_AsWKB(Lage3d) IS NOT NULL AS has_wkb
+FROM points3d;
 
--- -----------------------------------------------------------------------
--- Test 5: POLYGON (SURFACE)
--- -----------------------------------------------------------------------
--- Note: INTERLIS SURFACE in ili2.4 XTF is wrapped in <geom:multisurface>.
--- The encoder therefore produces a MULTIPOLYGON even for a single surface.
-SELECT
-    'POLYGON' AS test_case,
-    ST_GeometryType(Flaeche_geom::GEOMETRY) = 'MULTIPOLYGON' AS correct_type,
-    ST_IsValid(Flaeche_geom::GEOMETRY) AS is_valid,
-    ST_NumGeometries(Flaeche_geom::GEOMETRY) = 1 AS single_geom
-FROM read_xtf_class('testdata/synthetic/geometries/valid.xtf',
-    class := 'SO_AGI_Geometries_20260605.Topic.FlaechenObjekt',
-    model_sources := 'testdata/synthetic/geometries');
-
--- -----------------------------------------------------------------------
--- Test 6: MULTIPOLYGON (MULTISURFACE)
--- -----------------------------------------------------------------------
-SELECT
-    'MULTIPOLYGON' AS test_case,
-    ST_GeometryType(Flaechen_geom::GEOMETRY) = 'MULTIPOLYGON' AS correct_type,
-    ST_IsValid(Flaechen_geom::GEOMETRY) AS is_valid,
-    ST_NumGeometries(Flaechen_geom::GEOMETRY) = 2 AS count_ok
-FROM read_xtf_class('testdata/synthetic/geometries/valid.xtf',
-    class := 'SO_AGI_Geometries_20260605.Topic.MultiFlaechenObjekt',
-    model_sources := 'testdata/synthetic/geometries');
-
--- -----------------------------------------------------------------------
--- Test 7: NULL geometry handling
--- -----------------------------------------------------------------------
--- We don't yet have a fixture with a genuinely missing geometry,
--- but we can at least assert that existing rows are NOT NULL.
-SELECT
-    'NOT_NULL' AS test_case,
-    Lage_geom IS NOT NULL AS not_null
-FROM read_xtf_class('testdata/synthetic/geometries/valid.xtf',
-    class := 'SO_AGI_Geometries_20260605.Topic.PunktObjekt',
-    model_sources := 'testdata/synthetic/geometries');
-
--- -----------------------------------------------------------------------
--- Test 8: Direct geometry without explicit cast
--- -----------------------------------------------------------------------
--- DuckDB can infer GEOMETRY type from WKT literals. With the spatial
--- extension loaded, functions like ST_Area work directly.
-SELECT
-    'WKT_CAST' AS test_case,
-    ST_GeometryType(Lage_geom::GEOMETRY) IS NOT NULL AS cast_ok
-FROM read_xtf_class('testdata/synthetic/geometries/valid.xtf',
-    class := 'SO_AGI_Geometries_20260605.Topic.PunktObjekt',
-    model_sources := 'testdata/synthetic/geometries');
-
--- -----------------------------------------------------------------------
--- Test 9: Generic reader geom_json now contains detailed geometry data
--- -----------------------------------------------------------------------
-SELECT
-    'GEOM_JSON' AS test_case,
-    json_extract_string(geom_json, '$.Lage.geometry_kind') = 'POINT' AS kind_ok,
-    json_extract_string(geom_json, '$.Lage.wkt') LIKE 'POINT%' AS wkt_ok,
-    json_extract(geom_json, '$.Lage.dimension') = 2 AS dim_ok
-FROM read_xtf_objects('testdata/synthetic/geometries/valid.xtf',
-    model_sources := 'testdata/synthetic/geometries')
-WHERE xtf_class_fqn ILIKE '%PunktObjekt%'
-LIMIT 1;
+-- ARC: native arcs are stroked to a valid LINESTRING for DuckDB Spatial.
+WITH arcs AS (
+    SELECT Verlauf
+    FROM xtf_scan(
+        'testdata/synthetic/geometries/valid-arcs.xtf',
+        'SO_AGI_Geometries_20260605.Topic.LinienObjektArc',
+        ['testdata/synthetic/geometries/SO_AGI_Geometries_20260605.ili'])
+    WHERE Verlauf IS NOT NULL
+)
+SELECT ST_GeometryType(Verlauf) AS geometry_type,
+       ST_NPoints(Verlauf) AS point_count,
+       ST_IsValid(Verlauf) AS is_valid,
+       ST_AsText(Verlauf) AS wkt,
+       ST_AsWKB(Verlauf) IS NOT NULL AS has_wkb
+FROM arcs;
