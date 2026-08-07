@@ -29,7 +29,9 @@ jobs:
             os: macos-15
             duckdb-platform: osx_arm64
           - classifier: windows-x86_64
-            os: windows-2025
+            # DuckDB 1.5.3's vendored fmt still uses stdext::checked_array_iterator,
+            # which was removed from the Visual Studio 2026 toolchain.
+            os: windows-2022
             duckdb-platform: windows_amd64
 
     steps:
