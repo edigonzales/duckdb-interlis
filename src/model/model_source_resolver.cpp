@@ -73,7 +73,7 @@ void ModelSourceResolver::AddFile(duckdb::FileSystem &fileSystem, const std::str
         return;
     }
 
-    auto handle = fileSystem.OpenFile(path, duckdb::FileFlags::FILE_FLAGS_READ);
+    auto handle = fileSystem.OpenFile(path, duckdb::FileOpenFlags::FILE_FLAGS_READ);
     if (!handle || handle->GetType() != duckdb::FileType::FILE_TYPE_REGULAR) {
         throw duckdb::InvalidInputException("INTERLIS model source is not a regular file: %s", path);
     }

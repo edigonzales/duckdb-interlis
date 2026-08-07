@@ -36,7 +36,12 @@ XtfStreamState OpenXtfStream(ClientContext &context,
                              const std::string &path) {
     XtfStreamState result;
     auto &fileSystem = FileSystem::GetFileSystem(context);
-    result.file = fileSystem.OpenFile(path, FileFlags::FILE_FLAGS_READ);
+    // DuckDB itself is compiled as C++11 while the extension is C++17. Do
+    // not reference FileFlags' static constexpr FileOpenFlags objects here:
+    // that creates a second definition of the object when linking with
+    // DuckDB's static library on GNU platforms. The primitive flags are
+    // converted to FileOpenFlags by OpenFile().
+    result.file = fileSystem.OpenFile(path, FileOpenFlags::FILE_FLAGS_READ);
     if (!result.file || result.file->GetType() != FileType::FILE_TYPE_REGULAR) {
         throw InvalidInputException("XTF input is not a readable regular file: %s", path);
     }

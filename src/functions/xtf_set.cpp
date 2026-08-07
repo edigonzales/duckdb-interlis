@@ -270,7 +270,7 @@ public:
     FileOutputSink(FileSystem &fileSystem, const std::string &path)
         : fileSystem_(fileSystem), path_(path) {
         file_ = fileSystem_.OpenFile(
-            path_, FileFlags::FILE_FLAGS_WRITE | FileFlags::FILE_FLAGS_FILE_CREATE_NEW);
+            path_, FileOpenFlags::FILE_FLAGS_WRITE | FileOpenFlags::FILE_FLAGS_FILE_CREATE_NEW);
         if (!file_) {
             throw IOException("xtf_set could not create temporary output: %s", path_);
         }
