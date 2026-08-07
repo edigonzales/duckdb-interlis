@@ -22,9 +22,6 @@ jobs:
           - classifier: linux-x86_64
             os: ubuntu-24.04
             duckdb-platform: linux_amd64
-          - classifier: linux-aarch64
-            os: ubuntu-24.04-arm
-            duckdb-platform: linux_arm64
           - classifier: osx-aarch64
             os: macos-15
             duckdb-platform: osx_arm64
@@ -88,10 +85,9 @@ jobs:
       - name: Organize repository tree
         shell: bash
         run: |
-          mkdir -p repo/v1.5.3/{osx_arm64,linux_amd64,linux_arm64,windows_amd64}
+          mkdir -p repo/v1.5.3/{osx_arm64,linux_amd64,windows_amd64}
           declare -A PLATFORM_MAP=(
             [linux-x86_64]=linux_amd64
-            [linux-aarch64]=linux_arm64
             [osx-aarch64]=osx_arm64
             [windows-x86_64]=windows_amd64
           )
@@ -131,8 +127,6 @@ jobs:
           files: |
             interlis-linux-x86_64/interlis.duckdb_extension
             interlis-linux-x86_64/interlis.duckdb_extension.sha256
-            interlis-linux-aarch64/interlis.duckdb_extension
-            interlis-linux-aarch64/interlis.duckdb_extension.sha256
             interlis-osx-aarch64/interlis.duckdb_extension
             interlis-osx-aarch64/interlis.duckdb_extension.sha256
             interlis-windows-x86_64/interlis.duckdb_extension
