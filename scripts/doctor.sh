@@ -50,7 +50,12 @@ if [[ -n "${VCPKG_TOOLCHAIN_PATH:-}" ]]; then
 else
     check_ok "host/vcpkg dependency discovery"
 fi
-[[ -f "$REPO_ROOT/vcpkg.json" ]] && check_ok "GEOS manifest" || check_fail "GEOS manifest"
+INTERLIS_ENABLE_GEOS="${INTERLIS_ENABLE_GEOS:-OFF}"
+case "$INTERLIS_ENABLE_GEOS" in
+    ON|OFF) check_ok "GEOS mode ($INTERLIS_ENABLE_GEOS)" ;;
+    *) check_fail "GEOS mode must be ON or OFF (got $INTERLIS_ENABLE_GEOS)" ;;
+esac
+[[ -f "$REPO_ROOT/vcpkg.json" ]] && check_ok "vcpkg manifest (optional GEOS feature)" || check_fail "vcpkg manifest"
 
 echo "=== Result: $pass passed, $fail failed ==="
 [[ "$fail" -eq 0 ]]

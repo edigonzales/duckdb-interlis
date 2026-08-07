@@ -75,6 +75,9 @@ Temporary Items
 **/build/
 !**/src/**/build/
 
+# Local development environment; use scripts/env.example.sh as the template.
+scripts/env.sh
+
 # ---> C++
 # Prerequisites
 *.d
