@@ -176,6 +176,18 @@ cmake_language(DEFER DIRECTORY "${_DUCKDB_PROJECT_SRC_DIR}"
 cmake_language(DEFER DIRECTORY "${_DUCKDB_PROJECT_SRC_DIR}"
     CALL _interlis_append_native_link_libraries plan_serializer)
 
+function(_interlis_set_windows_test_output_directory target_name)
+    if(MSVC AND TARGET "${target_name}")
+        foreach(_config Debug Release RelWithDebInfo MinSizeRel)
+            set_target_properties("${target_name}" PROPERTIES
+                "RUNTIME_OUTPUT_DIRECTORY_${_config}" "${CMAKE_BINARY_DIR}/test")
+        endforeach()
+    endif()
+endfunction()
+
+cmake_language(DEFER DIRECTORY "${_DUCKDB_PROJECT_SRC_DIR}"
+    CALL _interlis_set_windows_test_output_directory unittest)
+
 set(INTERLIS_COMPONENT_REVISIONS
     "duckdb-interlis=working-tree"
     "ilic=${INTERLIS_ILIC_COMMIT}"
