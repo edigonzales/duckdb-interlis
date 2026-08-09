@@ -7,8 +7,8 @@ DUCKDB_SRCDIR ?= "./third_party/duckdb/"
 
 include third_party/extension-ci-tools/makefiles/duckdb_extension.Makefile
 
-# Visual Studio uses a multi-config generator and emits the test executable
-# with a .exe suffix. Keep the shared test recipes usable on Windows as well.
+# Visual Studio uses a multi-config generator and emits the Release test
+# executable below a configuration-specific directory.
 ifeq ($(DUCKDB_PLATFORM),windows_amd64)
-TEST_PATH="/test/unittest.exe"
+TEST_PATH="/test/Release/unittest.exe"
 endif
