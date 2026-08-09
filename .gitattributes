@@ -1,0 +1,2 @@
+# INTERLIS transfer fixtures are byte-tested and must use stable line endings.
+*.xtf text eol=lf
