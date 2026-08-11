@@ -12,9 +12,9 @@ endif()
 set(INTERLIS_ILIC_SOURCE_DIR "" CACHE PATH "Path to ilic-fork")
 set(INTERLIS_IOX_SOURCE_DIR "" CACHE PATH "Path to iox-cpp")
 
-set(INTERLIS_ILIC_COMMIT "c5c37108fe2cde282aa9a29ff6b2a01cf4e2974e" CACHE STRING
+set(INTERLIS_ILIC_COMMIT "cd74490b1fddfe38ac80288067e1af0dd800e8da" CACHE STRING
     "Pinned ilic-fork commit used when no local source directory is supplied")
-set(INTERLIS_IOX_COMMIT "0b1cb5136a2db27f61724c22aa4143555987812b" CACHE STRING
+set(INTERLIS_IOX_COMMIT "600d191e387405b3e957617f7a1e6dd7a29a1d94" CACHE STRING
     "Pinned iox-cpp commit used when no local source directory is supplied")
 
 set(INTERLIS_ILIC_VERSION "0.10.0-SNAPSHOT" CACHE STRING "ilic source version")
@@ -23,6 +23,7 @@ set(INTERLIS_DUCKDB_VERSION "1.5.3" CACHE STRING "DuckDB product version")
 set(INTERLIS_GEOS_VERSION "3.x" CACHE STRING "GEOS component version family")
 option(INTERLIS_BUILD_NATIVE_TESTS "Build native duckdb-interlis model-source tests" OFF)
 option(INTERLIS_ENABLE_GEOS "Enable native GEOS geometry validation" OFF)
+option(INTERLIS_USE_INSTALLED_IOX "Use an installed iox package instead of embedding iox/ilic sources" OFF)
 
 if(INTERLIS_ENABLE_GEOS)
     set(_interlis_geos_component_version "${INTERLIS_GEOS_VERSION}")
@@ -30,83 +31,99 @@ else()
     set(_interlis_geos_component_version "disabled")
 endif()
 
-include(FetchContent)
-
-# ilic is embedded as a compiler library. Its optional native repository
-# client is not part of the DuckDB extension and must not pull CURL (or any
-# other repository transport dependency) into this build.
-set(ILIC_BUILD_CLI OFF CACHE BOOL "Disable ilic CLI in the extension build" FORCE)
-set(ILIC_BUILD_TESTS OFF CACHE BOOL "Disable nested ilic tests" FORCE)
-set(ILIC_ENABLE_NATIVE_REPOSITORY OFF CACHE BOOL
-    "Disable ilic repository support in the extension build" FORCE)
-
-if(INTERLIS_ILIC_SOURCE_DIR)
-    if(NOT EXISTS "${INTERLIS_ILIC_SOURCE_DIR}/CMakeLists.txt")
+if(INTERLIS_USE_INSTALLED_IOX)
+    if(INTERLIS_ILIC_SOURCE_DIR OR INTERLIS_IOX_SOURCE_DIR)
         message(FATAL_ERROR
-            "INTERLIS_ILIC_SOURCE_DIR does not contain ilic-fork: ${INTERLIS_ILIC_SOURCE_DIR}")
+            "INTERLIS_USE_INSTALLED_IOX cannot be combined with INTERLIS_ILIC_SOURCE_DIR or INTERLIS_IOX_SOURCE_DIR")
     endif()
-    set(_interlis_ilic_source_dir "${INTERLIS_ILIC_SOURCE_DIR}")
-    message(STATUS "Using local ilic-fork: ${_interlis_ilic_source_dir}")
-else()
-    # Let iox fetch and add ilic exactly once. Fetching ilic here as well would
-    # create duplicate global targets such as ilic::core and antlr4-runtime.
-    set(_interlis_ilic_source_dir "")
-    set(_interlis_ilic_fetched TRUE)
-    message(STATUS "ilic-fork will be fetched by iox at: ${INTERLIS_ILIC_COMMIT}")
-endif()
 
-# Configure iox before FetchContent can add it as a subdirectory. This is
-# important for the fetched-source path: FetchContent_MakeAvailable already
-# performs add_subdirectory and must not be followed by a second add.
-set(BUILD_TESTING OFF CACHE BOOL "Disable nested iox tests in DuckDB extension builds" FORCE)
-set(IOX_ENABLE_ILIC ON CACHE BOOL "Build iox ilic integration" FORCE)
-set(IOX_ENABLE_GEOS "${INTERLIS_ENABLE_GEOS}" CACHE BOOL
-    "Build GEOS-backed iox geometry" FORCE)
-set(IOX_BUILD_WASM OFF CACHE BOOL "Disable nested iox WASM target" FORCE)
-set(IOX_BUILD_EXAMPLES OFF CACHE BOOL "Disable nested iox examples" FORCE)
-set(IOX_BUILD_TOOLS OFF CACHE BOOL "Disable nested iox tools" FORCE)
-set(IOX_ENABLE_JSON_FORMAT ON CACHE BOOL "Build iox JSON format support" FORCE)
-if(_interlis_ilic_fetched)
-    set(IOX_ILIC_SOURCE_DIR "" CACHE PATH
-        "Path to ilic source passed to iox" FORCE)
-    set(IOX_FETCH_ILIC ON CACHE BOOL "Fetch the pinned ilic source through iox" FORCE)
-    set(IOX_ILIC_VERSION "${INTERLIS_ILIC_VERSION}" CACHE STRING
-        "ilic runtime version used by the extension" FORCE)
-    set(IOX_ILIC_GIT_TAG "${INTERLIS_ILIC_COMMIT}" CACHE STRING
-        "Exact ilic commit used by the extension" FORCE)
-else()
-    set(IOX_ILIC_SOURCE_DIR "${_interlis_ilic_source_dir}" CACHE PATH
-        "Path to ilic source passed to iox" FORCE)
-    set(IOX_FETCH_ILIC OFF CACHE BOOL "Fetch the pinned ilic source through iox" FORCE)
-endif()
-
-if(INTERLIS_IOX_SOURCE_DIR)
-    if(NOT EXISTS "${INTERLIS_IOX_SOURCE_DIR}/CMakeLists.txt")
-        message(FATAL_ERROR
-            "INTERLIS_IOX_SOURCE_DIR does not contain iox-cpp: ${INTERLIS_IOX_SOURCE_DIR}")
+    find_package(iox CONFIG REQUIRED)
+    if(NOT TARGET iox::ilic)
+        message(FATAL_ERROR "Installed iox package does not provide the required iox::ilic target")
     endif()
-    set(_interlis_iox_source_dir "${INTERLIS_IOX_SOURCE_DIR}")
-    message(STATUS "Using local iox-cpp: ${_interlis_iox_source_dir}")
+    if(NOT TARGET ilic::core)
+        message(FATAL_ERROR "Installed iox package did not resolve the required ilic::core target")
+    endif()
+    message(STATUS "Using installed iox-cpp and ilic packages")
 else()
-    FetchContent_Declare(interlis_iox
-        GIT_REPOSITORY https://codeberg.org/edigonzales/iox-cpp.git
-        GIT_TAG "${INTERLIS_IOX_COMMIT}"
-        GIT_SHALLOW FALSE
-    )
-    FetchContent_MakeAvailable(interlis_iox)
-    set(_interlis_iox_source_dir "${interlis_iox_SOURCE_DIR}")
-    set(_interlis_iox_already_added TRUE)
-    message(STATUS "Using fetched iox-cpp commit: ${INTERLIS_IOX_COMMIT}")
-endif()
+    include(FetchContent)
 
-# iox is embedded once as a dependency of this extension. In particular, pass the
-# chosen ilic source into iox instead of adding ilic-core a second time here.
-if(NOT _interlis_iox_already_added)
-    add_subdirectory(
-        "${_interlis_iox_source_dir}"
-        "${CMAKE_BINARY_DIR}/interlis-iox-build"
-        EXCLUDE_FROM_ALL
-    )
+    # ilic is embedded as a compiler library. Its optional native repository
+    # client is not part of the DuckDB extension and must not pull CURL (or any
+    # other repository transport dependency) into this build.
+    set(ILIC_BUILD_CLI OFF CACHE BOOL "Disable ilic CLI in the extension build" FORCE)
+    set(ILIC_BUILD_TESTS OFF CACHE BOOL "Disable nested ilic tests" FORCE)
+    set(ILIC_ENABLE_NATIVE_REPOSITORY OFF CACHE BOOL
+        "Disable ilic repository support in the extension build" FORCE)
+
+    if(INTERLIS_ILIC_SOURCE_DIR)
+        if(NOT EXISTS "${INTERLIS_ILIC_SOURCE_DIR}/CMakeLists.txt")
+            message(FATAL_ERROR
+                "INTERLIS_ILIC_SOURCE_DIR does not contain ilic-fork: ${INTERLIS_ILIC_SOURCE_DIR}")
+        endif()
+        set(_interlis_ilic_source_dir "${INTERLIS_ILIC_SOURCE_DIR}")
+        message(STATUS "Using local ilic-fork: ${_interlis_ilic_source_dir}")
+    else()
+        # Let iox fetch and add ilic exactly once. Fetching ilic here as well would
+        # create duplicate global targets such as ilic::core and antlr4-runtime.
+        set(_interlis_ilic_source_dir "")
+        set(_interlis_ilic_fetched TRUE)
+        message(STATUS "ilic-fork will be fetched by iox at: ${INTERLIS_ILIC_COMMIT}")
+    endif()
+
+    # Configure iox before FetchContent can add it as a subdirectory. This is
+    # important for the fetched-source path: FetchContent_MakeAvailable already
+    # performs add_subdirectory and must not be followed by a second add.
+    set(BUILD_TESTING OFF CACHE BOOL "Disable nested iox tests in DuckDB extension builds" FORCE)
+    set(IOX_ENABLE_ILIC ON CACHE BOOL "Build iox ilic integration" FORCE)
+    set(IOX_ENABLE_GEOS "${INTERLIS_ENABLE_GEOS}" CACHE BOOL
+        "Build GEOS-backed iox geometry" FORCE)
+    set(IOX_BUILD_WASM OFF CACHE BOOL "Disable nested iox WASM target" FORCE)
+    set(IOX_BUILD_EXAMPLES OFF CACHE BOOL "Disable nested iox examples" FORCE)
+    set(IOX_BUILD_TOOLS OFF CACHE BOOL "Disable nested iox tools" FORCE)
+    set(IOX_ENABLE_JSON_FORMAT ON CACHE BOOL "Build iox JSON format support" FORCE)
+    if(_interlis_ilic_fetched)
+        set(IOX_ILIC_SOURCE_DIR "" CACHE PATH
+            "Path to ilic source passed to iox" FORCE)
+        set(IOX_FETCH_ILIC ON CACHE BOOL "Fetch the pinned ilic source through iox" FORCE)
+        set(IOX_ILIC_VERSION "${INTERLIS_ILIC_VERSION}" CACHE STRING
+            "ilic runtime version used by the extension" FORCE)
+        set(IOX_ILIC_GIT_TAG "${INTERLIS_ILIC_COMMIT}" CACHE STRING
+            "Exact ilic commit used by the extension" FORCE)
+    else()
+        set(IOX_ILIC_SOURCE_DIR "${_interlis_ilic_source_dir}" CACHE PATH
+            "Path to ilic source passed to iox" FORCE)
+        set(IOX_FETCH_ILIC OFF CACHE BOOL "Fetch the pinned ilic source through iox" FORCE)
+    endif()
+
+    if(INTERLIS_IOX_SOURCE_DIR)
+        if(NOT EXISTS "${INTERLIS_IOX_SOURCE_DIR}/CMakeLists.txt")
+            message(FATAL_ERROR
+                "INTERLIS_IOX_SOURCE_DIR does not contain iox-cpp: ${INTERLIS_IOX_SOURCE_DIR}")
+        endif()
+        set(_interlis_iox_source_dir "${INTERLIS_IOX_SOURCE_DIR}")
+        message(STATUS "Using local iox-cpp: ${_interlis_iox_source_dir}")
+    else()
+        FetchContent_Declare(interlis_iox
+            GIT_REPOSITORY https://codeberg.org/edigonzales/iox-cpp.git
+            GIT_TAG "${INTERLIS_IOX_COMMIT}"
+            GIT_SHALLOW FALSE
+        )
+        FetchContent_MakeAvailable(interlis_iox)
+        set(_interlis_iox_source_dir "${interlis_iox_SOURCE_DIR}")
+        set(_interlis_iox_already_added TRUE)
+        message(STATUS "Using fetched iox-cpp commit: ${INTERLIS_IOX_COMMIT}")
+    endif()
+
+    # iox is embedded once as a dependency of this extension. In particular, pass the
+    # chosen ilic source into iox instead of adding ilic-core a second time here.
+    if(NOT _interlis_iox_already_added)
+        add_subdirectory(
+            "${_interlis_iox_source_dir}"
+            "${CMAKE_BINARY_DIR}/interlis-iox-build"
+            EXCLUDE_FROM_ALL
+        )
+    endif()
 endif()
 
 set(EXTENSION_SOURCES
