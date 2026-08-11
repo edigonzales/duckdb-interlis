@@ -28,7 +28,7 @@ jobs:
             duckdb-platform: linux_amd64
             vcpkg-triplet: x64-linux
           - classifier: osx-aarch64
-            os: macos-15
+            os: macos-14
             duckdb-platform: osx_arm64
             vcpkg-triplet: arm64-osx
           - classifier: windows-x86_64
@@ -38,6 +38,9 @@ jobs:
             duckdb-platform: windows_amd64
             vcpkg-triplet: x64-windows
     env:
+      NATIVE_VCPKG_ROOT: ${{ github.workspace }}/build/vcpkg-native-deps
+      NATIVE_MANIFEST_ROOT: ${{ github.workspace }}/vcpkg/native-deps
+      NATIVE_INSTALL_ROOT: ${{ github.workspace }}/vcpkg/native-deps/vcpkg_installed
       VCPKG_FEED_URL: https://nuget.pkg.github.com/edigonzales/index.json
       VCPKG_BINARY_SOURCES: clear;nuget,https://nuget.pkg.github.com/edigonzales/index.json,read
       VCPKG_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -47,7 +50,15 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Configure vcpkg environment
+      - name: Check out pinned vcpkg for native dependencies
+        uses: actions/checkout@v4
+        with:
+          repository: microsoft/vcpkg
+          ref: 2026.05.25
+          path: build/vcpkg-native-deps
+          persist-credentials: false
+
+      - name: Configure DuckDB vcpkg environment
         shell: bash
         run: |
           if [ -z "${VCPKG_INSTALLATION_ROOT:-}" ]; then
@@ -55,6 +66,17 @@ jobs:
             exit 1
           fi
           echo "VCPKG_TOOLCHAIN_PATH=$VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" >> "$GITHUB_ENV"
+          echo "NATIVE_DEPS_PREFIX=$NATIVE_INSTALL_ROOT/${{ matrix.vcpkg-triplet }}" >> "$GITHUB_ENV"
+
+      - name: Bootstrap pinned native-dependency vcpkg (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: '"$NATIVE_VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics'
+
+      - name: Bootstrap pinned native-dependency vcpkg (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: '& "$env:NATIVE_VCPKG_ROOT\bootstrap-vcpkg.bat" -disableMetrics'
 
       - name: Install Mono for NuGet (Linux)
         if: runner.os == 'Linux'
@@ -78,7 +100,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          NUGET_PATH="$("$VCPKG_INSTALLATION_ROOT/vcpkg" fetch nuget | tail -n 1)"
+          NUGET_PATH="$("$NATIVE_VCPKG_ROOT/vcpkg" fetch nuget | tail -n 1)"
           mono "$NUGET_PATH" sources add \
             -Source "$VCPKG_FEED_URL" \
             -StorePasswordInClearText \
@@ -90,7 +112,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $nuget = (& "$env:VCPKG_INSTALLATION_ROOT\vcpkg.exe" fetch nuget | Select-Object -Last 1)
+          $nuget = (& "$env:NATIVE_VCPKG_ROOT\vcpkg.exe" fetch nuget | Select-Object -Last 1)
           & $nuget sources add `
             -Source "$env:VCPKG_FEED_URL" `
             -StorePasswordInClearText `
@@ -103,18 +125,20 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          "$VCPKG_INSTALLATION_ROOT/vcpkg" install \
+          "$NATIVE_VCPKG_ROOT/vcpkg" install \
             --triplet "${{ matrix.vcpkg-triplet }}" \
-            --x-feature=native-binary-deps \
+            --x-manifest-root="$NATIVE_MANIFEST_ROOT" \
+            --x-install-root="$NATIVE_INSTALL_ROOT" \
             --only-binarycaching
 
       - name: Restore immutable native dependencies (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          & "$env:VCPKG_INSTALLATION_ROOT\vcpkg.exe" install `
+          & "$env:NATIVE_VCPKG_ROOT\vcpkg.exe" install `
             "--triplet=${{ matrix.vcpkg-triplet }}" `
-            --x-feature=native-binary-deps `
+            "--x-manifest-root=$env:NATIVE_MANIFEST_ROOT" `
+            "--x-install-root=$env:NATIVE_INSTALL_ROOT" `
             --only-binarycaching
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
@@ -126,7 +150,7 @@ jobs:
           make release \
             VCPKG_TOOLCHAIN_PATH="$VCPKG_TOOLCHAIN_PATH" \
             VCPKG_TARGET_TRIPLET="${{ matrix.vcpkg-triplet }}" \
-            EXT_RELEASE_FLAGS="-DINTERLIS_USE_INSTALLED_IOX=ON -DVCPKG_MANIFEST_FEATURES=native-binary-deps" \
+            EXT_RELEASE_FLAGS="-DINTERLIS_USE_INSTALLED_IOX=ON -DCMAKE_PREFIX_PATH=$NATIVE_DEPS_PREFIX" \
             DISABLE_SANITIZER=1
 
       - name: Run native SQLLogicTests
@@ -140,8 +164,8 @@ jobs:
         run: |
           mkdir -p "artifact/${{ matrix.classifier }}"
           cp build/release/extension/interlis/interlis.duckdb_extension "artifact/${{ matrix.classifier }}/interlis.duckdb_extension"
-          shasum -a 256 "artifact/${{ matrix.classifier }}/interlis.duckdb_extension" > "artifact/${{ matrix.classifier }}/interlis.duckdb_extension.sha256" || \
-            sha256sum "artifact/${{ matrix.classifier }}/interlis.duckdb_extension" > "artifact/${{ matrix.classifier }}/interlis.duckdb_extension.sha256"
+          shasum -a 256 "artifact/${{ matrix.classifier }}/interlis/interlis.duckdb_extension" > "artifact/${{ matrix.classifier }}/interlis.duckdb_extension.sha256" || \
+            sha256sum "artifact/${{ matrix.classifier }}/interlis/interlis.duckdb_extension" > "artifact/${{ matrix.classifier }}/interlis.duckdb_extension.sha256"
 
       - uses: actions/upload-artifact@v4
         with:
