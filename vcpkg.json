@@ -1,59 +1,16 @@
 {
   "name": "duckdb-interlis",
   "version-string": "0.2.0",
-  "builtin-baseline": "d015e31e90838a4c9dfa3eed45979bc70d9357fc",
-  "overrides": [
-    {
-      "name": "iox-cpp",
-      "version-string": "0.2.0-snapshot.600d191e"
-    },
-    {
-      "name": "ilic",
-      "version-string": "0.10.0-snapshot.cd74490b"
-    }
-  ],
+  "builtin-baseline": "ce613c41372b23b1f51333815feb3edd87ef8a8b",
   "features": {
     "geos": {
       "description": "Native GEOS-backed geometry validation",
-      "dependencies": [
-        "geos"
-      ]
-    },
-    "native-binary-deps": {
-      "description": "Use immutable binary iox-cpp and ilic packages",
-      "dependencies": [
-        {
-          "name": "iox-cpp",
-          "features": [
-            "ilic"
-          ]
-        }
-      ]
+      "dependencies": ["geos"]
     }
   },
   "vcpkg-configuration": {
     "overlay-ports": [
       "./third_party/extension-ci-tools/vcpkg_ports"
-    ],
-    "registries": [
-      {
-        "kind": "git",
-        "repository": "https://github.com/edigonzales/iox-cpp.git",
-        "reference": "vcpkg-registry",
-        "baseline": "d3a33862ee4c744a0dbc085ce68b746c1ac57bdc",
-        "packages": [
-          "iox-cpp"
-        ]
-      },
-      {
-        "kind": "git",
-        "repository": "https://github.com/edigonzales/ilic-fork.git",
-        "reference": "vcpkg-registry",
-        "baseline": "543d55fdfe01a6e8014af7188dc0888d8b702b16",
-        "packages": [
-          "ilic"
-        ]
-      }
     ]
   }
 }
