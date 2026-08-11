@@ -174,10 +174,10 @@ function(_interlis_append_native_link_libraries target_name)
     if(TARGET "${target_name}")
         # Host DuckDB binaries compile with DuckDB's C++ standard. LINK_ONLY
         # keeps the native dependency usage requirements out of compilation.
-        # target_link_libraries is intentional here: when called from this
-        # extension directory CMake preserves this directory's imported-target
-        # lookup scope even though the DuckDB host target lives in its parent.
-        target_link_libraries("${target_name}" PRIVATE
+        # Use the plain target_link_libraries signature because DuckDB defines
+        # these host targets with the plain signature as well. Calling it from
+        # this directory still preserves the imported-target lookup scope.
+        target_link_libraries("${target_name}"
             "$<LINK_ONLY:iox::ilic>"
             "$<LINK_ONLY:ilic::core>"
         )
