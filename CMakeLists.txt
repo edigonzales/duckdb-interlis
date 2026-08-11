@@ -44,6 +44,13 @@ if(INTERLIS_USE_INSTALLED_IOX)
     if(NOT TARGET ilic::core)
         message(FATAL_ERROR "Installed iox package did not resolve the required ilic::core target")
     endif()
+
+    # find_package creates non-global imported targets by default. The native
+    # DuckDB host targets are linked later from DuckDB's top-level directory,
+    # so make the two direct package targets visible there as well.
+    set_property(TARGET iox::ilic PROPERTY IMPORTED_GLOBAL TRUE)
+    set_property(TARGET ilic::core PROPERTY IMPORTED_GLOBAL TRUE)
+
     message(STATUS "Using installed iox-cpp and ilic packages")
 else()
     include(FetchContent)
@@ -185,8 +192,8 @@ endfunction()
 function(_interlis_append_native_link_libraries_plain target_name)
     if(TARGET "${target_name}")
         # DuckDB 1.5.3 defines these host targets with the plain signature.
-        # Calling target_link_libraries from this extension directory preserves
-        # the imported-target lookup scope for iox::ilic and ilic::core.
+        # These imported targets are promoted to global scope above for the
+        # installed-package path, so deferred calls from DuckDB can resolve them.
         target_link_libraries("${target_name}"
             "$<LINK_ONLY:iox::ilic>"
             "$<LINK_ONLY:ilic::core>"
