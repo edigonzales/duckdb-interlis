@@ -11,6 +11,10 @@ on:
       - '**/*.md'
   workflow_dispatch:
 
+permissions:
+  contents: read
+  packages: read
+
 jobs:
   native-build:
     name: Native build (${{ matrix.classifier }})
@@ -22,14 +26,21 @@ jobs:
           - classifier: linux-x86_64
             os: ubuntu-24.04
             duckdb-platform: linux_amd64
+            vcpkg-triplet: x64-linux
           - classifier: osx-aarch64
             os: macos-15
             duckdb-platform: osx_arm64
+            vcpkg-triplet: arm64-osx
           - classifier: windows-x86_64
             # DuckDB 1.5.3's vendored fmt still uses stdext::checked_array_iterator,
             # which was removed from the Visual Studio 2026 toolchain.
             os: windows-2022
             duckdb-platform: windows_amd64
+            vcpkg-triplet: x64-windows
+    env:
+      VCPKG_FEED_URL: https://nuget.pkg.github.com/edigonzales/index.json
+      VCPKG_BINARY_SOURCES: clear;nuget,https://nuget.pkg.github.com/edigonzales/index.json,read
+      VCPKG_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     steps:
       - uses: actions/checkout@v4
@@ -45,6 +56,68 @@ jobs:
           fi
           echo "VCPKG_TOOLCHAIN_PATH=$VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" >> "$GITHUB_ENV"
 
+      - name: Install Mono for NuGet (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          if ! command -v mono >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install --yes mono-complete
+          fi
+
+      - name: Install Mono for NuGet (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          if ! command -v mono >/dev/null 2>&1; then
+            brew install mono
+          fi
+
+      - name: Authenticate GitHub Packages (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          NUGET_PATH="$("$VCPKG_INSTALLATION_ROOT/vcpkg" fetch nuget | tail -n 1)"
+          mono "$NUGET_PATH" sources add \
+            -Source "$VCPKG_FEED_URL" \
+            -StorePasswordInClearText \
+            -Name GitHubPackages \
+            -UserName "$GITHUB_ACTOR" \
+            -Password "$VCPKG_GITHUB_TOKEN"
+
+      - name: Authenticate GitHub Packages (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $nuget = (& "$env:VCPKG_INSTALLATION_ROOT\vcpkg.exe" fetch nuget | Select-Object -Last 1)
+          & $nuget sources add `
+            -Source "$env:VCPKG_FEED_URL" `
+            -StorePasswordInClearText `
+            -Name GitHubPackages `
+            -UserName "$env:GITHUB_ACTOR" `
+            -Password "$env:VCPKG_GITHUB_TOKEN"
+
+      - name: Restore immutable native dependencies (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$VCPKG_INSTALLATION_ROOT/vcpkg" install \
+            --triplet "${{ matrix.vcpkg-triplet }}" \
+            --x-feature=native-binary-deps \
+            --only-binarycaching
+
+      - name: Restore immutable native dependencies (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          & "$env:VCPKG_INSTALLATION_ROOT\vcpkg.exe" install `
+            "--triplet=${{ matrix.vcpkg-triplet }}" `
+            --x-feature=native-binary-deps `
+            --only-binarycaching
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Build native Release extension
         shell: bash
         env:
@@ -52,6 +125,8 @@ jobs:
         run: |
           make release \
             VCPKG_TOOLCHAIN_PATH="$VCPKG_TOOLCHAIN_PATH" \
+            VCPKG_TARGET_TRIPLET="${{ matrix.vcpkg-triplet }}" \
+            EXT_RELEASE_FLAGS="-DINTERLIS_USE_INSTALLED_IOX=ON -DVCPKG_MANIFEST_FEATURES=native-binary-deps" \
             DISABLE_SANITIZER=1
 
       - name: Run native SQLLogicTests
