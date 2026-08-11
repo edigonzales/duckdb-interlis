@@ -170,13 +170,23 @@ target_link_libraries(interlis_loadable_extension iox::ilic ilic::core)
 # local ilic/iox targets through its install interface. The host executable
 # still needs these libraries after the static extension archive.
 set_property(TARGET interlis_extension PROPERTY INTERFACE_LINK_LIBRARIES "")
-function(_interlis_append_native_link_libraries target_name)
+
+function(_interlis_append_native_link_libraries_keyword target_name)
     if(TARGET "${target_name}")
-        # Host DuckDB binaries compile with DuckDB's C++ standard. LINK_ONLY
-        # keeps the native dependency usage requirements out of compilation.
-        # Use the plain target_link_libraries signature because DuckDB defines
-        # these host targets with the plain signature as well. Calling it from
-        # this directory still preserves the imported-target lookup scope.
+        # DuckDB 1.5.3 defines these host targets with the keyword signature.
+        # LINK_ONLY keeps the native dependency usage requirements out of compilation.
+        target_link_libraries("${target_name}" PRIVATE
+            "$<LINK_ONLY:iox::ilic>"
+            "$<LINK_ONLY:ilic::core>"
+        )
+    endif()
+endfunction()
+
+function(_interlis_append_native_link_libraries_plain target_name)
+    if(TARGET "${target_name}")
+        # DuckDB 1.5.3 defines these host targets with the plain signature.
+        # Calling target_link_libraries from this extension directory preserves
+        # the imported-target lookup scope for iox::ilic and ilic::core.
         target_link_libraries("${target_name}"
             "$<LINK_ONLY:iox::ilic>"
             "$<LINK_ONLY:ilic::core>"
@@ -185,15 +195,15 @@ function(_interlis_append_native_link_libraries target_name)
 endfunction()
 
 cmake_language(DEFER DIRECTORY "${_DUCKDB_PROJECT_SRC_DIR}"
-    CALL _interlis_append_native_link_libraries duckdb)
+    CALL _interlis_append_native_link_libraries_keyword duckdb)
 cmake_language(DEFER DIRECTORY "${_DUCKDB_PROJECT_SRC_DIR}"
-    CALL _interlis_append_native_link_libraries unittest)
+    CALL _interlis_append_native_link_libraries_plain unittest)
 cmake_language(DEFER DIRECTORY "${_DUCKDB_PROJECT_SRC_DIR}"
-    CALL _interlis_append_native_link_libraries shell)
+    CALL _interlis_append_native_link_libraries_plain shell)
 cmake_language(DEFER DIRECTORY "${_DUCKDB_PROJECT_SRC_DIR}"
-    CALL _interlis_append_native_link_libraries benchmark_runner)
+    CALL _interlis_append_native_link_libraries_keyword benchmark_runner)
 cmake_language(DEFER DIRECTORY "${_DUCKDB_PROJECT_SRC_DIR}"
-    CALL _interlis_append_native_link_libraries plan_serializer)
+    CALL _interlis_append_native_link_libraries_plain plan_serializer)
 
 set(INTERLIS_COMPONENT_REVISIONS
     "duckdb-interlis=working-tree"
