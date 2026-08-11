@@ -172,10 +172,12 @@ target_link_libraries(interlis_loadable_extension iox::ilic ilic::core)
 set_property(TARGET interlis_extension PROPERTY INTERFACE_LINK_LIBRARIES "")
 function(_interlis_append_native_link_libraries target_name)
     if(TARGET "${target_name}")
-        # Host DuckDB binaries compile with DuckDB's C++ standard. The
-        # Interlis libraries are C++17, but their compile requirements must not
-        # change the host target's standard merely because it links them.
-        set_property(TARGET "${target_name}" APPEND PROPERTY LINK_LIBRARIES
+        # Host DuckDB binaries compile with DuckDB's C++ standard. LINK_ONLY
+        # keeps the native dependency usage requirements out of compilation.
+        # target_link_libraries is intentional here: when called from this
+        # extension directory CMake preserves this directory's imported-target
+        # lookup scope even though the DuckDB host target lives in its parent.
+        target_link_libraries("${target_name}" PRIVATE
             "$<LINK_ONLY:iox::ilic>"
             "$<LINK_ONLY:ilic::core>"
         )
