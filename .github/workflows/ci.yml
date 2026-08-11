@@ -66,7 +66,11 @@ jobs:
             exit 1
           fi
           echo "VCPKG_TOOLCHAIN_PATH=$VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" >> "$GITHUB_ENV"
-          echo "NATIVE_DEPS_PREFIX=$NATIVE_INSTALL_ROOT/${{ matrix.vcpkg-triplet }}" >> "$GITHUB_ENV"
+          native_deps_prefix="$NATIVE_INSTALL_ROOT/${{ matrix.vcpkg-triplet }}"
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            native_deps_prefix="$(cygpath -m "$native_deps_prefix")"
+          fi
+          echo "NATIVE_DEPS_PREFIX=$native_deps_prefix" >> "$GITHUB_ENV"
 
       - name: Bootstrap pinned native-dependency vcpkg (Unix)
         if: runner.os != 'Windows'
