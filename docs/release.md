@@ -10,6 +10,18 @@ v1.5.3/
   windows_amd64/interlis.duckdb_extension
 ```
 
+GitHub Release assets use platform-specific names so the binaries remain
+unambiguous outside the repository directory structure:
+
+```text
+interlis-linux-x86_64.duckdb_extension
+interlis-linux-x86_64.duckdb_extension.sha256
+interlis-osx-aarch64.duckdb_extension
+interlis-osx-aarch64.duckdb_extension.sha256
+interlis-windows-x86_64.duckdb_extension
+interlis-windows-x86_64.duckdb_extension.sha256
+```
+
 Build locally with:
 
 ```sh

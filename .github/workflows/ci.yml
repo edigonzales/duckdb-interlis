@@ -300,16 +300,31 @@ jobs:
           pattern: interlis-*
           merge-multiple: false
 
+      - name: Prepare uniquely named release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          for classifier in linux-x86_64 osx-aarch64 windows-x86_64; do
+            source="interlis-${classifier}/interlis.duckdb_extension"
+            target="release-assets/interlis-${classifier}.duckdb_extension"
+            cp "$source" "$target"
+            sha256sum "$target" > "${target}.sha256"
+          done
+
+      - name: Remove legacy ambiguous release assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release_tag.outputs.tag }}
+        run: |
+          gh release delete-asset "$RELEASE_TAG" interlis.duckdb_extension --yes || true
+          gh release delete-asset "$RELEASE_TAG" interlis.duckdb_extension.sha256 --yes || true
+
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.release_tag.outputs.tag }}
           target_commitish: ${{ github.sha }}
           draft: ${{ github.event_name == 'workflow_dispatch' }}
-          files: |
-            interlis-linux-x86_64/interlis.duckdb_extension
-            interlis-linux-x86_64/interlis.duckdb_extension.sha256
-            interlis-osx-aarch64/interlis.duckdb_extension
-            interlis-osx-aarch64/interlis.duckdb_extension.sha256
-            interlis-windows-x86_64/interlis.duckdb_extension
-            interlis-windows-x86_64/interlis.duckdb_extension.sha256
+          files: release-assets/*
           generate_release_notes: true
