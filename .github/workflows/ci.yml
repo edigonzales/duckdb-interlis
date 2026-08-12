@@ -15,6 +15,10 @@ permissions:
   contents: read
   packages: read
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
+
 jobs:
   native-build:
     name: Native build (${{ matrix.classifier }})
@@ -44,11 +48,15 @@ jobs:
       VCPKG_FEED_URL: https://nuget.pkg.github.com/edigonzales/index.json
       VCPKG_BINARY_SOURCES: clear;nuget,https://nuget.pkg.github.com/edigonzales/index.json,read
       VCPKG_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      SCCACHE_GHA_ENABLED: "true"
 
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
+
+      - name: Configure sccache
+        uses: mozilla-actions/sccache-action@v0.0.11
 
       - name: Check out pinned vcpkg for native dependencies
         uses: actions/checkout@v4
@@ -146,15 +154,15 @@ jobs:
             --only-binarycaching
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Build native Release extension
+      - name: Build focused native Release targets
         shell: bash
         env:
           DUCKDB_PLATFORM: ${{ matrix.duckdb-platform }}
         run: |
-          make release \
+          make ci_release \
             VCPKG_TOOLCHAIN_PATH="$VCPKG_TOOLCHAIN_PATH" \
             VCPKG_TARGET_TRIPLET="${{ matrix.vcpkg-triplet }}" \
-            EXT_RELEASE_FLAGS="-DINTERLIS_USE_INSTALLED_IOX=ON -DCMAKE_PREFIX_PATH=$NATIVE_DEPS_PREFIX" \
+            EXT_RELEASE_FLAGS="-DINTERLIS_USE_INSTALLED_IOX=ON -DCMAKE_PREFIX_PATH=$NATIVE_DEPS_PREFIX -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache" \
             DISABLE_SANITIZER=1
 
       - name: Run native SQLLogicTests
@@ -162,6 +170,11 @@ jobs:
         env:
           DUCKDB_PLATFORM: ${{ matrix.duckdb-platform }}
         run: make test_release
+
+      - name: Show sccache statistics
+        if: always()
+        shell: bash
+        run: sccache --show-stats
 
       - name: Collect extension artifact
         shell: bash
