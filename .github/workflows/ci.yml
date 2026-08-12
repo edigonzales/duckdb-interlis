@@ -191,8 +191,8 @@ jobs:
           DUCKDB_PLATFORM: ${{ matrix.duckdb-platform }}
         run: |
           if [ "$RUNNER_OS" = "Windows" ]; then
-            # Ninja is single-config, so unittest.exe is not below Release/.
-            make test_release GEN=ninja TEST_PATH="/test/unittest.exe"
+            # The Makefile selects Ninja's single-config unittest.exe path.
+            make test_release GEN=ninja
           else
             make test_release
           fi
