@@ -19,9 +19,10 @@ scripts/build-extension.sh
 
 The CI workflow builds the loadable INTERLIS extension and the native SQLLogicTest
 runner, runs the SQLLogicTests, produces SHA-256 sidecar files, and uploads
-platform artifacts. The deploy and GitHub-release jobs are still gated by manual
-dispatch or a Git tag. This repository does not publish from a local development
-run.
+platform artifacts. Deploy and GitHub-release jobs run for a `v*` tag, a manual
+workflow dispatch, or an explicit `release:` commit on `main`. Manual dispatches
+create a draft release; tag and `release:` runs publish directly. This repository
+does not publish from a local development run.
 
 Before a release:
 
