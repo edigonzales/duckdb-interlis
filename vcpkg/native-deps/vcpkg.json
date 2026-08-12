@@ -1,0 +1,23 @@
+{
+  "name": "duckdb-interlis-native-deps",
+  "version-string": "0",
+  "builtin-baseline": "d015e31e90838a4c9dfa3eed45979bc70d9357fc",
+  "dependencies": [
+    {
+      "name": "iox-cpp",
+      "features": [
+        "ilic"
+      ]
+    }
+  ],
+  "overrides": [
+    {
+      "name": "iox-cpp",
+      "version-string": "0.2.0-snapshot.600d191e"
+    },
+    {
+      "name": "ilic",
+      "version-string": "0.10.0-snapshot.cd74490b"
+    }
+  ]
+}
