@@ -8,9 +8,14 @@ DUCKDB_SRCDIR ?= "./third_party/duckdb/"
 include third_party/extension-ci-tools/makefiles/duckdb_extension.Makefile
 
 # Visual Studio uses a multi-config generator and emits the Release test
-# executable below a configuration-specific directory.
+# executable below a configuration-specific directory. Ninja is single-config
+# and places the executable directly below test/.
 ifeq ($(DUCKDB_PLATFORM),windows_amd64)
+ifeq ($(GEN),ninja)
+TEST_PATH="/test/unittest.exe"
+else
 TEST_PATH="/test/Release/unittest.exe"
+endif
 endif
 
 # CI only needs the distributable INTERLIS extension and the SQLLogicTest
