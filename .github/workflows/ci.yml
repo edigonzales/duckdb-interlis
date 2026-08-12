@@ -59,6 +59,12 @@ jobs:
           # later git fetches could accidentally send it to those registries.
           persist-credentials: false
 
+      - name: Configure MSVC command environment
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
       - name: Configure sccache
         uses: mozilla-actions/sccache-action@v0.0.11
 
@@ -163,6 +169,16 @@ jobs:
         env:
           DUCKDB_PLATFORM: ${{ matrix.duckdb-platform }}
         run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            # CMake's compiler-launcher hook is honored by Ninja, but not by
+            # the Visual Studio generator. Keep MSVC itself, just use Ninja as
+            # the build-system generator so every cl.exe invocation crosses
+            # sccache. Put the MSVC binary directory ahead of Git's /usr/bin
+            # so Microsoft's link.exe is not shadowed in the bash shell.
+            export GEN=ninja
+            msvc_bin="$(dirname "$(command -v cl.exe)")"
+            export PATH="$msvc_bin:$PATH"
+          fi
           make ci_release \
             VCPKG_TOOLCHAIN_PATH="$VCPKG_TOOLCHAIN_PATH" \
             VCPKG_TARGET_TRIPLET="${{ matrix.vcpkg-triplet }}" \
@@ -173,7 +189,13 @@ jobs:
         shell: bash
         env:
           DUCKDB_PLATFORM: ${{ matrix.duckdb-platform }}
-        run: make test_release
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            # Ninja is single-config, so unittest.exe is not below Release/.
+            make test_release GEN=ninja TEST_PATH="/test/unittest.exe"
+          else
+            make test_release
+          fi
 
       - name: Show sccache statistics
         if: always()
