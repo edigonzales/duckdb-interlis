@@ -36,7 +36,7 @@ jobs:
             # which was removed from the Visual Studio 2026 toolchain.
             os: windows-2022
             duckdb-platform: windows_amd64
-            vcpkg-triplet: x64-windows
+            vcpkg-triplet: x64-windows-static
     env:
       NATIVE_VCPKG_ROOT: ${{ github.workspace }}/build/vcpkg-native-deps
       NATIVE_MANIFEST_ROOT: ${{ github.workspace }}/vcpkg/native-deps
