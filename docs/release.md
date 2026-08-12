@@ -6,7 +6,6 @@ publishes one binary per DuckDB platform below a product-version directory:
 ```text
 v1.5.3/
   linux_amd64/interlis.duckdb_extension
-  linux_arm64/interlis.duckdb_extension
   osx_arm64/interlis.duckdb_extension
   windows_amd64/interlis.duckdb_extension
 ```
@@ -18,10 +17,11 @@ source scripts/env.sh
 scripts/build-extension.sh
 ```
 
-The CI workflow builds the extension-template release target, runs the native
-SQLLogicTests, produces SHA-256 sidecar files, and uploads platform artifacts.
-The deploy and GitHub-release jobs are still gated by manual dispatch or a Git
-tag. This repository does not publish from a local development run.
+The CI workflow builds the loadable INTERLIS extension and the native SQLLogicTest
+runner, runs the SQLLogicTests, produces SHA-256 sidecar files, and uploads
+platform artifacts. The deploy and GitHub-release jobs are still gated by manual
+dispatch or a Git tag. This repository does not publish from a local development
+run.
 
 Before a release:
 
