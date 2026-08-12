@@ -5,8 +5,8 @@ on:
     branches: [main]
     tags:
       - 'v*'
-    paths-ignore:
-      - '**/*.md'
+    # Keep push events unfiltered: a `release:` commit must be able to trigger
+    # publishing even when the release itself does not change source files.
   pull_request:
     branches: [main]
     paths-ignore:
