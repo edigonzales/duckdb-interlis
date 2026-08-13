@@ -33,8 +33,8 @@ else
 fi
 
 echo "--- Sources and dependencies ---"
-[[ -f "$REPO_ROOT/third_party/duckdb/CMakeLists.txt" ]] && check_ok "DuckDB submodule" || check_fail "DuckDB submodule"
-[[ -f "$REPO_ROOT/third_party/extension-ci-tools/makefiles/duckdb_extension.Makefile" ]] && check_ok "extension-ci-tools submodule" || check_fail "extension-ci-tools submodule"
+[[ -f "$REPO_ROOT/duckdb/CMakeLists.txt" ]] && check_ok "DuckDB submodule" || check_fail "DuckDB submodule"
+[[ -f "$REPO_ROOT/extension-ci-tools/makefiles/duckdb_extension.Makefile" ]] && check_ok "extension-ci-tools submodule" || check_fail "extension-ci-tools submodule"
 if [[ -n "${INTERLIS_ILIC_SOURCE_DIR:-}" ]]; then
     [[ -f "$INTERLIS_ILIC_SOURCE_DIR/CMakeLists.txt" ]] && check_ok "local ilic-fork" || check_fail "local ilic-fork"
 else
@@ -55,7 +55,7 @@ case "$INTERLIS_ENABLE_GEOS" in
     ON|OFF) check_ok "GEOS mode ($INTERLIS_ENABLE_GEOS)" ;;
     *) check_fail "GEOS mode must be ON or OFF (got $INTERLIS_ENABLE_GEOS)" ;;
 esac
-[[ -f "$REPO_ROOT/vcpkg.json" ]] && check_ok "vcpkg manifest (optional GEOS feature)" || check_fail "vcpkg manifest"
+[[ -f "$REPO_ROOT/vcpkg.json" ]] && check_ok "vcpkg manifest" || check_fail "vcpkg manifest"
 
 echo "=== Result: $pass passed, $fail failed ==="
 [[ "$fail" -eq 0 ]]
