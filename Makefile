@@ -3,6 +3,12 @@ PROJ_DIR := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 EXT_NAME=interlis
 EXT_CONFIG=${PROJ_DIR}extension_config.cmake
 
+# The DuckDB submodule is pinned to the v1.5.5 release commit. Extension CI
+# commonly checks submodules out shallowly, so `git describe` cannot always see
+# the release tag. DuckDB explicitly supports OVERRIDE_GIT_DESCRIBE for this
+# case; callers can still override this default when testing another revision.
+OVERRIDE_GIT_DESCRIBE ?= v1.5.5
+
 include extension-ci-tools/makefiles/duckdb_extension.Makefile
 
 # Visual Studio uses a multi-config generator and emits the Release test
