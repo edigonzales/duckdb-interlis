@@ -12,9 +12,9 @@ cd "$REPO_ROOT"
 "$SCRIPT_DIR/doctor.sh"
 
 CMAKE="${CMAKE:-cmake}"
-DUCKDB_SRCDIR="${DUCKDB_SRCDIR:-$REPO_ROOT/third_party/duckdb}"
+DUCKDB_SRCDIR="${DUCKDB_SRCDIR:-$REPO_ROOT/duckdb}"
 DUCKDB_SRCDIR="$(cd "$DUCKDB_SRCDIR" && pwd)"
-EXPECTED_DUCKDB_SRCDIR="$(cd "$REPO_ROOT/third_party/duckdb" && pwd)"
+EXPECTED_DUCKDB_SRCDIR="$(cd "$REPO_ROOT/duckdb" && pwd)"
 
 check_build_cache() {
     local build_dir="$1"
@@ -43,7 +43,7 @@ check_geos_mode_cache() {
 }
 
 if [[ "$DUCKDB_SRCDIR" != "$EXPECTED_DUCKDB_SRCDIR" ]]; then
-    echo "DUCKDB_SRCDIR must point to the pinned third_party/duckdb submodule: $EXPECTED_DUCKDB_SRCDIR" >&2
+    echo "DUCKDB_SRCDIR must point to the pinned duckdb submodule: $EXPECTED_DUCKDB_SRCDIR" >&2
     exit 1
 fi
 check_build_cache build/debug

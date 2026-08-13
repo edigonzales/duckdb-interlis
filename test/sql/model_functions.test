@@ -10,7 +10,7 @@ FROM interlis_components()
 WHERE component <> 'geos'
 ORDER BY component;
 ----
-duckdb	1.5.3
+duckdb	v1.5.5
 duckdb-interlis	0.2.0
 ilic	0.10.0-SNAPSHOT
 iox-cpp	0.2.0

@@ -1,0 +1,12 @@
+ilic provides CMake package targets:
+
+    find_package(ilic CONFIG REQUIRED)
+    target_link_libraries(your_target PRIVATE ilic::core)
+
+For the C API use:
+
+    find_package(ilic CONFIG REQUIRED)
+    target_link_libraries(your_target PRIVATE ilic::capi)
+
+The overlay port is deliberately library-only. It does not build the
+command-line tools or native INTERLIS repository support.
