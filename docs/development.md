@@ -2,11 +2,11 @@
 
 ## Prerequisites
 
-Use DuckDB 1.5.3, CMake 4.1 or newer, a C++17 compiler, and initialized
+Use DuckDB 1.5.5, CMake 4.1 or newer, a C++17 compiler, and initialized
 DuckDB/extension-ci-tools submodules. GEOS is optional: the default build does
-not need vcpkg or a GEOS installation; enable it for native strict geometry
-validation with `INTERLIS_ENABLE_GEOS=ON`. A local ilic-fork and iox-cpp
-checkout is recommended for development.
+not enable strict geometry validation. A local ilic-fork and iox-cpp checkout
+can be used for development, while a vcpkg build consumes the pinned overlay
+ports from the root manifest.
 
 ```sh
 cp scripts/env.example.sh scripts/env.sh
@@ -42,10 +42,11 @@ make test_release
 ```
 
 Use `INTERLIS_ILIC_SOURCE_DIR` and `INTERLIS_IOX_SOURCE_DIR` to test sibling
-working trees. CMake records pinned fallback revisions when those overrides are
-absent. `IOX_ENABLE_GEOS` follows `INTERLIS_ENABLE_GEOS`; JSON support remains
-enabled by the root CMake file. There is no ad-hoc dependency download in the
-extension source.
+working trees. Without these overrides, a non-vcpkg build uses the pinned
+FetchContent revisions in `CMakeLists.txt`. When DuckDB configures with vcpkg,
+`VCPKG_BUILD` automatically selects the installed `iox::ilic` and `ilic::core`
+package targets from the root manifest. `IOX_ENABLE_GEOS` follows
+`INTERLIS_ENABLE_GEOS`.
 
 Switching the GEOS mode requires a fresh or cleaned `build/debug` and
 `build/release` directory. The scripts reject foreign DuckDB CMake caches but do

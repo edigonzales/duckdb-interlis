@@ -3,7 +3,7 @@
 `duckdb-interlis` is a fully native C++ DuckDB extension for local INTERLIS/XTF
 workflows. It integrates [`ilic`](https://github.com/edigonzales/ilic-fork),
 [`iox-cpp`](https://codeberg.org/edigonzales/iox-cpp), and GEOS with DuckDB
-1.5.3. The native MVP has no validator, accepts local model sources only, and
+1.5.5. The native MVP has no validator, accepts local model sources only, and
 does not implement `ATTACH` integration.
 
 The MVP focuses on deterministic model introspection, streaming typed XTF reads,
@@ -44,9 +44,9 @@ scope.
 
 ## Build from source
 
-Prerequisites on macOS ARM64 are DuckDB 1.5.3, CMake 4.1 or newer, an AppleClang
-toolchain, and a local vcpkg installation with GEOS available. The sibling
-checkouts can be supplied explicitly:
+Prerequisites on macOS ARM64 are DuckDB 1.5.5, CMake 4.1 or newer, an AppleClang
+toolchain, and a local vcpkg installation for manifest-based dependency builds.
+The sibling checkouts can be supplied explicitly:
 
 ```sh
 cp scripts/env.example.sh scripts/env.sh
@@ -57,8 +57,10 @@ scripts/build-all.sh
 
 For a local development checkout, `scripts/env.sh` may set
 `INTERLIS_ILIC_SOURCE_DIR`, `INTERLIS_IOX_SOURCE_DIR`, `VCPKG_TOOLCHAIN_PATH`,
-and `DUCKDB_CLI`. Without sibling overrides, CMake fetches the pinned ilic and
-iox-cpp revisions recorded in `CMakeLists.txt`.
+and `DUCKDB_CLI`. Without sibling overrides and without vcpkg, CMake fetches the
+pinned ilic and iox-cpp revisions recorded in `CMakeLists.txt`. With vcpkg, the
+root manifest builds the pinned overlay ports and CMake consumes their installed
+package targets.
 
 The extension artifact is written below
 `build/release/extension/interlis/interlis.duckdb_extension`. A direct local
@@ -74,7 +76,7 @@ Run the native SQL smoke test with:
 scripts/smoke-test.sh
 ```
 
-The root Makefile remains the canonical extension-template entry point:
+The root Makefile follows the standard DuckDB extension-template layout:
 
 ```sh
 make debug
