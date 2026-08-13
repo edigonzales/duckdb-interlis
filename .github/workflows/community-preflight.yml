@@ -1,0 +1,33 @@
+name: DuckDB Community Extension Preflight
+
+on:
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - '**/*.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: community-preflight-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  community-build:
+    name: Official DuckDB community build
+    uses: duckdb/extension-ci-tools/.github/workflows/_extension_distribution.yml@v1.5-variegata
+    with:
+      extension_name: interlis
+      duckdb_version: v1.5.5
+      ci_tools_version: v1.5-variegata
+      # ilic currently declares Emscripten unsupported, and MinGW has not yet
+      # been validated for the complete ilic -> iox-cpp -> interlis stack.
+      exclude_archs: 'wasm_mvp;wasm_eh;wasm_threads;windows_amd64_mingw'
+      # Exercise all non-opt-in native architectures used by Community
+      # Extensions, including linux_arm64 and osx_amd64.
+      reduced_ci_mode: disabled
+      # Match the Community Extensions PR path: consume the public DuckDB
+      # vcpkg cache, but do not publish new cache entries from this preflight.
+      save_cache: false
