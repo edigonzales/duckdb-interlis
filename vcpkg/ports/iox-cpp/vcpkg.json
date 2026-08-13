@@ -1,0 +1,33 @@
+{
+  "name": "iox-cpp",
+  "version-string": "0.2.0-snapshot.600d191e",
+  "description": "Native INTERLIS transfer I/O library with XTF, JSON, geometry, C ABI, and optional ilic integration",
+  "homepage": "https://github.com/edigonzales/iox-cpp",
+  "license": "MIT",
+  "dependencies": [
+    "expat",
+    {
+      "name": "vcpkg-cmake",
+      "host": true
+    },
+    {
+      "name": "vcpkg-cmake-config",
+      "host": true
+    },
+    "yyjson"
+  ],
+  "features": {
+    "geos": {
+      "description": "Build GEOS-backed geometry validation",
+      "dependencies": [
+        "geos"
+      ]
+    },
+    "ilic": {
+      "description": "Build the model-aware iox::ilic integration",
+      "dependencies": [
+        "ilic"
+      ]
+    }
+  }
+}

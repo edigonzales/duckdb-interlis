@@ -1,16 +1,35 @@
 {
   "name": "duckdb-interlis",
   "version-string": "0.2.0",
-  "builtin-baseline": "ce613c41372b23b1f51333815feb3edd87ef8a8b",
+  "builtin-baseline": "84bab45d415d22042bd0b9081aea57f362da3f35",
+  "dependencies": [
+    {
+      "name": "iox-cpp",
+      "features": [
+        "ilic"
+      ]
+    }
+  ],
   "features": {
     "geos": {
       "description": "Native GEOS-backed geometry validation",
-      "dependencies": ["geos"]
+      "dependencies": [
+        {
+          "name": "iox-cpp",
+          "features": [
+            "geos"
+          ]
+        }
+      ]
     }
   },
   "vcpkg-configuration": {
     "overlay-ports": [
-      "./third_party/extension-ci-tools/vcpkg_ports"
+      "./vcpkg/ports",
+      "./extension-ci-tools/vcpkg_ports"
+    ],
+    "overlay-triplets": [
+      "./extension-ci-tools/toolchains"
     ]
   }
 }

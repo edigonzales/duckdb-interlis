@@ -19,11 +19,20 @@ set(INTERLIS_IOX_COMMIT "600d191e387405b3e957617f7a1e6dd7a29a1d94" CACHE STRING
 
 set(INTERLIS_ILIC_VERSION "0.10.0-SNAPSHOT" CACHE STRING "ilic source version")
 set(INTERLIS_IOX_VERSION "0.2.0" CACHE STRING "iox-cpp source version")
-set(INTERLIS_DUCKDB_VERSION "1.5.3" CACHE STRING "DuckDB product version")
 set(INTERLIS_GEOS_VERSION "3.x" CACHE STRING "GEOS component version family")
 option(INTERLIS_BUILD_NATIVE_TESTS "Build native duckdb-interlis model-source tests" OFF)
 option(INTERLIS_ENABLE_GEOS "Enable native GEOS geometry validation" OFF)
-option(INTERLIS_USE_INSTALLED_IOX "Use an installed iox package instead of embedding iox/ilic sources" OFF)
+
+set(_interlis_use_installed_iox_default OFF)
+if(VCPKG_BUILD)
+    # DuckDB's extension CI sets VCPKG_BUILD whenever it configures with the
+    # vcpkg toolchain. In that environment the root manifest supplies iox/ilic,
+    # so prefer the installed packages without requiring an extension-specific
+    # CMake flag from the community build workflow.
+    set(_interlis_use_installed_iox_default ON)
+endif()
+option(INTERLIS_USE_INSTALLED_IOX "Use an installed iox package instead of embedding iox/ilic sources"
+    ${_interlis_use_installed_iox_default})
 
 if(INTERLIS_ENABLE_GEOS)
     set(_interlis_geos_component_version "${INTERLIS_GEOS_VERSION}")
@@ -160,14 +169,12 @@ target_compile_definitions(interlis_extension PRIVATE
     INTERLIS_EXTENSION_VERSION="${INTERLIS_EXTENSION_VERSION}"
     INTERLIS_ILIC_VERSION="${INTERLIS_ILIC_VERSION}"
     INTERLIS_IOX_VERSION="${INTERLIS_IOX_VERSION}"
-    INTERLIS_DUCKDB_VERSION="${INTERLIS_DUCKDB_VERSION}"
     INTERLIS_GEOS_VERSION="${_interlis_geos_component_version}"
 )
 target_compile_definitions(interlis_loadable_extension PRIVATE
     INTERLIS_EXTENSION_VERSION="${INTERLIS_EXTENSION_VERSION}"
     INTERLIS_ILIC_VERSION="${INTERLIS_ILIC_VERSION}"
     INTERLIS_IOX_VERSION="${INTERLIS_IOX_VERSION}"
-    INTERLIS_DUCKDB_VERSION="${INTERLIS_DUCKDB_VERSION}"
     INTERLIS_GEOS_VERSION="${_interlis_geos_component_version}"
 )
 
@@ -180,7 +187,7 @@ set_property(TARGET interlis_extension PROPERTY INTERFACE_LINK_LIBRARIES "")
 
 function(_interlis_append_native_link_libraries_keyword target_name)
     if(TARGET "${target_name}")
-        # DuckDB 1.5.3 defines these host targets with the keyword signature.
+        # DuckDB defines these host targets with the keyword signature.
         # LINK_ONLY keeps the native dependency usage requirements out of compilation.
         target_link_libraries("${target_name}" PRIVATE
             "$<LINK_ONLY:iox::ilic>"
@@ -191,9 +198,9 @@ endfunction()
 
 function(_interlis_append_native_link_libraries_plain target_name)
     if(TARGET "${target_name}")
-        # DuckDB 1.5.3 defines these host targets with the plain signature.
-        # These imported targets are promoted to global scope above for the
-        # installed-package path, so deferred calls from DuckDB can resolve them.
+        # DuckDB defines these host targets with the plain signature. Imported
+        # targets are promoted to global scope above for the installed-package
+        # path, so deferred calls from DuckDB can resolve them.
         target_link_libraries("${target_name}"
             "$<LINK_ONLY:iox::ilic>"
             "$<LINK_ONLY:ilic::core>"
@@ -211,13 +218,6 @@ cmake_language(DEFER DIRECTORY "${_DUCKDB_PROJECT_SRC_DIR}"
     CALL _interlis_append_native_link_libraries_keyword benchmark_runner)
 cmake_language(DEFER DIRECTORY "${_DUCKDB_PROJECT_SRC_DIR}"
     CALL _interlis_append_native_link_libraries_plain plan_serializer)
-
-set(INTERLIS_COMPONENT_REVISIONS
-    "duckdb-interlis=working-tree"
-    "ilic=${INTERLIS_ILIC_COMMIT}"
-    "iox-cpp=${INTERLIS_IOX_COMMIT}"
-    "duckdb=14eca11bd9d4a0de2ea0f078be588a9c1c5b279c"
-)
 
 install(
     TARGETS interlis_extension

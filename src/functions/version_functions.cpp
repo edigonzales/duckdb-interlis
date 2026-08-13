@@ -2,18 +2,20 @@
 
 #include "duckdb/function/scalar_function.hpp"
 #include "duckdb/function/table_function.hpp"
+#include "duckdb/main/database.hpp"
 #include "duckdb/main/extension/extension_loader.hpp"
 
 #include <iterator>
+#include <string>
 
 namespace duckdb {
 
 namespace {
 
-static constexpr const char *ComponentVersion() {
-    return "duckdb-interlis/" INTERLIS_EXTENSION_VERSION " ilic/" INTERLIS_ILIC_VERSION
-           " iox-cpp/" INTERLIS_IOX_VERSION " geos/" INTERLIS_GEOS_VERSION " duckdb/"
-           INTERLIS_DUCKDB_VERSION;
+static std::string ComponentVersion() {
+    return std::string("duckdb-interlis/") + INTERLIS_EXTENSION_VERSION + " ilic/" + INTERLIS_ILIC_VERSION +
+           " iox-cpp/" + INTERLIS_IOX_VERSION + " geos/" + INTERLIS_GEOS_VERSION + " duckdb/" +
+           DuckDB::LibraryVersion();
 }
 
 static void InterlisVersionFunction(DataChunk &, ExpressionState &, Vector &result) {
@@ -36,7 +38,6 @@ static constexpr Component kComponents[] = {
     {"ilic", INTERLIS_ILIC_VERSION, ""},
     {"iox-cpp", INTERLIS_IOX_VERSION, ""},
     {"geos", INTERLIS_GEOS_VERSION, ""},
-    {"duckdb", INTERLIS_DUCKDB_VERSION, "14eca11bd9d4a0de2ea0f078be588a9c1c5b279c"},
 };
 
 static unique_ptr<FunctionData> BindComponents(ClientContext &, TableFunctionBindInput &,
@@ -52,12 +53,21 @@ static unique_ptr<GlobalTableFunctionState> InitComponents(ClientContext &, Tabl
 
 static void ComponentsFunction(ClientContext &, TableFunctionInput &input, DataChunk &output) {
     auto &state = input.global_state->Cast<ComponentGlobalState>();
+    constexpr idx_t static_component_count = std::size(kComponents);
+    constexpr idx_t total_component_count = static_component_count + 1;
     idx_t count = 0;
-    while (state.offset < std::size(kComponents) && count < STANDARD_VECTOR_SIZE) {
-        const auto &component = kComponents[state.offset++];
-        output.SetValue(0, count, Value(component.name));
-        output.SetValue(1, count, Value(component.version));
-        output.SetValue(2, count, Value(component.revision));
+    while (state.offset < total_component_count && count < STANDARD_VECTOR_SIZE) {
+        if (state.offset < static_component_count) {
+            const auto &component = kComponents[state.offset];
+            output.SetValue(0, count, Value(component.name));
+            output.SetValue(1, count, Value(component.version));
+            output.SetValue(2, count, Value(component.revision));
+        } else {
+            output.SetValue(0, count, Value("duckdb"));
+            output.SetValue(1, count, Value(DuckDB::LibraryVersion()));
+            output.SetValue(2, count, Value(DuckDB::SourceID()));
+        }
+        ++state.offset;
         ++count;
     }
     output.SetCardinality(count);
