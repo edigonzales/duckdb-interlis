@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Optional local overrides for the native C++ build. This file is safe to copy
 # to scripts/env.sh; scripts/env.sh is intentionally gitignored.
-export DUCKDB_VERSION="1.5.3"
+export DUCKDB_VERSION="1.5.5"
 export DUCKDB_CLI="$HOME/bin/duckdb"
 export CMAKE="$HOME/cmake-4.1.0/CMake.app/Contents/bin/cmake"
 # Native GEOS validation is optional and disabled by default.

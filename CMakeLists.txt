@@ -12,9 +12,9 @@ endif()
 set(INTERLIS_ILIC_SOURCE_DIR "" CACHE PATH "Path to ilic-fork")
 set(INTERLIS_IOX_SOURCE_DIR "" CACHE PATH "Path to iox-cpp")
 
-set(INTERLIS_ILIC_COMMIT "cd74490b1fddfe38ac80288067e1af0dd800e8da" CACHE STRING
+set(INTERLIS_ILIC_COMMIT "e901af64247082b5164252b675d87bd7a2aa829d" CACHE STRING
     "Pinned ilic-fork commit used when no local source directory is supplied")
-set(INTERLIS_IOX_COMMIT "600d191e387405b3e957617f7a1e6dd7a29a1d94" CACHE STRING
+set(INTERLIS_IOX_COMMIT "c82fd5f5a2cd8c1a06eef7b98f492055fb954460" CACHE STRING
     "Pinned iox-cpp commit used when no local source directory is supplied")
 
 set(INTERLIS_ILIC_VERSION "0.10.0-SNAPSHOT" CACHE STRING "ilic source version")

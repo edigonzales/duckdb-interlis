@@ -2,7 +2,7 @@
 
 ## Extension will not load
 
-Use DuckDB 1.5.3 and start it with `-unsigned` for the current unsigned
+Use DuckDB 1.5.5 and start it with `-unsigned` for the current unsigned
 artifact. Load the absolute extension path and confirm it exists:
 
 ```sql

@@ -13,11 +13,11 @@
   "overrides": [
     {
       "name": "iox-cpp",
-      "version-string": "0.2.0-snapshot.600d191e"
+      "version-string": "0.2.0-snapshot.c82fd5f5"
     },
     {
       "name": "ilic",
-      "version-string": "0.10.0-snapshot.cd74490b"
+      "version-string": "0.10.0-snapshot.e901af64"
     }
   ]
 }

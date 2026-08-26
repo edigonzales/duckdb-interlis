@@ -1,6 +1,6 @@
 {
   "name": "iox-cpp",
-  "version-string": "0.2.0-snapshot.600d191e",
+  "version-string": "0.2.0-snapshot.c82fd5f5",
   "description": "Native INTERLIS transfer I/O library with XTF, JSON, geometry, C ABI, and optional ilic integration",
   "homepage": "https://github.com/edigonzales/iox-cpp",
   "license": "MIT",

@@ -14,8 +14,8 @@ to DuckDB 1.5.5 for the current build.
 
 The DuckDB version and source ID are read from the DuckDB library at runtime,
 not hard-coded into the extension. The fallback ilic compiler source is pinned
-to commit `cd74490b1fddfe38ac80288067e1af0dd800e8da`; iox-cpp is pinned to
-`600d191e387405b3e957617f7a1e6dd7a29a1d94`. The root vcpkg overlay ports use
+to commit `e901af64247082b5164252b675d87bd7a2aa829d`; iox-cpp is pinned to
+`c82fd5f5a2cd8c1a06eef7b98f492055fb954460`. The root vcpkg overlay ports use
 the same source revisions.
 
 For a GEOS-free build, the GEOS component version is reported as `disabled`.
