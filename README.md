@@ -2,7 +2,7 @@
 
 `duckdb-interlis` is a fully native C++ DuckDB extension for local INTERLIS/XTF
 workflows. It integrates [`ilic`](https://github.com/edigonzales/ilic-fork),
-[`iox-cpp`](https://codeberg.org/edigonzales/iox-cpp), and GEOS with DuckDB
+[`iox-cpp`](https://github.com/edigonzales/iox-cpp), and GEOS with DuckDB
 1.5.5. The native MVP has no validator, accepts local model sources only, and
 does not implement `ATTACH` integration.
 

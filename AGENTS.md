@@ -9,7 +9,7 @@ Native C++ toolchain for macOS ARM64.
 | DuckDB CLI | `~/bin/duckdb` (v1.5.5) |
 | CMake | `~/cmake-4.1.0/CMake.app/Contents/bin/cmake` |
 | ilic-fork | `/Users/stefan/sources/ilic-fork` |
-| iox-cpp | `/Users/stefan/sources/iox-cpp` |
+| iox-cpp | `/Users/stefan/sources/iox-cpp-github` |
 
 ## Environment
 

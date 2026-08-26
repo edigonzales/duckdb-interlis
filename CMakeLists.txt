@@ -121,7 +121,7 @@ else()
         message(STATUS "Using local iox-cpp: ${_interlis_iox_source_dir}")
     else()
         FetchContent_Declare(interlis_iox
-            GIT_REPOSITORY https://codeberg.org/edigonzales/iox-cpp.git
+            GIT_REPOSITORY https://github.com/edigonzales/iox-cpp.git
             GIT_TAG "${INTERLIS_IOX_COMMIT}"
             GIT_SHALLOW FALSE
         )
