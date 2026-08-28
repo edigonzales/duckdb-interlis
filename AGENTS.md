@@ -6,10 +6,10 @@ Native C++ toolchain for macOS ARM64.
 
 | Tool | Location |
 |---|---|
-| DuckDB CLI | `~/bin/duckdb` (v1.5.3) |
+| DuckDB CLI | `~/bin/duckdb` (v1.5.5) |
 | CMake | `~/cmake-4.1.0/CMake.app/Contents/bin/cmake` |
 | ilic-fork | `/Users/stefan/sources/ilic-fork` |
-| iox-cpp | `/Users/stefan/sources/iox-cpp` |
+| iox-cpp | `/Users/stefan/sources/iox-cpp-github` |
 
 ## Environment
 
@@ -39,7 +39,7 @@ Equivalent extension-template targets are `make debug`, `make release`, and
 
 ## Important
 
-- DuckDB version: **1.5.3** (pinned).
+- DuckDB version: **1.5.5** (pinned).
 - Extension loading requires the `-unsigned` flag.
 - Models are local `.ili` files or non-recursive local directories in the MVP.
 - No Java, GraalVM, validator, remote model repository, or `ATTACH` support is

@@ -1,7 +1,7 @@
 # Native extension build notes
 
 The root build follows the pinned DuckDB C++ extension template. The exact
-DuckDB 1.5.3 and extension-ci-tools revisions are recorded by the submodules;
+DuckDB 1.5.5 and extension-ci-tools revisions are recorded by the submodules;
 ilic-fork and iox-cpp are selected through the CMake source-directory overrides
 or their pinned FetchContent fallback revisions.
 

@@ -1,6 +1,6 @@
 # Native architecture
 
-The extension is a DuckDB C++ extension built from the pinned DuckDB 1.5.3
+The extension is a DuckDB C++ extension built from the pinned DuckDB 1.5.5
 extension template. Its runtime path is deliberately short:
 
 ```text

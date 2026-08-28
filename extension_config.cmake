@@ -1,7 +1,7 @@
 file(READ "${CMAKE_CURRENT_LIST_DIR}/VERSION" INTERLIS_EXTENSION_VERSION_FROM_FILE)
 string(STRIP "${INTERLIS_EXTENSION_VERSION_FROM_FILE}" INTERLIS_EXTENSION_VERSION_FROM_FILE)
 
-# DuckDB 1.5.3 loads this file from the extension build configuration.
+# DuckDB 1.5.5 loads this file from the extension build configuration.
 duckdb_extension_load(interlis
     SOURCE_DIR ${CMAKE_CURRENT_LIST_DIR}
     EXTENSION_VERSION ${INTERLIS_EXTENSION_VERSION_FROM_FILE}

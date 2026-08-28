@@ -6,21 +6,10 @@
   "registries": [
     {
       "kind": "git",
-      "repository": "https://github.com/edigonzales/iox-cpp.git",
-      "reference": "vcpkg-registry",
-      "baseline": "d3a33862ee4c744a0dbc085ce68b746c1ac57bdc",
-      "packages": [
-        "iox-cpp"
-      ]
-    },
-    {
-      "kind": "git",
       "repository": "https://github.com/edigonzales/ilic-fork.git",
       "reference": "vcpkg-registry",
-      "baseline": "543d55fdfe01a6e8014af7188dc0888d8b702b16",
-      "packages": [
-        "ilic"
-      ]
+      "baseline": "4c1fcfd5feec69019f2dd87b5f28390ff618b667",
+      "packages": ["ilic", "iox-cpp"]
     }
   ]
 }

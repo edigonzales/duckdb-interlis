@@ -126,7 +126,7 @@ scripts/smoke-test.sh
 The iox standalone validation used a fresh temporary build directory:
 
 ```sh
-cmake -S /Users/stefan/sources/iox-cpp -B /tmp/iox-native-mvp-validation \
+cmake -S /Users/stefan/sources/iox-cpp-github -B /tmp/iox-native-mvp-validation \
   -G 'Unix Makefiles' -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON \
   -DIOX_BUILD_EXAMPLES=OFF -DIOX_BUILD_TOOLS=OFF -DIOX_ENABLE_GEOS=OFF \
   -DIOX_ENABLE_ILIC=ON \
