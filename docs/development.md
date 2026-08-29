@@ -43,10 +43,14 @@ make test_release
 
 Use `INTERLIS_ILIC_SOURCE_DIR` and `INTERLIS_IOX_SOURCE_DIR` to test sibling
 working trees. Without these overrides, a non-vcpkg build uses the pinned
-FetchContent revisions in `CMakeLists.txt`. When DuckDB configures with vcpkg,
+FetchContent revisions in `release/dependencies.lock.json`. When DuckDB configures with vcpkg,
 `VCPKG_BUILD` automatically selects the installed `iox::ilic` and `ilic::core`
 package targets from the root manifest. `IOX_ENABLE_GEOS` follows
 `INTERLIS_ENABLE_GEOS`.
+
+`scripts/doctor.sh` verifies that the configured CLI also matches the locked
+DuckDB 1.5.5 runtime. `DUCKDB_CLI_OVERRIDE=/path/to/fresh/build/duckdb` can be
+used to verify a freshly built CLI without editing the local `scripts/env.sh`.
 
 Switching the GEOS mode requires a fresh or cleaned `build/debug` and
 `build/release` directory. The scripts reject foreign DuckDB CMake caches but do

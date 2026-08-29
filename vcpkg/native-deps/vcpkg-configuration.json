@@ -9,7 +9,10 @@
       "repository": "https://github.com/edigonzales/ilic-fork.git",
       "reference": "vcpkg-registry",
       "baseline": "4c1fcfd5feec69019f2dd87b5f28390ff618b667",
-      "packages": ["ilic", "iox-cpp"]
+      "packages": [
+        "ilic",
+        "iox-cpp"
+      ]
     }
   ]
 }

@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "project": "duckdb-interlis",
+  "artifactVersion": "0.2.1",
+  "duckdb": {
+    "version": "1.5.5",
+    "sourceSha": "d8cdaa33fda8df955cc76ef58a280f68f4cd43fa"
+  },
+  "dependencies": {
+    "ilic": {
+      "sourceVersion": "0.10.0-SNAPSHOT",
+      "packageVersion": "0.10.0-snapshot.e901af64",
+      "sourceSha": "e901af64247082b5164252b675d87bd7a2aa829d",
+      "archiveSha512": "da4164656eee321e2d9c2f8d405624f2168eefcd6d34bba7211ebb5fe2bb016297e423df8ab5966431328ff67bd6440efb3a7381facdde4749b64966f59a62cd"
+    },
+    "iox-cpp": {
+      "sourceVersion": "0.2.0",
+      "packageVersion": "0.2.0-snapshot.c82fd5f5",
+      "sourceSha": "c82fd5f5a2cd8c1a06eef7b98f492055fb954460",
+      "archiveSha512": "ef03614d2c1b3d048187e47d966e3174121f97e6a2bed6d0430487951ac8282c9dbe8813a17334fa0bdfb438da4821d80c01d31e15503c66656b80a9bae4898b"
+    },
+    "geos": {
+      "version": "3.14.1"
+    },
+    "expat": {
+      "sourceBuildVersion": "2.6.4",
+      "binaryCacheVersion": "2.8.1",
+      "communityBuildVersion": "2.7.3"
+    },
+    "yyjson": {
+      "version": "0.12.0"
+    }
+  },
+  "vcpkg": {
+    "toolRef": "2026.05.25",
+    "nativeBuiltinBaseline": "d015e31e90838a4c9dfa3eed45979bc70d9357fc",
+    "communityBuiltinBaseline": "84bab45d415d22042bd0b9081aea57f362da3f35",
+    "registry": {
+      "repository": "https://github.com/edigonzales/ilic-fork.git",
+      "reference": "vcpkg-registry",
+      "baseline": "4c1fcfd5feec69019f2dd87b5f28390ff618b667"
+    }
+  }
+}

@@ -11,16 +11,27 @@ WHERE component <> 'geos'
 ORDER BY component;
 ----
 duckdb	v1.5.5
-duckdb-interlis	0.2.0
+duckdb-interlis	0.2.1
 ilic	0.10.0-SNAPSHOT
 iox-cpp	0.2.0
 
 query I
-SELECT version IN ('disabled', '3.x')
+SELECT version IN ('disabled', '3.14.1')
 FROM interlis_components()
 WHERE component = 'geos';
 ----
 true
+
+query II
+SELECT component,
+       regexp_full_match(revision, '[0-9a-f]{40}(-dirty)?') AS valid_revision
+FROM interlis_components()
+WHERE component IN ('duckdb-interlis', 'ilic', 'iox-cpp')
+ORDER BY component;
+----
+duckdb-interlis	true
+ilic	true
+iox-cpp	true
 
 query III
 SELECT name, language, ili_version

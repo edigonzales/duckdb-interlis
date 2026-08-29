@@ -58,9 +58,9 @@ scripts/build-all.sh
 For a local development checkout, `scripts/env.sh` may set
 `INTERLIS_ILIC_SOURCE_DIR`, `INTERLIS_IOX_SOURCE_DIR`, `VCPKG_TOOLCHAIN_PATH`,
 and `DUCKDB_CLI`. Without sibling overrides and without vcpkg, CMake fetches the
-pinned ilic and iox-cpp revisions recorded in `CMakeLists.txt`. With vcpkg, the
-root manifest builds the pinned overlay ports and CMake consumes their installed
-package targets.
+pinned ilic and iox-cpp revisions recorded in
+`release/dependencies.lock.json`. With vcpkg, the root manifest builds the
+pinned overlay ports and CMake consumes their installed package targets.
 
 The extension artifact is written below
 `build/release/extension/interlis/interlis.duckdb_extension`. A direct local

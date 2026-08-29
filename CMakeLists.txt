@@ -4,35 +4,70 @@ cmake_minimum_required(VERSION 3.20)
 # as a standalone top-level project. Keep DuckDB's own C++ standard intact and
 # request C++17 only on the Interlis targets below.
 
-set(INTERLIS_EXTENSION_VERSION "" CACHE STRING "duckdb-interlis extension version")
-if(NOT INTERLIS_EXTENSION_VERSION)
-    file(READ "${CMAKE_CURRENT_LIST_DIR}/VERSION" INTERLIS_EXTENSION_VERSION)
-    string(STRIP "${INTERLIS_EXTENSION_VERSION}" INTERLIS_EXTENSION_VERSION)
-endif()
+file(READ "${CMAKE_CURRENT_LIST_DIR}/VERSION" _interlis_extension_version_file)
+string(STRIP "${_interlis_extension_version_file}" _interlis_extension_version_file)
+set(INTERLIS_EXTENSION_VERSION "${_interlis_extension_version_file}" CACHE STRING
+    "duckdb-interlis extension version" FORCE)
+include("${CMAKE_CURRENT_LIST_DIR}/release/dependencies.cmake")
 set(INTERLIS_ILIC_SOURCE_DIR "" CACHE PATH "Path to ilic-fork")
 set(INTERLIS_IOX_SOURCE_DIR "" CACHE PATH "Path to iox-cpp")
 
-set(INTERLIS_ILIC_COMMIT "e901af64247082b5164252b675d87bd7a2aa829d" CACHE STRING
-    "Pinned ilic-fork commit used when no local source directory is supplied")
-set(INTERLIS_IOX_COMMIT "c82fd5f5a2cd8c1a06eef7b98f492055fb954460" CACHE STRING
-    "Pinned iox-cpp commit used when no local source directory is supplied")
+set(INTERLIS_ILIC_COMMIT "${INTERLIS_LOCK_ILIC_SHA}" CACHE STRING
+    "Pinned ilic-fork commit used when no local source directory is supplied" FORCE)
+set(INTERLIS_IOX_COMMIT "${INTERLIS_LOCK_IOX_SHA}" CACHE STRING
+    "Pinned iox-cpp commit used when no local source directory is supplied" FORCE)
 
-set(INTERLIS_ILIC_VERSION "0.10.0-SNAPSHOT" CACHE STRING "ilic source version")
-set(INTERLIS_IOX_VERSION "0.2.0" CACHE STRING "iox-cpp source version")
-set(INTERLIS_GEOS_VERSION "3.x" CACHE STRING "GEOS component version family")
+set(INTERLIS_ILIC_VERSION "${INTERLIS_LOCK_ILIC_VERSION}" CACHE STRING "ilic source version" FORCE)
+set(INTERLIS_IOX_VERSION "${INTERLIS_LOCK_IOX_VERSION}" CACHE STRING "iox-cpp source version" FORCE)
+set(INTERLIS_GEOS_VERSION "${INTERLIS_LOCK_GEOS_VERSION}" CACHE STRING "GEOS component version" FORCE)
 option(INTERLIS_BUILD_NATIVE_TESTS "Build native duckdb-interlis model-source tests" OFF)
 option(INTERLIS_ENABLE_GEOS "Enable native GEOS geometry validation" OFF)
 
+function(_interlis_resolve_git_revision out_var source_dir fallback)
+    set(_revision "${fallback}")
+    execute_process(
+        COMMAND git -C "${source_dir}" rev-parse HEAD
+        RESULT_VARIABLE _git_result
+        OUTPUT_VARIABLE _git_sha
+        ERROR_QUIET
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+    string(LENGTH "${_git_sha}" _git_sha_length)
+    if(_git_result EQUAL 0 AND _git_sha_length EQUAL 40 AND _git_sha MATCHES "^[0-9a-f]+$")
+        set(_revision "${_git_sha}")
+        execute_process(
+            COMMAND git -C "${source_dir}" status --porcelain --untracked-files=normal
+            RESULT_VARIABLE _status_result
+            OUTPUT_VARIABLE _status_output
+            ERROR_QUIET
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+        )
+        if(_status_result EQUAL 0 AND NOT _status_output STREQUAL "")
+            string(APPEND _revision "-dirty")
+        endif()
+    endif()
+    set(${out_var} "${_revision}" PARENT_SCOPE)
+endfunction()
+
+_interlis_resolve_git_revision(
+    _interlis_extension_revision "${CMAKE_CURRENT_LIST_DIR}" "working-tree")
+
 set(_interlis_use_installed_iox_default OFF)
-if(VCPKG_BUILD)
+if(VCPKG_BUILD AND NOT INTERLIS_ILIC_SOURCE_DIR AND NOT INTERLIS_IOX_SOURCE_DIR)
     # DuckDB's extension CI sets VCPKG_BUILD whenever it configures with the
     # vcpkg toolchain. In that environment the root manifest supplies iox/ilic,
     # so prefer the installed packages without requiring an extension-specific
     # CMake flag from the community build workflow.
     set(_interlis_use_installed_iox_default ON)
 endif()
-option(INTERLIS_USE_INSTALLED_IOX "Use an installed iox package instead of embedding iox/ilic sources"
-    ${_interlis_use_installed_iox_default})
+if(INTERLIS_ILIC_SOURCE_DIR OR INTERLIS_IOX_SOURCE_DIR)
+    set(INTERLIS_USE_INSTALLED_IOX OFF CACHE BOOL
+        "Use an installed iox package instead of embedding iox/ilic sources" FORCE)
+else()
+    option(INTERLIS_USE_INSTALLED_IOX
+        "Use an installed iox package instead of embedding iox/ilic sources"
+        ${_interlis_use_installed_iox_default})
+endif()
 
 if(INTERLIS_ENABLE_GEOS)
     set(_interlis_geos_component_version "${INTERLIS_GEOS_VERSION}")
@@ -142,6 +177,28 @@ else()
     endif()
 endif()
 
+set(_interlis_ilic_revision "${INTERLIS_ILIC_COMMIT}")
+if(_interlis_ilic_source_dir)
+    _interlis_resolve_git_revision(
+        _interlis_ilic_revision "${_interlis_ilic_source_dir}" "working-tree")
+endif()
+set(_interlis_iox_revision "${INTERLIS_IOX_COMMIT}")
+if(_interlis_iox_source_dir)
+    _interlis_resolve_git_revision(
+        _interlis_iox_revision "${_interlis_iox_source_dir}" "working-tree")
+endif()
+
+if(INTERLIS_ENABLE_GEOS)
+    find_package(GEOS CONFIG REQUIRED)
+    if(DEFINED GEOS_VERSION AND NOT GEOS_VERSION STREQUAL "")
+        set(_interlis_geos_component_version "${GEOS_VERSION}")
+    elseif(DEFINED GEOS_VERSION_STRING AND NOT GEOS_VERSION_STRING STREQUAL "")
+        set(_interlis_geos_component_version "${GEOS_VERSION_STRING}")
+    else()
+        message(FATAL_ERROR "GEOS is enabled but its actual version could not be determined")
+    endif()
+endif()
+
 set(EXTENSION_SOURCES
     src/interlis_extension.cpp
     src/functions/version_functions.cpp
@@ -170,12 +227,18 @@ target_compile_definitions(interlis_extension PRIVATE
     INTERLIS_ILIC_VERSION="${INTERLIS_ILIC_VERSION}"
     INTERLIS_IOX_VERSION="${INTERLIS_IOX_VERSION}"
     INTERLIS_GEOS_VERSION="${_interlis_geos_component_version}"
+    INTERLIS_EXTENSION_REVISION="${_interlis_extension_revision}"
+    INTERLIS_ILIC_REVISION="${_interlis_ilic_revision}"
+    INTERLIS_IOX_REVISION="${_interlis_iox_revision}"
 )
 target_compile_definitions(interlis_loadable_extension PRIVATE
     INTERLIS_EXTENSION_VERSION="${INTERLIS_EXTENSION_VERSION}"
     INTERLIS_ILIC_VERSION="${INTERLIS_ILIC_VERSION}"
     INTERLIS_IOX_VERSION="${INTERLIS_IOX_VERSION}"
     INTERLIS_GEOS_VERSION="${_interlis_geos_component_version}"
+    INTERLIS_EXTENSION_REVISION="${_interlis_extension_revision}"
+    INTERLIS_ILIC_REVISION="${_interlis_ilic_revision}"
+    INTERLIS_IOX_REVISION="${_interlis_iox_revision}"
 )
 
 target_link_libraries(interlis_extension iox::ilic ilic::core)

@@ -1,55 +1,53 @@
 # Release and publishing
 
-The extension is currently built as a DuckDB 1.5.5 loadable extension. The
-project release repository publishes one binary per DuckDB platform below a
-product-version directory:
+The extension targets DuckDB 1.5.5. CI builds one unsigned binary per supported
+platform below the DuckDB product-version directory and produces unambiguous
+GitHub assets:
 
 ```text
-v1.5.5/
-  linux_amd64/interlis.duckdb_extension
-  osx_arm64/interlis.duckdb_extension
-  windows_amd64/interlis.duckdb_extension
+v1.5.5/{linux_amd64,osx_arm64,windows_amd64}/interlis.duckdb_extension
+interlis-{linux-x86_64,osx-aarch64,windows-x86_64}.duckdb_extension
 ```
 
-GitHub Release assets use platform-specific names so the binaries remain
-unambiguous outside the repository directory structure:
+Each binary has a SHA-256 sidecar and a platform-specific
+`interlis-<classifier>.release.json` containing the full extension, DuckDB,
+ilic, and iox identities plus vcpkg baselines.
 
-```text
-interlis-linux-x86_64.duckdb_extension
-interlis-linux-x86_64.duckdb_extension.sha256
-interlis-osx-aarch64.duckdb_extension
-interlis-osx-aarch64.duckdb_extension.sha256
-interlis-windows-x86_64.duckdb_extension
-interlis-windows-x86_64.duckdb_extension.sha256
-```
+## Normal release
 
-Build locally with:
+Only a new `vX.Y.Z` tag can deploy or create a GitHub Release. CI checks that:
+
+- `vX.Y.Z` exactly matches `VERSION`;
+- the checkout, tag target, and workflow source SHA are identical;
+- no GitHub Release already exists for the tag;
+- native binary-cache restores, builds, and SQLLogicTests pass on all platforms.
+
+The workflow never creates or moves a release tag, deletes assets, or replaces
+an existing release. Ordinary `main` pushes and manual CI dispatches only test;
+they publish nothing.
+
+## Repair and comparison
+
+`repair-release.yml` accepts only an existing `vX.Y.Z` tag. It checks out that
+tag's commit and builds from the dependency contract committed at that tag.
+Results are retained as short-lived workflow artifacts labelled
+`comparison-only`; the workflow has read-only repository permission and cannot
+change a tag, GitHub Release, deployed repository, or existing asset.
+
+This separation prevents a repair run from silently compiling current `main`
+under an old release number. Historical `v0.2.0` dependencies are frozen as a
+regression fixture in `release/history/v0.2.0.json`.
+
+## Local verification
 
 ```sh
 source scripts/env.sh
-scripts/build-extension.sh
+python3 scripts/release_metadata.py check
+scripts/build-all.sh
 ```
 
-The CI workflow builds the loadable INTERLIS extension and the native SQLLogicTest
-runner, runs the SQLLogicTests, produces SHA-256 sidecar files, and uploads
-platform artifacts. Deploy and GitHub-release jobs run for a `v*` tag, a manual
-workflow dispatch, or an explicit `release:` commit on `main`. Manual dispatches
-create a draft release; tag and `release:` runs publish directly. This repository
-does not publish from a local development run.
-
-The root vcpkg manifest and overlay ports are also the source-build contract for
-the DuckDB Community Extensions infrastructure. Community publishing is kept
-separate from this project's unsigned release repository.
-
-Before a release:
-
-1. update `VERSION` and `CHANGELOG.md`;
-2. verify the ilic, iox-cpp, GEOS, and runtime DuckDB revisions reported by
-   `interlis_components()`;
-3. run Debug and Release builds plus the native SQLLogicTests;
-4. inspect the generated artifact and checksum for every platform;
-5. publish only after the exact DuckDB product-version directory is selected.
-
-The project-hosted extension is unsigned for local testing and must be loaded
-with DuckDB's `-unsigned` option. A Community Extensions build is signed and
-published by DuckDB's infrastructure instead.
+Before creating a release tag, update `VERSION` and `CHANGELOG.md`, commit the
+dependency lock, inspect `interlis_components()`, and verify the extension plus
+checksum on every platform. Local runs never publish. Project-hosted builds are
+unsigned and require DuckDB's `-unsigned`; DuckDB Community Extensions signs
+and publishes through its separate infrastructure.

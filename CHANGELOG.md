@@ -2,6 +2,12 @@
 
 All notable changes to the duckdb-interlis extension.
 
+# 0.2.1 — reproducible dependency and release metadata
+
+- Lock the exact DuckDB, ilic, iox, vcpkg, and third-party compatibility set.
+- Report full extension, ilic, and iox Git revisions from `interlis_components()`.
+- Prevent release repairs from rebuilding another commit or mutating published assets.
+
 # 0.2.0 — native C++ MVP
 
 - Replaced the former runtime and C bridge with a fully native DuckDB C++ extension.

@@ -5,18 +5,12 @@ on:
     branches: [main]
     tags:
       - 'v*'
-    # Keep push events unfiltered: a `release:` commit must be able to trigger
-    # publishing even when the release itself does not change source files.
+    # Stable publication is tag-only; ordinary main pushes run CI but publish nothing.
   pull_request:
     branches: [main]
     paths-ignore:
       - '**/*.md'
   workflow_dispatch:
-    inputs:
-      release_tag:
-        description: 'Release tag (for example v0.2.0); defaults to v<VERSION>'
-        required: false
-        type: string
 
 permissions:
   contents: read
@@ -63,6 +57,12 @@ jobs:
           submodules: recursive
           persist-credentials: false
 
+      - name: Verify committed dependency lock
+        shell: bash
+        run: |
+          python3 scripts/release_metadata.py check
+          python3 scripts/release_metadata.py export-github-env --output "$GITHUB_ENV"
+
       - name: Configure MSVC command environment
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1
@@ -72,13 +72,9 @@ jobs:
       - name: Configure sccache
         uses: mozilla-actions/sccache-action@v0.0.11
 
-      - name: Check out pinned vcpkg for native dependencies
-        uses: actions/checkout@v4
-        with:
-          repository: microsoft/vcpkg
-          ref: 2026.05.25
-          path: build/vcpkg-native-deps
-          persist-credentials: false
+      - name: Check out locked vcpkg for native dependencies
+        shell: bash
+        run: git clone --depth 1 --branch "$INTERLIS_VCPKG_REF" https://github.com/microsoft/vcpkg.git "$NATIVE_VCPKG_ROOT"
 
       - name: Configure DuckDB vcpkg environment
         shell: bash
@@ -210,19 +206,50 @@ jobs:
           cp build/release/extension/interlis/interlis.duckdb_extension "artifact/${{ matrix.classifier }}/interlis.duckdb_extension"
           shasum -a 256 "artifact/${{ matrix.classifier }}/interlis.duckdb_extension" > "artifact/${{ matrix.classifier }}/interlis.duckdb_extension.sha256" || \
             sha256sum "artifact/${{ matrix.classifier }}/interlis.duckdb_extension" > "artifact/${{ matrix.classifier }}/interlis.duckdb_extension.sha256"
+          python3 scripts/release_metadata.py manifest \
+            --source-sha "$GITHUB_SHA" \
+            --run-id "$GITHUB_RUN_ID" \
+            --built-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --toolchain "${{ matrix.classifier }}" \
+            --output "artifact/${{ matrix.classifier }}/interlis-release.json"
 
       - uses: actions/upload-artifact@v4
         with:
           name: interlis-${{ matrix.classifier }}
           path: artifact/${{ matrix.classifier }}
 
+  release-contract:
+    name: Validate immutable release contract
+    if: github.ref_type == 'tag'
+    needs: native-build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+      - name: Verify tag, version, target, and unused release name
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = "v$(tr -d '[:space:]' < VERSION)"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-list -n 1 "$GITHUB_REF_NAME")" = "$GITHUB_SHA"
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "Release $GITHUB_REF_NAME already exists; refusing to replace it" >&2
+            exit 1
+          fi
+
   deploy:
     name: Deploy extension repository
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      github.ref_type == 'tag' ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'release:'))
-    needs: native-build
+    if: github.ref_type == 'tag'
+    needs: release
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -258,36 +285,33 @@ jobs:
 
   release:
     name: Create GitHub Release
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      github.ref_type == 'tag' ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'release:'))
-    needs: native-build
+    if: github.ref_type == 'tag'
+    needs: release-contract
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
 
-      - name: Resolve release tag
-        id: release_tag
+      - name: Validate immutable release tag and target
         shell: bash
         env:
-          DISPATCH_RELEASE_TAG: ${{ inputs.release_tag }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
-            tag="$GITHUB_REF_NAME"
-          elif [ -n "${DISPATCH_RELEASE_TAG:-}" ]; then
-            tag="$DISPATCH_RELEASE_TAG"
-          else
-            tag="v$(tr -d '[:space:]' < VERSION)"
-          fi
-          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
-            echo "Invalid release tag: $tag" >&2
+          expected_tag="v$(tr -d '[:space:]' < VERSION)"
+          test "$GITHUB_REF_NAME" = "$expected_tag"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-list -n 1 "$GITHUB_REF_NAME")" = "$GITHUB_SHA"
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "Release $GITHUB_REF_NAME already exists; refusing to replace it" >&2
             exit 1
           fi
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
       - uses: actions/download-artifact@v4
         with:
@@ -304,21 +328,15 @@ jobs:
             target="release-assets/interlis-${classifier}.duckdb_extension"
             cp "$source" "$target"
             sha256sum "$target" > "${target}.sha256"
+            cp "interlis-${classifier}/interlis-release.json" \
+              "release-assets/interlis-${classifier}.release.json"
           done
 
-      - name: Remove legacy ambiguous release assets
+      - name: Create release without replacing tags or assets
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ steps.release_tag.outputs.tag }}
         run: |
-          gh release delete-asset "$RELEASE_TAG" interlis.duckdb_extension --yes || true
-          gh release delete-asset "$RELEASE_TAG" interlis.duckdb_extension.sha256 --yes || true
-
-      - uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.release_tag.outputs.tag }}
-          target_commitish: ${{ github.sha }}
-          draft: ${{ github.event_name == 'workflow_dispatch' }}
-          files: release-assets/*
-          generate_release_notes: true
+          gh release create "$GITHUB_REF_NAME" release-assets/* \
+            --verify-tag --title "duckdb-interlis $GITHUB_REF_NAME" \
+            --generate-notes

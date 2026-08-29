@@ -34,9 +34,9 @@ struct Component final {
 };
 
 static constexpr Component kComponents[] = {
-    {"duckdb-interlis", INTERLIS_EXTENSION_VERSION, "working-tree"},
-    {"ilic", INTERLIS_ILIC_VERSION, ""},
-    {"iox-cpp", INTERLIS_IOX_VERSION, ""},
+    {"duckdb-interlis", INTERLIS_EXTENSION_VERSION, INTERLIS_EXTENSION_REVISION},
+    {"ilic", INTERLIS_ILIC_VERSION, INTERLIS_ILIC_REVISION},
+    {"iox-cpp", INTERLIS_IOX_VERSION, INTERLIS_IOX_REVISION},
     {"geos", INTERLIS_GEOS_VERSION, ""},
 };
 

@@ -13,8 +13,10 @@ SELECT * FROM interlis_components();
 
 `interlis_components()` returns `component`, `version`, and `revision` for the
 extension, ilic, iox-cpp, GEOS, and DuckDB.
-The GEOS row reports `disabled` for the default GEOS-free build and the
-configured GEOS version family for a strict build.
+Extension, ilic, and iox revisions are full Git SHAs; local dirty checkouts add
+`-dirty`, and `working-tree` is used only when no SHA is available. The GEOS row
+reports `disabled` for the default GEOS-free build and the actual package
+version for a strict build.
 
 ## Model introspection
 
