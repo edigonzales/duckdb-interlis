@@ -26,7 +26,7 @@ std::string InterlisExtension::Version() const {
 #ifdef INTERLIS_EXTENSION_VERSION
     return INTERLIS_EXTENSION_VERSION;
 #else
-    return "0.2.0";
+    return "0.2.1";
 #endif
 }
 

@@ -1,0 +1,122 @@
+name: Rebuild existing release tag for comparison
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing immutable vX.Y.Z tag to rebuild
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: repair-release-${{ inputs.release_tag }}
+  cancel-in-progress: false
+
+jobs:
+  contract:
+    name: Resolve existing tag
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+      source_sha: ${{ steps.tag.outputs.source_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_tag }}
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+      - name: Verify exact immutable tag checkout
+        id: tag
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          git show-ref --verify --quiet "refs/tags/$RELEASE_TAG"
+          source_sha=$(git rev-list -n 1 "$RELEASE_TAG")
+          test "$(git rev-parse HEAD)" = "$source_sha"
+          test "$RELEASE_TAG" = "v$(tr -d '[:space:]' < VERSION)"
+          {
+            echo "tag=$RELEASE_TAG"
+            echo "source_sha=$source_sha"
+          } >> "$GITHUB_OUTPUT"
+
+  rebuild:
+    name: Comparison rebuild (${{ matrix.classifier }})
+    needs: contract
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - classifier: linux-x86_64
+            os: ubuntu-24.04
+            duckdb-platform: linux_amd64
+          - classifier: osx-aarch64
+            os: macos-14
+            duckdb-platform: osx_arm64
+          - classifier: windows-x86_64
+            os: windows-2022
+            duckdb-platform: windows_amd64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.contract.outputs.source_sha }}
+          submodules: recursive
+          persist-credentials: false
+      - if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Configure exact-tag build environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ needs.contract.outputs.source_sha }}"
+          test -n "${VCPKG_INSTALLATION_ROOT:-}"
+          echo "VCPKG_TOOLCHAIN_PATH=$VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" >> "$GITHUB_ENV"
+      - name: Build exact tag from its committed source contract
+        env:
+          DUCKDB_PLATFORM: ${{ matrix.duckdb-platform }}
+        shell: bash
+        run: |
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            export GEN=ninja
+            msvc_bin=$(dirname "$(command -v cl.exe)")
+            export PATH="$msvc_bin:$PATH"
+          fi
+          make ci_release \
+            VCPKG_TOOLCHAIN_PATH="$VCPKG_TOOLCHAIN_PATH" \
+            DISABLE_SANITIZER=1
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            make test_release GEN=ninja
+          else
+            make test_release
+          fi
+      - name: Package comparison artifact only
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p comparison
+          cp build/release/extension/interlis/interlis.duckdb_extension \
+            "comparison/interlis-${{ matrix.classifier }}.duckdb_extension"
+          sha256sum "comparison/interlis-${{ matrix.classifier }}.duckdb_extension" \
+            > "comparison/interlis-${{ matrix.classifier }}.duckdb_extension.sha256"
+          jq -n \
+            --arg tag "${{ needs.contract.outputs.tag }}" \
+            --arg source_sha "${{ needs.contract.outputs.source_sha }}" \
+            --arg classifier "${{ matrix.classifier }}" \
+            '{purpose:"comparison-only",tag:$tag,sourceSha:$source_sha,classifier:$classifier,releaseMutation:false}' \
+            > comparison/repair-metadata.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: comparison-${{ needs.contract.outputs.tag }}-${{ matrix.classifier }}
+          path: comparison
+          if-no-files-found: error
+          retention-days: 14

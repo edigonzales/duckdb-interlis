@@ -24,10 +24,17 @@ CMAKE="${CMAKE:-cmake}"
 command -v make >/dev/null 2>&1 && check_ok "make" || check_fail "make"
 command -v clang++ >/dev/null 2>&1 && check_ok "clang++" || check_fail "clang++"
 
-DUCKDB="${DUCKDB_CLI:-$HOME/bin/duckdb}"
+# The explicit override is useful for verifying a freshly built pinned CLI
+# without editing the local, gitignored env.sh.
+DUCKDB="${DUCKDB_CLI_OVERRIDE:-${DUCKDB_CLI:-$HOME/bin/duckdb}}"
+EXPECTED_DUCKDB_VERSION="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["duckdb"]["version"])' "$REPO_ROOT/release/dependencies.lock.json")"
 if [[ -x "$DUCKDB" ]]; then
-    check_ok "DuckDB CLI ($DUCKDB)"
-    "$DUCKDB" --version
+    DUCKDB_VERSION_OUTPUT="$("$DUCKDB" --version)"
+    if [[ "$DUCKDB_VERSION_OUTPUT" == "v$EXPECTED_DUCKDB_VERSION "* ]]; then
+        check_ok "DuckDB CLI $EXPECTED_DUCKDB_VERSION ($DUCKDB)"
+    else
+        check_fail "DuckDB CLI $EXPECTED_DUCKDB_VERSION required; got $DUCKDB_VERSION_OUTPUT ($DUCKDB)"
+    fi
 else
     check_fail "DuckDB CLI ($DUCKDB)"
 fi
