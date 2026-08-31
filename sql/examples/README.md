@@ -1,22 +1,16 @@
-# SQL examples
+# SQL-Beispiele
 
-The domain-oriented SQL files in this directory are retained as historical
-INTERLIS examples and fixtures. Files `02`–`09` target the pre-native API and
-are not part of the native MVP test contract. Use the native functions documented
-in [docs/functions.md](../../docs/functions.md) for current queries.
+Die domänenspezifischen SQL-Dateien `02` bis `09` bleiben als historische
+INTERLIS-Fixtures erhalten. Sie verwenden die frühere API und gehören nicht
+zum aktuellen Testvertrag.
 
-The maintained native example is:
-
-| File | What it shows |
-|---|---|
-| `10-native-mvp.sql` | Version/components, all model introspection functions, `xtf_scan`, `xtf_values`, and `xtf_set` |
-
-Run it against a locally built extension:
+Das gepflegte Beispiel ist `10-native.sql`. Es zeigt Version und Komponenten,
+alle Modellintrospektionsfunktionen sowie `xtf_scan`, `xtf_values` und
+`xtf_set`:
 
 ```sh
-scripts/dev-duckdb.sh < sql/examples/10-native-mvp.sql
+scripts/dev-duckdb.sh < sql/examples/10-native.sql
 ```
 
-The older files and synthetic test data remain available for domain comparison;
-they are not loaded by CI and do not imply validator, remote-model, or import
-support in the native MVP.
+Die älteren Dateien und synthetischen Daten werden nicht von CI geladen und
+begründen keine Validator-, Remote-Modell- oder Importfunktion.

@@ -1,4 +1,4 @@
--- Structure and BAG OF STRUCTURE tests (Phase 9)
+-- Structure and BAG OF STRUCTURE tests
 -- Run with: duckdb -unsigned -cmd "LOAD 'interlis.duckdb_extension'" < sql/structures.sql
 
 SELECT '=== Schema ===' AS test;

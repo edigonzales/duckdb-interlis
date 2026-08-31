@@ -1,4 +1,4 @@
--- Phase 12: ili_generate_import_sql smoke test (typed)
+-- Smoke test for typed ili_generate_import_sql output
 -- Generates typed DDL with BIGINT for NUMERIC, VARCHAR for TEXT/Enum/Geom/Struct
 -- Run with: duckdb -unsigned -cmd "LOAD 'interlis.duckdb_extension'" < sql/import.sql
 

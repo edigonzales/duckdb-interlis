@@ -1,4 +1,4 @@
--- Association and Reference tests (Phase 10)
+-- Association and Reference tests
 -- Run with: duckdb -unsigned -cmd "LOAD 'interlis.duckdb_extension'" < sql/associations.sql
 
 -- Extension must be loaded before running this script.

@@ -1,10 +1,16 @@
-# vcpkg inputs
+# vcpkg-Eingaben
 
-`native-deps/` is generated from `release/dependencies.lock.json` and restores
-the published ilic/iox packages for fast project CI.
+`native-deps/` wird aus `release/dependencies.lock.json` erzeugt und stellt
+publizierte ilic-/iox-Pakete für den schnellen Projekt-CI wieder her.
 
-`ports/` contains overlay/templates at the last verified source revisions for
-DuckDB Community and offline source-fallback builds. It is not a version
-catalogue; published immutable versions live in the shared
-`ilic-fork/vcpkg-registry` branch. Run `python3 scripts/release_metadata.py
-sync` after intentionally changing the lock and `check` in CI.
+`ports/` enthält öffentliche Overlay-/Source-Vorlagen für DuckDB Community und
+Offline-Fallbacks. Es ist kein Versionskatalog; publizierte unveränderliche
+Versionen liegen im gemeinsamen `ilic-fork/vcpkg-registry`.
+
+```sh
+python3 scripts/release_metadata.py sync
+python3 scripts/release_metadata.py check
+```
+
+Die Cache- und Consumer-Matrix steht in der
+[zentralen Ökosystemdokumentation](https://github.com/edigonzales/ilic-fork/blob/main/docs/ecosystem.md#vcpkg-registry-und-binary-cache).

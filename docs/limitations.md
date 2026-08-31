@@ -1,39 +1,30 @@
-# Native MVP limitations
+# Einschränkungen
 
-The MVP is intentionally narrow. The following behavior is not implemented:
+Nicht implementiert sind:
 
-- No full INTERLIS data validation or validator SQL function.
-- No remote model repositories, URLs, or repository-name resolution.
-- No ATTACH integration.
-- No line attributes.
-- No clipped geometries.
-- No custom LINE FORM geometry projection.
-- No in-place update.
-- No geometry updates.
-- No multi-object patching.
-- No UPDATE transfer generation.
-- No Java runtime or GraalVM dependency.
+- vollständige INTERLIS-Datenvalidierung oder Validator-SQL-Funktion;
+- entfernte Modell-Repositories, URLs und Repository-Namen;
+- `ATTACH`-Integration;
+- Linienattribute, geclippte Geometrien und eigene `LINE FORM`-Projektion;
+- In-place-, Geometrie- und Multiobjekt-Updates;
+- Erzeugung eines UPDATE-Transfers;
+- Java- oder GraalVM-Abhängigkeiten.
 
-Additional constraints are part of the function contracts:
+Weitere verbindliche Grenzen:
 
-- `xtf_scan` and `xtf_values` use one stream execution thread and local regular
-  files;
-- `xtf_scan` puts unsupported roles, structures, collections, and diagnostics
-  into `_unsupported_json` rather than inventing a relational shape;
-- `xtf_set` rewrites one primitive property of one object, optionally nested
-  through a single-valued structure, and performs structural XTF/IOM checks but
-  not complete semantic validation;
-- `xtf_set` requires a separate output path and never edits its input in place;
-- model directories are non-recursive and all resolved `.ili` files participate
-  in compilation;
-- geometry conversion errors either abort the scan or produce NULL plus a
-  diagnostic, according to `geometry_errors`.
-- the default GEOS-free build performs structural geometry conversion checks but
-  does not perform native topological validity checks; load DuckDB Spatial and
-  use `ST_IsValid`, or build with `INTERLIS_ENABLE_GEOS=ON`, when that check is
-  required.
-- the repaired `valid-arcs.xtf` and `valid-3d.xtf` fixtures now use the native
-  XTF 2.4 path; their structural conversion is covered by the regression tests.
+- `xtf_scan` und `xtf_values` arbeiten mit einem Stream-Thread und lokalen
+  regulären Dateien.
+- Nicht unterstützte Rollen, Strukturen, Collections und Diagnosen landen in
+  `_unsupported_json`; es wird keine relationale Form erfunden.
+- `xtf_set` schreibt eine primitive Property eines Objekts um, optional durch
+  eine einwertige Struktur. Es prüft XTF/IOM strukturell, nicht vollständig
+  semantisch.
+- Modellverzeichnisse sind nichtrekursiv; alle gefundenen `.ili`-Dateien
+  nehmen an der Kompilation teil.
+- Geometriefehler brechen je nach `geometry_errors` ab oder erzeugen NULL plus
+  Diagnose.
+- Der GEOS-freie Standardbuild prüft Struktur, aber keine native topologische
+  Gültigkeit. Dafür DuckDB Spatial `ST_IsValid` verwenden oder mit
+  `INTERLIS_ENABLE_GEOS=ON` bauen.
 
-These restrictions are deliberate compatibility boundaries for the native MVP,
-not silently enabled fallback behavior.
+Diese Grenzen sind sichtbarer Produktvertrag und kein stiller Fallback.

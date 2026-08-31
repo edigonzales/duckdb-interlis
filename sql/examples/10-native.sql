@@ -1,5 +1,5 @@
--- Complete native MVP example. Run with:
---   scripts/dev-duckdb.sh < sql/examples/10-native-mvp.sql
+-- Vollständiges natives Beispiel. Ausführen mit:
+--   scripts/dev-duckdb.sh < sql/examples/10-native.sql
 SELECT interlis_version();
 
 SELECT * FROM interlis_components();
@@ -20,9 +20,9 @@ FROM ili_geometry_properties('NativeIntrospection.Data.Feature',
 
 SELECT _tid, Name
 FROM xtf_scan('testdata/native/simple.xtf',
-               'NativeIntrospection.Data.Feature',
-               ['testdata/native/introspection.ili'],
-               geometry_errors := 'null');
+              'NativeIntrospection.Data.Feature',
+              ['testdata/native/introspection.ili'],
+              geometry_errors := 'null');
 
 SELECT bid, tid, class_name, occurrence, value
 FROM xtf_values('testdata/native/simple.xtf',
@@ -42,7 +42,7 @@ FROM xtf_values('testdata/native/scan.xtf',
 
 SELECT *
 FROM xtf_set('testdata/native/simple.xtf',
-             '/tmp/duckdb-interlis-native-mvp-updated.xtf',
+             '/tmp/duckdb-interlis-native-updated.xtf',
              'NativeIntrospection.Data.Feature',
              'F1',
              'Name',

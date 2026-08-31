@@ -1,31 +1,27 @@
-# Model sources
+# Modellquellen
 
-The native MVP resolves model sources deterministically and locally.
+Modellquellen werden deterministisch und ausschliesslich lokal aufgelöst:
 
 ```sql
-SELECT *
-FROM ili_models([
-  '/models/base.ili',
-  '/models/domain'
-]);
+SELECT * FROM ili_models(['/models/base.ili', '/models/domain']);
 ```
 
-Accepted sources are:
+Zulässig sind:
 
-- a regular `.ili` file, matched case-insensitively by extension;
-- a regular directory, scanned one level deep for `.ili` files and sorted
-  lexicographically;
-- a list containing both forms, with duplicate normalized paths removed.
+- eine reguläre `.ili`-Datei, Gross-/Kleinschreibung der Endung ignoriert;
+- ein reguläres Verzeichnis, eine Ebene tief lexikografisch nach `.ili`
+  durchsucht;
+- eine Liste beider Formen; normalisierte Duplikate werden entfernt.
 
-Paths become normalized absolute file URIs before compilation. Empty directories,
-missing paths, non-regular files, invalid model text, and empty source lists are
-errors. Directories are not searched recursively.
+Vor der Kompilation werden Pfade zu normalisierten absoluten Datei-URIs.
+Fehlende Pfade, leere Verzeichnisse, andere Dateitypen, ungültige Modelle und
+leere Listen sind Fehler. Unterverzeichnisse werden nicht durchsucht.
 
-HTTP(S) URLs and repository names are rejected with
-`Remote model sources are not supported by the native MVP`. The extension does
-not access the network to resolve models and has no default model repository.
+HTTP(S)-URLs und Repository-Namen sind nicht zulässig. Die Extension besitzt
+kein Default-Modell-Repository und greift zur Modellauflösung nicht auf das
+Netz zu.
 
-Prefer explicit file lists when a directory contains unrelated models: every
-resolved source is a compilation root, so one invalid file can reject the whole
-model compilation. A compiled model is owned by the statement bind and is
-released after the query.
+Bei gemischten Verzeichnisinhalten ist eine explizite Dateiliste vorzuziehen:
+Jede gefundene Quelle ist Kompilationswurzel, sodass eine ungültige Datei die
+gesamte Kompilation abweist. Das kompilierte Modell gehört zum Statement-Bind
+und wird nach der Query freigegeben.

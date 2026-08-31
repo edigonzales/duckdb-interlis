@@ -1,28 +1,56 @@
 # Installation
 
-The project-hosted native extension currently targets DuckDB 1.5.5. Download
-the platform-specific `interlis.duckdb_extension` artifact from the project
-release or extension repository, then start DuckDB with unsigned extensions
-enabled:
+Es gibt zwei getrennte Distributionskanäle.
+
+## Projektartefakte
+
+GitHub Releases und das projektspezifische Extension-Repository enthalten
+unsignierte Binaries für die dort ausgewiesene DuckDB-Produktversion. DuckDB
+muss deshalb mit `-unsigned` gestartet werden:
 
 ```sh
 duckdb -unsigned
 ```
 
 ```sql
-LOAD '/path/to/interlis.duckdb_extension';
+LOAD '/absolute/path/interlis.duckdb_extension';
+SELECT interlis_version();
+SELECT * FROM interlis_components();
+```
+
+Zum Download gehören die jeweilige `.sha256`-Datei und das
+plattformbezogene Provenienzmanifest. Extension und DuckDB müssen dieselbe
+Produktversion verwenden.
+
+## DuckDB Community Extensions
+
+Sobald die gewünschte Version im Community-Deskriptor aktiv und für die lokale
+DuckDB-Version gebaut ist, verwendet DuckDB signierte Community-Binaries:
+
+```sql
+INSTALL interlis FROM community;
+LOAD interlis;
 SELECT interlis_version();
 ```
 
-For a repository install, use the DuckDB product-version path configured by the
-publisher and then `LOAD interlis`. For a local source installation, follow
-[getting-started.md](getting-started.md), which builds the extension and runs a
-complete native SQL example. The native extension has no additional Java,
-GraalVM, or separately installed runtime library.
+Der Standardkanal wählt den im Community-Repository aktiven Source-Stand; eine
+beliebige historische Extension-Version kann bei `INSTALL … FROM community`
+nicht ausgewählt werden. Vor einem Upgrade daher DuckDB-Version,
+Community-Deskriptor und Extension-Changelog prüfen. Der vollständige
+Publikationsablauf steht unter [Release](release.md#duckdb-community-publizieren).
 
-A future DuckDB Community Extensions publication will instead support
-`INSTALL interlis FROM community;` and will use DuckDB-signed binaries built by
-the Community Extensions infrastructure.
+## Lokaler Build
 
-Model source paths passed to SQL functions must be local `.ili` files or local
-non-recursive directories. See [model-sources.md](model-sources.md).
+```sh
+cp scripts/env.example.sh scripts/env.sh
+source scripts/env.sh
+scripts/doctor.sh
+scripts/build-all.sh
+```
+
+Das Artefakt liegt danach unter
+`build/release/extension/interlis/interlis.duckdb_extension`. Voraussetzungen,
+vcpkg und GEOS sind unter [Entwicklung](development.md) dokumentiert.
+
+SQL-Funktionen akzeptieren lokale `.ili`-Dateien oder nichtrekursive lokale
+Verzeichnisse; siehe [Modellquellen](model-sources.md).

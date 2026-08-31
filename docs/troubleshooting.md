@@ -1,32 +1,36 @@
-# Troubleshooting
+# Fehlerbehebung
 
-## Extension will not load
+## Extension lädt nicht
 
-Use DuckDB 1.5.5 and start it with `-unsigned` for the current unsigned
-artifact. Load the absolute extension path and confirm it exists:
+DuckDB-Version und Extension müssen zusammenpassen. Projektartefakte benötigen
+`-unsigned` und einen absoluten Pfad:
 
 ```sql
 LOAD '/absolute/path/interlis.duckdb_extension';
 SELECT interlis_version();
 ```
 
-## Model compilation fails
+Bei Community-Installation prüfen, ob der aktive Deskriptor für die verwendete
+DuckDB-Version gebaut wurde.
 
-Check that every entry in `model_sources` is a regular local `.ili` file or a
-directory containing `.ili` files. Directories are not recursive, empty
-directories fail, and remote URLs are intentionally rejected. Prefer an
-explicit file list when a directory contains unrelated models.
+## Modellkompilation schlägt fehl
 
-## XTF scan fails
+Jeder Eintrag in `model_sources` muss eine lokale `.ili`-Datei oder ein
+nichtrekursives Verzeichnis mit `.ili`-Dateien sein. Leere Verzeichnisse und
+URLs werden abgewiesen. Bei nicht zusammengehörigen Modellen eine explizite
+Dateiliste verwenden.
 
-Use the exact fully qualified class name returned by `ili_classes`. Verify that
-the XTF file and model sources describe the same model. For geometry conversion
-diagnostics, temporarily use `geometry_errors := 'null'` to keep the row and
-inspect `_unsupported_json`.
+## XTF-Scan schlägt fehl
 
-## XTF rewrite fails
+Den vollständig qualifizierten Klassennamen aus `ili_classes` verwenden und
+prüfen, ob XTF und Modelle denselben Stand beschreiben. Für Geometriediagnosen
+vorübergehend `geometry_errors := 'null'` setzen und `_unsupported_json`
+auswerten.
 
-`xtf_set` requires a distinct output path, a matching TID, and exactly one
-primitive target. It rejects roles, geometries, collections, transient values,
-wildcards, and ambiguous matches. Use `expected` for conflict detection and
-`overwrite := true` only when replacing an existing output is intentional.
+## XTF-Rewrite schlägt fehl
+
+`xtf_set` verlangt einen anderen Zielpfad, eine passende TID und genau ein
+primitives Ziel. Rollen, Geometrien, Collections, transiente Werte, Wildcards
+und mehrdeutige Treffer werden abgewiesen. `expected` dient der
+Konflikterkennung; `overwrite := true` nur bewusst für ein vorhandenes Ziel
+verwenden.

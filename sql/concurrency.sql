@@ -1,5 +1,4 @@
--- Phase 4: Concurrency Smoke Tests
--- Tests that parallel DuckDB execution of extension functions does not crash or deadlock.
+-- Smoke tests: parallele Funktionsaufrufe dürfen weder abstürzen noch blockieren.
 
 SELECT '=== CONCURRENCY-1: Parallel version queries ===' AS test;
 

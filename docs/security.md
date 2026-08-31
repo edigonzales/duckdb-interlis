@@ -1,19 +1,19 @@
-# Security
+# Sicherheit
 
-The native MVP only reads model and XTF paths explicitly supplied by the SQL
-caller. It does not resolve remote model repositories or make network requests.
-Model inputs must be regular local files or non-recursive directories.
+Die Extension liest nur Modell- und XTF-Pfade, die der SQL-Aufrufer explizit
+übergibt. Sie löst keine entfernten Modell-Repositories auf und führt keine
+Netzwerkzugriffe aus. Modellquellen müssen reguläre lokale Dateien oder
+nichtrekursive Verzeichnisse sein.
 
-`xtf_set` never edits its input in place. It writes a uniquely named temporary
-file in the destination directory, closes and checks the XTF writer, then moves
-the result into the requested output path. A failed rewrite removes the
-temporary file and leaves the input untouched. Existing output is rejected
-unless `overwrite := true` is specified.
+`xtf_set` verändert die Eingabe nie direkt. Es schreibt eine eindeutig
+benannte temporäre Datei im Zielverzeichnis, schliesst und prüft den Writer und
+verschiebt sie erst danach. Bei Fehlern wird die temporäre Datei entfernt; ein
+vorhandenes Ziel wird ohne `overwrite := true` abgewiesen.
 
-The extension is unsigned in the current distribution workflow, so loading it
-requires DuckDB's `-unsigned` option. Release artifacts should be distributed
-with their generated SHA-256 sidecar and verified by the deployment system.
+Projektartefakte sind unsigniert und benötigen DuckDB `-unsigned`; ihre
+SHA-256-Datei muss geprüft werden. DuckDB Community baut und signiert seinen
+eigenen Kanal separat.
 
-No Java process, GraalVM isolate, embedded shared library, or runtime code
-download is involved. Native dependencies are linked at build time and their
-component revisions are visible through `interlis_components()`.
+Es gibt keinen Java-Prozess, GraalVM-Isolate, Runtime-Code-Download oder eine
+eingebettete dynamische Fremdlaufzeit. Native Abhängigkeiten werden beim Build
+gebunden und sind über `interlis_components()` nachvollziehbar.

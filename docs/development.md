@@ -1,75 +1,54 @@
-# Development
+# Entwicklung
 
-## Prerequisites
-
-Use DuckDB 1.5.5, CMake 4.1 or newer, a C++17 compiler, and initialized
-DuckDB/extension-ci-tools submodules. GEOS is optional: the default build does
-not enable strict geometry validation. A local ilic-fork and iox-cpp checkout
-can be used for development, while a vcpkg build consumes the pinned overlay
-ports from the root manifest.
+Benötigt werden die in `release/dependencies.lock.json` festgelegte
+DuckDB-Version, CMake 4.1 oder neuer, ein C++17-Compiler und initialisierte
+DuckDB-/extension-ci-tools-Submodule. GEOS ist optional.
 
 ```sh
 cp scripts/env.example.sh scripts/env.sh
 source scripts/env.sh
 scripts/doctor.sh
-```
-
-The default build is GEOS-free:
-
-```sh
 INTERLIS_ENABLE_GEOS=OFF scripts/build-all.sh
 ```
 
-The optional strict geometry build uses the `geos` vcpkg feature:
+Für zusätzliche topologische Geometrieprüfung einen frischen Build verwenden:
 
 ```sh
 INTERLIS_ENABLE_GEOS=ON scripts/build-all.sh
 ```
 
-## Build and test
+Äquivalente Template-Targets sind `make debug`, `make release`,
+`make test_debug` und `make test_release`.
+
+## Abhängigkeitswege
+
+- `INTERLIS_ILIC_SOURCE_DIR` und `INTERLIS_IOX_SOURCE_DIR` prüfen lokale
+  Geschwister-Working-Trees.
+- Ohne Overrides verwendet ein Source-Build die in der Lock-Datei festgelegten
+  FetchContent-Stände.
+- Der schnelle Projekt-CI stellt `iox-cpp[ilic]` und ilic strikt aus dem
+  privaten vcpkg-Binary-Cache wieder her.
+- DuckDB Community CI kann diesen privaten Cache nicht voraussetzen und baut
+  aus den öffentlichen Vorlagen unter `vcpkg/ports`.
+
+`python3 scripts/release_metadata.py sync` erzeugt vcpkg-Manifeste aus dem
+Lock; `check` weist Abweichungen zurück. Expat-Versionen können sich zwischen
+Source-Integration, schnellem Binary-CI und Community-Toolchain unterscheiden;
+jeder Weg ist im Lock beziehungsweise in seinen Manifesten explizit gepinnt.
+
+## Tests
 
 ```sh
+python3 scripts/release_metadata.py check
+python3 test/release_metadata_test.py
 scripts/build-all.sh
-```
-
-Equivalent extension-template commands are:
-
-```sh
-make debug
-make release
-make test_debug
-make test_release
-```
-
-Use `INTERLIS_ILIC_SOURCE_DIR` and `INTERLIS_IOX_SOURCE_DIR` to test sibling
-working trees. Without these overrides, a non-vcpkg build uses the pinned
-FetchContent revisions in `release/dependencies.lock.json`. When DuckDB configures with vcpkg,
-`VCPKG_BUILD` automatically selects the installed `iox::ilic` and `ilic::core`
-package targets from the root manifest. `IOX_ENABLE_GEOS` follows
-`INTERLIS_ENABLE_GEOS`.
-
-`scripts/doctor.sh` verifies that the configured CLI also matches the locked
-DuckDB 1.5.5 runtime. `DUCKDB_CLI_OVERRIDE=/path/to/fresh/build/duckdb` can be
-used to verify a freshly built CLI without editing the local `scripts/env.sh`.
-
-Switching the GEOS mode requires a fresh or cleaned `build/debug` and
-`build/release` directory. The scripts reject foreign DuckDB CMake caches but do
-not delete stale build files automatically.
-
-The SQLLogicTests live in `test/sql/*.test`. Native model resolver tests can be
-enabled with `-DINTERLIS_BUILD_NATIVE_TESTS=ON`. The checked-in files under
-`testdata/native/` are intentionally small deterministic fixtures.
-
-## Code boundaries
-
-Keep model compilation and iox indexing in `CompiledModel`; keep streaming state
-local to a table-function invocation; and preserve RAII ownership at all iox,
-GEOS, file, and DuckDB boundaries. New public API belongs in the native C++
-interfaces rather than a compatibility transport.
-
-Before committing, run:
-
-```sh
 git diff --check
-make test_release
 ```
+
+SQLLogicTests liegen unter `test/sql/`. Native Resolver-Tests werden mit
+`-DINTERLIS_BUILD_NATIVE_TESTS=ON` aktiviert. Kleine deterministische Fixtures
+liegen unter `testdata/native/`.
+
+Ein Wechsel des GEOS-Modus benötigt ein neues oder bereinigtes
+`build/debug`/`build/release`. Die Skripte löschen keine fremden oder veralteten
+CMake-Buildverzeichnisse automatisch.
